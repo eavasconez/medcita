@@ -1,52 +1,140 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db');
-const { sendWhatsApp } = require('../utils/sms');
-const { v4: uuidv4 } = require('uuid');
+const prisma = require('../config/prisma');
+const { sendAppointmentConfirmation } = require('../services/notificationService');
+const { getDay, parseISO } = require('date-fns');
 
+// List appointments for the doctor
 router.get('/', async (req, res) => {
+  const { date, patientId } = req.query;
   try {
-    const appointments = db.get('appointments')
-      .filter({ doctorId: req.doctorId })
-      .value();
-    
-    // Fill in patient data
-    const fullAppointments = appointments.map(apt => {
-      const patient = db.get('patients').find({ id: apt.patientId }).value();
-      return { ...apt, Patient: patient };
+    const appointments = await prisma.appointment.findMany({
+      where: { 
+        doctorId: req.doctorId,
+        ...(date && { date }),
+        ...(patientId && { patientId })
+      },
+      include: { patient: true },
+      orderBy: { time: 'asc' }
     });
+    
+    const formatted = appointments.map(apt => ({
+      ...apt,
+      Patient: apt.patient
+    }));
 
-    res.json(fullAppointments);
+    res.json(formatted);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Create appointment with validations
 router.post('/', async (req, res) => {
-  const { patientName, patientPhone, date, time } = req.body;
+  const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes } = req.body;
   try {
-    let patient = db.get('patients').find({ phone: patientPhone }).value();
-    if (!patient) {
-      patient = { id: uuidv4(), name: patientName, phone: patientPhone };
-      db.get('patients').push(patient).write();
+    // 1. Availability Check (Day of week)
+    const dayOfWeek = getDay(parseISO(date));
+    const availability = await prisma.availability.findFirst({
+      where: {
+        doctorId: req.doctorId,
+        dayOfWeek: dayOfWeek,
+        startTime: { lte: time },
+        endTime: { gte: time }
+      }
+    });
+
+    // Note: For demo simplicity, we might want to skip this if no availability is set
+    const totalAvailabilities = await prisma.availability.count({ where: { doctorId: req.doctorId } });
+    if (totalAvailabilities > 0 && !availability) {
+      return res.status(400).json({ error: 'El médico no atiende en el horario seleccionado' });
     }
 
-    const appointment = {
-      id: uuidv4(),
-      date,
-      time,
-      patientId: patient.id,
-      doctorId: req.doctorId,
-      status: 'scheduled'
-    };
+    // 2. Conflict Check (Duplicate time for same doctor)
+    const conflict = await prisma.appointment.findFirst({
+      where: {
+        doctorId: req.doctorId,
+        date,
+        time,
+        status: { not: 'cancelled' }
+      }
+    });
 
-    db.get('appointments').push(appointment).write();
+    if (conflict) {
+      return res.status(400).json({ error: 'Ya existe una cita en este horario' });
+    }
 
-    // Send WhatsApp
-    const message = `Hola ${patientName}, tu cita en MedCita ha sido confirmada para el ${date} a las ${time}. ¡Te esperamos!`;
-    await sendWhatsApp(patientPhone, message);
+    // 3. Upsert Patient
+    let patient = await prisma.patient.upsert({
+      where: { phone: patientPhone },
+      update: { name: patientName, email: patientEmail, cedula: patientCedula },
+      create: { name: patientName, phone: patientPhone, email: patientEmail, cedula: patientCedula }
+    });
 
-    res.status(201).json({ ...appointment, Patient: patient });
+    // 4. Create Appointment
+    const appointment = await prisma.appointment.create({
+      data: {
+        date,
+        time,
+        notes,
+        patientId: patient.id,
+        doctorId: req.doctorId,
+        status: 'scheduled'
+      },
+      include: { 
+        patient: true,
+        doctor: true 
+      }
+    });
+
+    // 5. Send Notification (WhatsApp + Email)
+    console.log('Sending confirmation for appointment:', {
+      id: appointment.id,
+      patientEmail: appointment.patient.email,
+      patientPhone: appointment.patient.phone
+    });
+    await sendAppointmentConfirmation(appointment);
+
+    res.status(201).json({ ...appointment, Patient: appointment.patient });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update appointment (Status, Date/Time, Notes)
+router.put('/:id', async (req, res) => {
+  const { date, time, status, notes } = req.body;
+  try {
+    const appointment = await prisma.appointment.update({
+      where: { 
+        id: req.params.id,
+        doctorId: req.doctorId // Ensure doctor owns it
+      },
+      data: {
+        ...(date && { date }),
+        ...(time && { time }),
+        ...(status && { status }),
+        ...(notes && { notes })
+      },
+      include: { patient: true }
+    });
+
+    res.json({ ...appointment, Patient: appointment.patient });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete appointment
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.appointment.delete({
+      where: { 
+        id: req.params.id,
+        doctorId: req.doctorId
+      }
+    });
+    res.json({ message: 'Cita eliminada correctamente' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
