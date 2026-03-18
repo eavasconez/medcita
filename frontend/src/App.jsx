@@ -2,7 +2,13 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Patients from './pages/Patients';
+import Availability from './pages/Availability';
+import AdminDoctors from './pages/AdminDoctors';
+import Settings from './pages/Settings';
+import Reports from './pages/Reports';
 
 export const AuthContext = createContext();
 
@@ -30,7 +36,7 @@ function App() {
       localStorage.setItem('user', JSON.stringify(res.data.user));
       return true;
     } catch (err) {
-      throw err.response?.data?.error || 'Error al iniciar sesión';
+      throw err.response?.data?.error || 'Login error';
     }
   };
 
@@ -41,14 +47,20 @@ function App() {
     localStorage.removeItem('user');
   };
 
-  if (loading) return <div className="p-10 text-center">Cargando...</div>;
+  if (loading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout }}>
       <Router>
         <Routes>
           <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
+          <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
+          <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
+          <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
+          <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
+          <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
+          <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Router>

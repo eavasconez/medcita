@@ -6,15 +6,16 @@ const { getDay, parseISO } = require('date-fns');
 
 // List appointments for the doctor
 router.get('/', async (req, res) => {
-  const { date, patientId } = req.query;
+  const { date, patientId, doctorId } = req.query;
   try {
+    const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
     const appointments = await prisma.appointment.findMany({
       where: { 
-        doctorId: req.doctorId,
+        ...(isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId }),
         ...(date && { date }),
         ...(patientId && { patientId })
       },
-      include: { patient: true },
+      include: { patient: true, doctor: { select: { name: true } } },
       orderBy: { time: 'asc' }
     });
     
@@ -31,13 +32,17 @@ router.get('/', async (req, res) => {
 
 // Create appointment with validations
 router.post('/', async (req, res) => {
-  const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes } = req.body;
+  const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes, doctorId } = req.body;
+  const targetDoctorId = (req.userRole === 'admin' || req.userRole === 'secretary') && doctorId 
+    ? doctorId 
+    : req.doctorId;
+  
   try {
     // 1. Availability Check (Day of week)
     const dayOfWeek = getDay(parseISO(date));
     const availability = await prisma.availability.findFirst({
       where: {
-        doctorId: req.doctorId,
+        doctorId: targetDoctorId,
         dayOfWeek: dayOfWeek,
         startTime: { lte: time },
         endTime: { gte: time }
@@ -45,7 +50,7 @@ router.post('/', async (req, res) => {
     });
 
     // Note: For demo simplicity, we might want to skip this if no availability is set
-    const totalAvailabilities = await prisma.availability.count({ where: { doctorId: req.doctorId } });
+    const totalAvailabilities = await prisma.availability.count({ where: { doctorId: targetDoctorId } });
     if (totalAvailabilities > 0 && !availability) {
       return res.status(400).json({ error: 'El médico no atiende en el horario seleccionado' });
     }
@@ -53,7 +58,7 @@ router.post('/', async (req, res) => {
     // 2. Conflict Check (Duplicate time for same doctor)
     const conflict = await prisma.appointment.findFirst({
       where: {
-        doctorId: req.doctorId,
+        doctorId: targetDoctorId,
         date,
         time,
         status: { not: 'cancelled' }
@@ -78,8 +83,8 @@ router.post('/', async (req, res) => {
         time,
         notes,
         patientId: patient.id,
-        doctorId: req.doctorId,
-        status: 'scheduled'
+        doctorId: targetDoctorId,
+        status: 'pending_approval' // Default always pending for confirmation
       },
       include: { 
         patient: true,
@@ -104,11 +109,13 @@ router.post('/', async (req, res) => {
 // Update appointment (Status, Date/Time, Notes)
 router.put('/:id', async (req, res) => {
   const { date, time, status, notes } = req.body;
+  const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
+
   try {
     const appointment = await prisma.appointment.update({
       where: { 
         id: req.params.id,
-        doctorId: req.doctorId // Ensure doctor owns it
+        ...(isSpecialRole ? {} : { doctorId: req.doctorId })
       },
       data: {
         ...(date && { date }),

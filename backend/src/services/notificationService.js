@@ -44,9 +44,12 @@ const notificationService = {
    * Send an Email via SendGrid
    */
   sendEmail: async (to, subject, text, html) => {
-    console.log(`[EMAIL MOCK] To: ${to}, Subject: ${subject}`);
-    
-    if (process.env.SENDGRID_API_KEY && to) {
+    if (!to || !to.includes('@')) {
+      console.log(`[SENDGRID SKIP] Invalid or missing email: ${to}`);
+      return false;
+    }
+
+    if (process.env.SENDGRID_API_KEY) {
       try {
         const msg = {
           to,
@@ -59,14 +62,15 @@ const notificationService = {
         console.log(`[SENDGRID] Email sent successfully to ${to}`);
         return true;
       } catch (error) {
-        console.error('[SENDGRID ERROR]:', error.message);
+        console.error(`[SENDGRID ERROR] Failed to send to ${to}:`, error.message);
         if (error.response) {
-          console.error(error.response.body);
+          console.error(JSON.stringify(error.response.body, null, 2));
         }
         return false;
       }
     } else {
-      console.log('SendGrid credentials or recipient missing, mocked output only.');
+      console.log(`[EMAIL MOCK] To: ${to}, Subject: ${subject}`);
+      console.log('SendGrid API key not found, mocked output only.');
       return true;
     }
   },
@@ -97,7 +101,7 @@ const notificationService = {
     
     await notificationService.sendWhatsApp(patient.phone, msg);
     
-    if (patient.email) {
+    if (patient.email && patient.email.includes('@')) {
       await notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg);
     }
   }

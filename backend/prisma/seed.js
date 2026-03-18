@@ -37,47 +37,46 @@ async function main() {
     },
   });
 
-  // Default availability for demo doctor (Mon-Fri 08:00-18:00)
-  const days = [1, 2, 3, 4, 5];
-  await prisma.availability.createMany({
-    data: days.map(day => ({
-      dayOfWeek: day,
-      startTime: '08:00',
-      endTime: '18:00',
-      doctorId: doctor.id
-    }))
-  });
+  const doctors = [admin, doctor];
+  const days = [1, 2, 3, 4, 5]; // Mon to Fri
 
-  // Create Patients with Cedula
-  const p1 = await prisma.patient.create({
-    data: { name: 'Juan Carlos Cevallos', phone: '+593987654321', cedula: '1723456789', email: 'juan@example.com' },
-  });
+  for (const doc of doctors) {
+    await prisma.availability.deleteMany({ where: { doctorId: doc.id } });
+    await prisma.availability.createMany({
+      data: days.map(day => ({
+        dayOfWeek: day,
+        startTime: '08:00',
+        endTime: '18:00',
+        doctorId: doc.id
+      }))
+    });
+  }
 
-  const p2 = await prisma.patient.create({
-    data: { name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com' },
-  });
+  // Create Patients
+  const patientsCount = await prisma.patient.count();
+  if (patientsCount === 0) {
+    await prisma.patient.createMany({
+      data: [
+        { name: 'Juan Carlos Cevallos', phone: '+593987654321', cedula: '1723456789', email: 'juan@example.com' },
+        { name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com' },
+        { name: 'Ricardo Andrade', phone: '+593985729425', cedula: '1755667788', email: 'ricardo@example.com' },
+        { name: 'Hugo Paez', phone: '+593911111111', cedula: '1799999999' }
+      ]
+    });
+  }
 
-  const p3 = await prisma.patient.create({
-    data: { name: 'Erick Vasconez', phone: '+593985729425', cedula: '1755667788' },
-  });
-
+  const allPatients = await prisma.patient.findMany();
+  
+  // Create multiple appointments to show colors
+  const todayStr = new Date().toISOString().split('T')[0];
+  
   await prisma.appointment.createMany({
     data: [
-      {
-        date: '2026-03-20',
-        time: '10:00',
-        doctorId: doctor.id,
-        patientId: p1.id,
-        status: 'scheduled',
-      },
-      {
-        date: '2026-03-21',
-        time: '14:30',
-        doctorId: doctor.id,
-        patientId: p2.id,
-        status: 'scheduled',
-      }
-    ],
+      { date: todayStr, time: '09:00', doctorId: doctor.id, patientId: allPatients[0].id, status: 'scheduled' },
+      { date: todayStr, time: '10:00', doctorId: doctor.id, patientId: allPatients[1].id, status: 'confirmed' },
+      { date: todayStr, time: '14:00', doctorId: doctor.id, patientId: allPatients[2].id, status: 'scheduled' },
+      { date: todayStr, time: '16:30', doctorId: doctor.id, patientId: allPatients[3].id, status: 'scheduled' }
+    ]
   });
 
   console.log('Seed completed successfully');

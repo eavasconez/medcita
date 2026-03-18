@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,27 +12,27 @@ model Doctor {
   name           String
   email          String         @unique
   password       String
-  role           String         @default("doctor") // doctor, admin
+  createdAt      DateTime       @default(now())
+  role           String         @default("doctor")
   appointments   Appointment[]
   availabilities Availability[]
-  createdAt      DateTime       @default(now())
 }
 
 model Patient {
   id           String        @id @default(uuid())
   name         String
-  cedula       String?       @unique
   phone        String        @unique
   email        String?
-  appointments Appointment[]
   createdAt    DateTime      @default(now())
+  cedula       String?       @unique
+  appointments Appointment[]
 }
 
 model Availability {
   id        String @id @default(uuid())
-  dayOfWeek Int // 0-6 (Sunday-Saturday)
-  startTime String // HH:mm
-  endTime   String // HH:mm
+  dayOfWeek Int
+  startTime String
+  endTime   String
   doctorId  String
   doctor    Doctor @relation(fields: [doctorId], references: [id])
 
@@ -44,13 +41,13 @@ model Availability {
 
 model Appointment {
   id        String   @id @default(uuid())
-  date      String // Format: YYYY-MM-DD
-  time      String // Format: HH:mm
-  status    String   @default("scheduled") // scheduled, confirmed, cancelled, completed
+  date      String
+  time      String
+  status    String   @default("scheduled")
   notes     String?
   doctorId  String
-  doctor    Doctor   @relation(fields: [doctorId], references: [id])
   patientId String
-  patient   Patient  @relation(fields: [patientId], references: [id])
   createdAt DateTime @default(now())
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+  patient   Patient  @relation(fields: [patientId], references: [id])
 }
