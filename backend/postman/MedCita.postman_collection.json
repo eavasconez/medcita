@@ -93,6 +93,17 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const unique = `postman.s101.${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('testEmail', unique);",
+                  "pm.collectionVariables.set('testEmailMixedCase', unique.toUpperCase());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "exec": [
