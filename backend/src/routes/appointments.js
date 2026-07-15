@@ -4,6 +4,9 @@ const prisma = require('../config/prisma');
 const { sendAppointmentConfirmation } = require('../services/notificationService');
 const { getDay, parseISO } = require('date-fns');
 
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 // List appointments for the doctor
 router.get('/', async (req, res) => {
   const { date, patientId, doctorId } = req.query;
@@ -33,10 +36,23 @@ router.get('/', async (req, res) => {
 // Create appointment with validations
 router.post('/', async (req, res) => {
   const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes, doctorId } = req.body;
-  const targetDoctorId = (req.userRole === 'admin' || req.userRole === 'secretary') && doctorId 
-    ? doctorId 
+  const targetDoctorId = (req.userRole === 'admin' || req.userRole === 'secretary') && doctorId
+    ? doctorId
     : req.doctorId;
-  
+
+  if (typeof patientName !== 'string' || !patientName.trim()) {
+    return res.status(400).json({ error: 'Patient name is required' });
+  }
+  if (typeof patientPhone !== 'string' || !patientPhone.trim()) {
+    return res.status(400).json({ error: 'Patient phone is required' });
+  }
+  if (typeof date !== 'string' || !DATE_REGEX.test(date) || isNaN(parseISO(date).getTime())) {
+    return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required' });
+  }
+  if (typeof time !== 'string' || !TIME_REGEX.test(time)) {
+    return res.status(400).json({ error: 'A valid time (HH:MM) is required' });
+  }
+
   try {
     // 1. Availability Check (Day of week)
     const dayOfWeek = getDay(parseISO(date));
@@ -86,9 +102,9 @@ router.post('/', async (req, res) => {
         doctorId: targetDoctorId,
         status: 'pending_approval' // Default always pending for confirmation
       },
-      include: { 
+      include: {
         patient: true,
-        doctor: true 
+        doctor: { select: { id: true, name: true, email: true, role: true } }
       }
     });
 
