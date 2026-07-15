@@ -4,15 +4,24 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
+
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+  if (!EMAIL_REGEX.test(normalizedEmail)) return res.status(400).json({ error: 'A valid email is required' });
+  if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
   try {
-    const existingDoctor = await prisma.doctor.findUnique({ where: { email } });
+    const existingDoctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
     if (existingDoctor) return res.status(400).json({ error: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const doctor = await prisma.doctor.create({
-      data: { name, email, password: hashedPassword }
+      data: { name: name.trim(), email: normalizedEmail, password: hashedPassword }
     });
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
