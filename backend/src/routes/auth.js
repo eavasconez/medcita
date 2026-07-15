@@ -36,9 +36,14 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!normalizedEmail || typeof password !== 'string' || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
   try {
     const doctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
-    if (!doctor) return res.status(404).json({ error: 'User not found' });
+    if (!doctor) return res.status(401).json({ error: 'Invalid credentials' });
 
     const isMatch = await bcrypt.compare(password, doctor.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
