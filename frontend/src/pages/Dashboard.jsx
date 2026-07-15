@@ -179,11 +179,19 @@ const Dashboard = () => {
 
     setFormData(prev => ({
       ...prev,
+      // Reset patient fields so a slot click always starts a fresh appointment
+      // (otherwise a previously selected/created patient stays pre-loaded)
+      patientId: '',
+      patientName: '',
+      patientPhone: '+593',
+      patientEmail: '',
+      patientCedula: '',
+      notes: '',
       date: selectedDate,
       time: selectedTime === '00:00' ? '' : selectedTime,
       doctorId: prev.doctorId || (isSpecialRole && doctors.length > 0 ? doctors[0].id : prev.doctorId)
     }));
-    
+
     setModalStep(1);
     setShowModal(true);
   };
