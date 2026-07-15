@@ -40,10 +40,13 @@ router.post('/', async (req, res) => {
     ? doctorId
     : req.doctorId;
 
-  if (typeof patientName !== 'string' || !patientName.trim()) {
+  const normalizedPatientName = typeof patientName === 'string' ? patientName.trim() : '';
+  const normalizedPatientPhone = typeof patientPhone === 'string' ? patientPhone.trim() : '';
+
+  if (!normalizedPatientName) {
     return res.status(400).json({ error: 'Patient name is required' });
   }
-  if (typeof patientPhone !== 'string' || !patientPhone.trim()) {
+  if (!normalizedPatientPhone) {
     return res.status(400).json({ error: 'Patient phone is required' });
   }
   if (typeof date !== 'string' || !DATE_REGEX.test(date) || isNaN(parseISO(date).getTime())) {
@@ -87,9 +90,9 @@ router.post('/', async (req, res) => {
 
     // 3. Upsert Patient
     let patient = await prisma.patient.upsert({
-      where: { phone: patientPhone },
-      update: { name: patientName, email: patientEmail, cedula: patientCedula },
-      create: { name: patientName, phone: patientPhone, email: patientEmail, cedula: patientCedula }
+      where: { phone: normalizedPatientPhone },
+      update: { name: normalizedPatientName, email: patientEmail, cedula: patientCedula },
+      create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: patientEmail, cedula: patientCedula }
     });
 
     // 4. Create Appointment
