@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
 
 router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -43,10 +44,8 @@ router.post('/login', async (req, res) => {
 
   try {
     const doctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
-    if (!doctor) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const isMatch = await bcrypt.compare(password, doctor.password);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    const isMatch = await bcrypt.compare(password, doctor ? doctor.password : DUMMY_PASSWORD_HASH);
+    if (!doctor || !isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
