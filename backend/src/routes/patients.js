@@ -3,6 +3,8 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // All patient routes are protected
 router.use(auth);
 
@@ -33,14 +35,32 @@ router.get('/', async (req, res) => {
 // Create new patient
 router.post('/', async (req, res) => {
   const { name, phone, email, cedula } = req.body;
+
+  const normalizedName = typeof name === 'string' ? name.trim() : '';
+  const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
+
+  if (!normalizedName) {
+    return res.status(400).json({ error: 'Patient name is required' });
+  }
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: 'Patient phone is required' });
+  }
+  if (email && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+
   try {
     const patient = await prisma.patient.upsert({
-      where: { phone },
-      update: { name, email, cedula },
-      create: { name, phone, email, cedula }
+      where: { phone: normalizedPhone },
+      update: { name: normalizedName, email, cedula },
+      create: { name: normalizedName, phone: normalizedPhone, email, cedula }
     });
     res.status(201).json(patient);
   } catch (err) {
+    if (err.code === 'P2002') {
+      const field = err.meta?.target?.includes('cedula') ? 'cedula' : 'phone';
+      return res.status(400).json({ error: `A patient with this ${field} already exists` });
+    }
     res.status(500).json({ error: err.message });
   }
 });
