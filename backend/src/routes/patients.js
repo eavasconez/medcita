@@ -45,7 +45,7 @@ router.post('/', async (req, res) => {
   if (!normalizedPhone) {
     return res.status(400).json({ error: 'Patient phone is required' });
   }
-  if (email && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
+  if (email !== undefined && email !== '' && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 

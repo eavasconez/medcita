@@ -2033,6 +2033,48 @@
           ]
         },
         {
+          "name": "Falla - email no-string (boolean)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S107 Test\",\n  \"phone\": \"{{s107Phone}}\",\n  \"email\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400 (no 500)', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('A valid email is required'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
           "name": "Éxito - crear paciente (normaliza espacios en teléfono)",
           "request": {
             "method": "POST",
