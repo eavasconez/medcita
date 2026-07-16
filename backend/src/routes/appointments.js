@@ -6,6 +6,7 @@ const { getDay, parseISO } = require('date-fns');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed', 'cancelled'];
 
 // List appointments for the doctor
 router.get('/', async (req, res) => {
@@ -131,9 +132,19 @@ router.put('/:id', async (req, res) => {
   const { date, time, status, notes } = req.body;
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
 
+  if (status !== undefined && !VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Status must be one of: ${VALID_STATUSES.join(', ')}` });
+  }
+  if (date !== undefined && (typeof date !== 'string' || !DATE_REGEX.test(date) || isNaN(parseISO(date).getTime()))) {
+    return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required' });
+  }
+  if (time !== undefined && (typeof time !== 'string' || !TIME_REGEX.test(time))) {
+    return res.status(400).json({ error: 'A valid time (HH:MM) is required' });
+  }
+
   try {
     const appointment = await prisma.appointment.update({
-      where: { 
+      where: {
         id: req.params.id,
         ...(isSpecialRole ? {} : { doctorId: req.doctorId })
       },
@@ -148,21 +159,25 @@ router.put('/:id', async (req, res) => {
 
     res.json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
     res.status(500).json({ error: err.message });
   }
 });
 
 // Delete appointment
 router.delete('/:id', async (req, res) => {
+  const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
+
   try {
     await prisma.appointment.delete({
-      where: { 
+      where: {
         id: req.params.id,
-        doctorId: req.doctorId
+        ...(isSpecialRole ? {} : { doctorId: req.doctorId })
       }
     });
-    res.json({ message: 'Cita eliminada correctamente' });
+    res.json({ message: 'Appointment cancelled successfully' });
   } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
     res.status(500).json({ error: err.message });
   }
 });
