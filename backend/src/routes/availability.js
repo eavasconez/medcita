@@ -4,6 +4,9 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { getDay, parseISO, addMinutes, format } = require('date-fns');
 
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 router.use(auth);
 
 // Get doctor availability
@@ -54,7 +57,9 @@ router.get('/slots', async (req, res) => {
 
   const targetDoctorId = doctorId || req.doctorId;
 
-  if (!date) return res.status(400).json({ error: 'Date is required' });
+  if (typeof date !== 'string' || !DATE_REGEX.test(date) || isNaN(parseISO(date).getTime())) {
+    return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required' });
+  }
 
   try {
     const dayOfWeek = getDay(parseISO(date));
@@ -129,17 +134,47 @@ router.post('/', async (req, res) => {
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
   const targetDoctorId = isSpecialRole && doctorId ? doctorId : req.doctorId;
 
-  try {
-    // Basic approach: replace all current availabilities with new ones
-    await prisma.availability.deleteMany({
-      where: { doctorId: targetDoctorId }
-    });
+  if (!Array.isArray(schedules) || schedules.length === 0) {
+    return res.status(400).json({ error: 'schedules must be a non-empty array' });
+  }
 
-    const newSchedules = await prisma.availability.createMany({
-      data: schedules.map(s => ({
-        ...s,
-        doctorId: targetDoctorId
-      }))
+  const seen = new Set();
+  for (const s of schedules) {
+    const { dayOfWeek, startTime, endTime } = s || {};
+
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+      return res.status(400).json({ error: 'dayOfWeek must be an integer between 0 (Sunday) and 6 (Saturday)' });
+    }
+    if (typeof startTime !== 'string' || !TIME_REGEX.test(startTime)) {
+      return res.status(400).json({ error: 'startTime must be a valid time (HH:MM)' });
+    }
+    if (typeof endTime !== 'string' || !TIME_REGEX.test(endTime)) {
+      return res.status(400).json({ error: 'endTime must be a valid time (HH:MM)' });
+    }
+    if (startTime >= endTime) {
+      return res.status(400).json({ error: 'startTime must be earlier than endTime' });
+    }
+
+    const key = `${dayOfWeek}-${startTime}`;
+    if (seen.has(key)) {
+      return res.status(400).json({ error: `Duplicate schedule for day ${dayOfWeek} at ${startTime}` });
+    }
+    seen.add(key);
+  }
+
+  try {
+    // Replace all current availabilities with the new ones atomically, so a
+    // failure never leaves the doctor with the old set deleted and nothing in its place
+    const newSchedules = await prisma.$transaction(async (tx) => {
+      await tx.availability.deleteMany({ where: { doctorId: targetDoctorId } });
+      return tx.availability.createMany({
+        data: schedules.map(s => ({
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          doctorId: targetDoctorId
+        }))
+      });
     });
 
     res.json({ message: 'Availability updated successfully', count: newSchedules.count });
