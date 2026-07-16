@@ -88,7 +88,7 @@ router.put('/:id', async (req, res) => {
       data: {
         ...(normalizedName !== undefined && { name: normalizedName }),
         ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
-        ...(email !== undefined && { email }),
+        ...(email !== undefined && { email: email === '' ? null : email }),
         ...(cedula !== undefined && { cedula })
       }
     });
