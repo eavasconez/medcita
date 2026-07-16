@@ -13,6 +13,10 @@ router.use(auth);
 
 // List all doctors (Accessible by Admin and Secretary)
 router.get('/medicos', async (req, res) => {
+  if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
+    return res.status(403).json({ error: 'Access denied. Admin or secretary rights required.' });
+  }
+
   const { role } = req.query;
   try {
     const doctors = await prisma.doctor.findMany({
@@ -30,7 +34,8 @@ router.get('/medicos', async (req, res) => {
     });
     res.json(doctors);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -74,7 +79,8 @@ router.post('/medicos', async (req, res) => {
     res.status(201).json(doctor);
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -117,7 +123,8 @@ router.put('/medicos/:id', async (req, res) => {
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Doctor not found' });
     if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -138,7 +145,8 @@ router.delete('/medicos/:id', async (req, res) => {
     if (err.code === 'P2003') {
       return res.status(400).json({ error: 'Cannot delete a doctor with existing appointments or availability' });
     }
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -162,7 +170,8 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 

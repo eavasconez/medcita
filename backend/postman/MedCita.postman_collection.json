@@ -3545,6 +3545,40 @@
           ]
         },
         {
+          "name": "Falla - doctor regular NO puede listar médicos (RBAC)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "medicos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
           "name": "Falla - crear médico sin nombre",
           "request": {
             "method": "POST",
@@ -3947,6 +3981,86 @@
           ]
         },
         {
+          "name": "Setup - crear médico dedicado para prueba de FK",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/medicos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "medicos"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S111 FK Test\",\n  \"email\": \"{{s111FkEmail}}\",\n  \"password\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s111FkEmail', `s111.fk.${Date.now()}@example.com`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s111FkDoctorId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear cita para ese médico (dependencia FK)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S111 FK Patient\",\n  \"patientPhone\": \"{{s111FkPhone}}\",\n  \"date\": \"2026-09-01\",\n  \"time\": \"10:00\",\n  \"doctorId\": \"{{s111FkDoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s111FkPhone', `+593900400${Date.now().toString().slice(-3)}`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s111FkApptId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
           "name": "Falla - no se puede eliminar un médico con citas/disponibilidad",
           "request": {
             "method": "DELETE",
@@ -3957,7 +4071,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{demoDoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/medicos/{{s111FkDoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3965,35 +4079,67 @@
                 "api",
                 "admin",
                 "medicos",
-                "{{demoDoctorId}}"
+                "{{s111FkDoctorId}}"
               ]
             }
           },
           "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "exec": [
-                  "if (!pm.collectionVariables.get('demoDoctorId')) {",
-                  "  pm.sendRequest({",
-                  "    url: pm.variables.get('baseUrl') + '/api/admin/medicos',",
-                  "    method: 'GET',",
-                  "    header: { Authorization: 'Bearer ' + pm.collectionVariables.get('s111AdminToken') }",
-                  "  }, (err, res) => {",
-                  "    const demo = res.json().find(d => d.email === 'demo@medcita.ec');",
-                  "    pm.collectionVariables.set('demoDoctorId', demo.id);",
-                  "  });",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            },
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
                   "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Cannot delete a doctor with existing appointments or availability'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - eliminar la cita de prueba (quita la dependencia FK)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s111FkApptId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "{{s111FkApptId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - eliminar médico FK tras quitar la dependencia",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/medicos/{{s111FkDoctorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "medicos", "{{s111FkDoctorId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
                 ],
                 "type": "text/javascript"
               }
@@ -4337,7 +4483,19 @@
       "value": ""
     },
     {
-      "key": "demoDoctorId",
+      "key": "s111FkEmail",
+      "value": ""
+    },
+    {
+      "key": "s111FkDoctorId",
+      "value": ""
+    },
+    {
+      "key": "s111FkPhone",
+      "value": ""
+    },
+    {
+      "key": "s111FkApptId",
       "value": ""
     }
   ]
