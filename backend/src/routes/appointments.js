@@ -12,6 +12,23 @@ const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed
 // so the catch block can tell them apart from unexpected DB/runtime errors
 class ScheduleConflictError extends Error {}
 
+// P2034 (serialization failure) can come from any write conflict in the
+// transaction, not just a slot clash, so retry a bounded number of times
+// instead of assuming it always means "appointment already booked". If the
+// conflict is real, the retried attempt's own explicit check throws
+// ScheduleConflictError with the correct message; P2034 only reaches the
+// caller if it persists across every retry.
+async function runSerializableTransaction(fn, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
+    } catch (err) {
+      if (err.code === 'P2034' && attempt < maxAttempts) continue;
+      throw err;
+    }
+  }
+}
+
 // List appointments for the doctor
 router.get('/', async (req, res) => {
   const { date, patientId, doctorId, status } = req.query;
@@ -67,7 +84,7 @@ router.post('/', async (req, res) => {
     // single Serializable transaction, so two concurrent requests for the same
     // doctor/date/time can never both pass the conflict check and double-book
     // the slot (Postgres detects the write conflict and Prisma retries/aborts).
-    const appointment = await prisma.$transaction(async (tx) => {
+    const appointment = await runSerializableTransaction(async (tx) => {
       // 1. Availability Check (Day of week)
       const dayOfWeek = getDay(parseISO(date));
       const availability = await tx.availability.findFirst({
@@ -121,7 +138,7 @@ router.post('/', async (req, res) => {
           doctor: { select: { id: true, name: true, email: true, role: true } }
         }
       });
-    }, { isolationLevel: 'Serializable' });
+    });
 
     // 5. Send Notification (WhatsApp + Email) - outside the transaction, after commit
     console.log('Sending confirmation for appointment:', {
@@ -134,7 +151,9 @@ router.post('/', async (req, res) => {
     res.status(201).json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
     if (err instanceof ScheduleConflictError) return res.status(400).json({ error: err.message });
-    if (err.code === 'P2034') return res.status(400).json({ error: 'Ya existe una cita en este horario' });
+    if (err.code === 'P2034') {
+      return res.status(409).json({ error: 'Could not complete the booking due to a concurrent update, please try again' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
