@@ -9,17 +9,18 @@ const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // List appointments for the doctor
 router.get('/', async (req, res) => {
-  const { date, patientId, doctorId } = req.query;
+  const { date, patientId, doctorId, status } = req.query;
   try {
     const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
     const appointments = await prisma.appointment.findMany({
-      where: { 
+      where: {
         ...(isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId }),
         ...(date && { date }),
-        ...(patientId && { patientId })
+        ...(patientId && { patientId }),
+        ...(status && { status })
       },
       include: { patient: true, doctor: { select: { name: true } } },
-      orderBy: { time: 'asc' }
+      orderBy: [{ date: 'asc' }, { time: 'asc' }]
     });
     
     const formatted = appointments.map(apt => ({
