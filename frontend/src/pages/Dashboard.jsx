@@ -65,6 +65,13 @@ const Dashboard = () => {
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Appointment list filters (status + patient)
+  const [statusFilter, setStatusFilter] = useState('');
+  const [patientFilterId, setPatientFilterId] = useState('');
+  const [patientFilterName, setPatientFilterName] = useState('');
+  const [patientFilterQuery, setPatientFilterQuery] = useState('');
+  const [patientFilterResults, setPatientFilterResults] = useState([]);
+
   // Form state
   const [formData, setFormData] = useState({
     doctorId: '', // Initialized below or in useEffect
@@ -218,7 +225,13 @@ const Dashboard = () => {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`http://localhost:5000/api/appointments${formData.doctorId ? `?doctorId=${formData.doctorId}` : ''}`, {
+      const params = new URLSearchParams();
+      if (formData.doctorId) params.set('doctorId', formData.doctorId);
+      if (statusFilter) params.set('status', statusFilter);
+      if (patientFilterId) params.set('patientId', patientFilterId);
+      const queryString = params.toString();
+
+      const res = await axios.get(`http://localhost:5000/api/appointments${queryString ? `?${queryString}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
@@ -234,9 +247,33 @@ const Dashboard = () => {
     }
   };
 
+  const searchFilterPatients = async (query) => {
+    if (!query) {
+      setPatientFilterResults([]);
+      return;
+    }
+    try {
+      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPatientFilterResults(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const debouncedFilterSearch = debounce(searchFilterPatients, 300);
+
+  const clearPatientFilter = () => {
+    setPatientFilterId('');
+    setPatientFilterName('');
+    setPatientFilterQuery('');
+    setPatientFilterResults([]);
+  };
+
   useEffect(() => {
     fetchAppointments();
-  }, [token, formData.doctorId]);
+  }, [token, formData.doctorId, statusFilter, patientFilterId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -463,6 +500,75 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Appointment Filters */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 mb-8 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-widest">
+          <Search size={16} />
+          Filters
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm text-secondary outline-none focus:ring-4 focus:ring-primary/10"
+        >
+          <option value="">All statuses</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="pending_approval">Pending</option>
+        </select>
+
+        <div className="relative">
+          {patientFilterId ? (
+            <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-2xl">
+              <span className="font-bold text-sm text-primary">{patientFilterName}</span>
+              <button onClick={clearPatientFilter} className="text-primary/60 hover:text-primary transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Filter by patient..."
+                value={patientFilterQuery}
+                onChange={(e) => {
+                  setPatientFilterQuery(e.target.value);
+                  debouncedFilterSearch(e.target.value);
+                }}
+                className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-4 focus:ring-primary/10 w-56"
+              />
+              {patientFilterResults.length > 0 && (
+                <div className="absolute z-20 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-48 overflow-y-auto">
+                  {patientFilterResults.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setPatientFilterId(p.id);
+                        setPatientFilterName(p.name);
+                        setPatientFilterResults([]);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-primary/5 text-sm font-bold text-secondary transition-colors"
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {(statusFilter || patientFilterId) && (
+          <button
+            onClick={() => { setStatusFilter(''); clearPatientFilter(); }}
+            className="text-[10px] font-black text-slate-400 hover:text-red-400 uppercase tracking-widest transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
         {/* Calendar Section */}

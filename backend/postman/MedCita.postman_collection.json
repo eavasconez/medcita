@@ -1361,7 +1361,8 @@
                 "exec": [
                   "const arr = pm.response.json();",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Todas las citas son del paciente filtrado', () => arr.forEach(a => pm.expect(a.patientId).to.eql(pm.collectionVariables.get('s105PatientA'))));"
+                  "pm.test('Todas las citas son del paciente filtrado', () => arr.forEach(a => pm.expect(a.patientId).to.eql(pm.collectionVariables.get('s105PatientA'))));",
+                  "pm.test('Incluye la cita A del paciente filtrado', () => pm.expect(arr.map(a => a.id)).to.include(pm.collectionVariables.get('s105ApptA')));"
                 ],
                 "type": "text/javascript"
               }
