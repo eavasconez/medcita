@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
@@ -14,12 +14,16 @@ const Availability = () => {
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
 
   const showToast = (message, type = 'success') => {
+    // Clear any pending dismissal so an in-flight timer from a prior toast
+    // can't clear this newer one out from under it.
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
   const fetchAvailability = async (doctorId) => {
@@ -96,12 +100,15 @@ const Availability = () => {
     <Layout>
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
           ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
         `}>
           {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
           <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75 transition-opacity">
+          <button onClick={() => setToast(null)} aria-label="Dismiss notification" className="ml-auto hover:opacity-75 transition-opacity">
             <X size={18} />
           </button>
         </div>
