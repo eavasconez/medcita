@@ -4474,7 +4474,7 @@
                   "});",
                   "pm.test('No expone el password', () => pm.expect(b).to.not.have.property('password'));",
                   "pm.test('Incluye conteo real de citas', () => pm.expect(b._count).to.have.property('appointments'));",
-                  "pm.collectionVariables.set('s211OriginalName', b.name);"
+                  "pm.collectionVariables.set('s211OriginalProfile', JSON.stringify({ name: b.name, specialty: b.specialty, bio: b.bio }));"
                 ],
                 "type": "text/javascript"
               }
@@ -4685,7 +4685,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"{{s211OriginalName}}\",\n  \"specialty\": \"\",\n  \"bio\": \"\"\n}"
+              "raw": "{{s211OriginalProfile}}"
             }
           },
           "event": [
@@ -4695,10 +4695,11 @@
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const b = pm.response.json();",
-                  "pm.test('Nombre restaurado, specialty/bio en null', () => {",
-                  "  pm.expect(b.name).to.eql(pm.collectionVariables.get('s211OriginalName'));",
-                  "  pm.expect(b.specialty).to.be.null;",
-                  "  pm.expect(b.bio).to.be.null;",
+                  "const orig = JSON.parse(pm.collectionVariables.get('s211OriginalProfile'));",
+                  "pm.test('Perfil restaurado a su estado original exacto', () => {",
+                  "  pm.expect(b.name).to.eql(orig.name);",
+                  "  pm.expect(b.specialty).to.eql(orig.specialty);",
+                  "  pm.expect(b.bio).to.eql(orig.bio);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -4887,7 +4888,7 @@
       "value": ""
     },
     {
-      "key": "s211OriginalName",
+      "key": "s211OriginalProfile",
       "value": ""
     }
   ]

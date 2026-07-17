@@ -84,7 +84,9 @@ router.get('/profile', auth, async (req, res) => {
 
 // Update the authenticated user's own profile (self-service: name/specialty/bio only)
 router.put('/profile', auth, async (req, res) => {
-  const { name, specialty, bio } = req.body;
+  // Guard against a bodyless request or a literal JSON null, which would throw
+  // on destructuring and surface as an uncontrolled 500 instead of a 400.
+  const { name, specialty, bio } = req.body || {};
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim()) {

@@ -238,6 +238,7 @@ const Dashboard = () => {
     fetchAvailability();
   }, [isSpecialRole, showModal, token, formData.doctorId]);
 
+  // Calendar list: reflects the active status/patient filters.
   const fetchAppointments = async () => {
     try {
       setLoading(true);
@@ -251,22 +252,38 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
-      // Effectiveness = share of appointments that reached a positive outcome
-      // (confirmed or completed) out of the total loaded — real data, not a
-      // hardcoded figure. Shows '—' when there are no appointments to measure.
-      const positive = res.data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
-      const effectiveness = res.data.length > 0
-        ? `${Math.round((positive / res.data.length) * 100)}%`
-        : '—';
-      setStats({
-        totalAppointments: res.data.length,
-        newPatients: new Set(res.data.map(a => a.patientId)).size,
-        effectiveness
-      });
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Headline KPIs: always computed from the doctor's full appointment set,
+  // NOT the filtered calendar view — otherwise filtering by e.g. 'confirmed'
+  // would show 100% effectiveness and 'scheduled' would show 0%. Only scoped
+  // by doctorId so the numbers stay stable regardless of the active filters.
+  const fetchStats = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (formData.doctorId) params.set('doctorId', formData.doctorId);
+      const queryString = params.toString();
+
+      const res = await axios.get(`http://localhost:5000/api/appointments${queryString ? `?${queryString}` : ''}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = res.data;
+      const positive = data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
+      const effectiveness = data.length > 0
+        ? `${Math.round((positive / data.length) * 100)}%`
+        : '—';
+      setStats({
+        totalAppointments: data.length,
+        newPatients: new Set(data.map(a => a.patientId)).size,
+        effectiveness
+      });
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -298,6 +315,11 @@ const Dashboard = () => {
     fetchAppointments();
   }, [token, formData.doctorId, statusFilter, patientFilterId]);
 
+  // KPIs only depend on the selected doctor, not the calendar filters.
+  useEffect(() => {
+    fetchStats();
+  }, [token, formData.doctorId]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -307,6 +329,7 @@ const Dashboard = () => {
       setShowModal(false);
       showToast('Appointment scheduled! Notifications are being sent.', 'success');
       fetchAppointments();
+      fetchStats();
       setModalStep(1);
     } catch (err) {
       showToast(err.response?.data?.error || 'Error al agendar cita', 'error');
@@ -333,6 +356,7 @@ const Dashboard = () => {
       });
       setToast({ message: 'Appointment rescheduled successfully', type: 'success' });
       fetchAppointments(); // Refresh to be safe
+      fetchStats();
     } catch (err) {
       setToast({ message: 'Error rescheduling appointment', type: 'error' });
       fetchAppointments(); // Rollback
@@ -355,6 +379,7 @@ const Dashboard = () => {
       setToast({ message: `Appointment ${status === 'confirmed' ? 'confirmed' : 'updated'}`, type: 'success' });
       setShowEditModal(false);
       fetchAppointments();
+      fetchStats();
     } catch (err) {
       setToast({ message: 'Error updating appointment', type: 'error' });
       fetchAppointments();
@@ -370,6 +395,7 @@ const Dashboard = () => {
       setToast({ message: 'Appointment cancelled', type: 'success' });
       setShowEditModal(false);
       fetchAppointments();
+      fetchStats();
     } catch (err) {
       setToast({ message: 'Error cancelling appointment', type: 'error' });
     }
