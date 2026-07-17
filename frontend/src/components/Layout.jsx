@@ -1,9 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Menu, Stethoscope } from 'lucide-react';
 
 const Layout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // The drawer is only meaningful below md; force it closed if the
+  // viewport grows past that so it can't get stuck open (and trapping
+  // focus) once the sidebar becomes permanently visible.
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) setIsSidebarOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <div className="flex bg-slate-50 min-h-screen">

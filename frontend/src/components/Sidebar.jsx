@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AuthContext } from '../App';
 import {
@@ -13,8 +13,66 @@ import {
   X
 } from 'lucide-react';
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const { user, logout } = useContext(AuthContext);
+  const asideRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // While the drawer is open on mobile: move focus into it, trap Tab/Shift+Tab
+  // inside it so keyboard users can't tab into the obscured page behind the
+  // backdrop, close on Escape, and restore focus to the trigger on close.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const container = asideRef.current;
+    if (!container) return;
+
+    previouslyFocusedRef.current = document.activeElement;
+
+    const getFocusables = () => Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR));
+
+    const focusables = getFocusables();
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const current = getFocusables();
+      if (current.length === 0) return;
+      const first = current[0];
+      const last = current[current.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocusedRef.current?.focus) {
+        previouslyFocusedRef.current.focus();
+      }
+    };
+  }, [isOpen]);
 
   let menuItems = [];
 
@@ -47,6 +105,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       )}
 
       <aside
+        ref={asideRef}
         className={`
           w-64 bg-secondary h-screen flex flex-col text-white shadow-2xl z-40
           fixed top-0 left-0 md:sticky transform transition-transform duration-300 ease-in-out

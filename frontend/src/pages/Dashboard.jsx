@@ -61,6 +61,15 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // `view` is controlled, so it won't follow `isMobile` on its own when the
+  // viewport crosses the breakpoint after mount (e.g. resize or rotation) -
+  // force it back to day view rather than leaving an unreadable week/month grid.
+  useEffect(() => {
+    if (isMobile && (view === 'week' || view === 'month')) {
+      setView('day');
+    }
+  }, [isMobile]);
+
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
 
@@ -588,7 +597,7 @@ const Dashboard = () => {
           )}
 
           <div className="overflow-x-auto">
-          <div className="min-w-[640px]">
+          <div className={view === 'week' || view === 'month' ? 'min-w-[640px]' : ''}>
           <DnDCalendar
             localizer={localizer}
             events={calendarEvents}
@@ -598,7 +607,6 @@ const Dashboard = () => {
             view={view}
             onNavigate={(newDate) => setDate(newDate)}
             onView={(newView) => setView(newView)}
-            defaultView={isMobile ? 'day' : 'week'}
             selectable
             resizable={false}
             draggableAccessor={() => true}
