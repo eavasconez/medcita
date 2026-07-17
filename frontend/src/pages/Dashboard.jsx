@@ -52,7 +52,14 @@ const Dashboard = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [date, setDate] = useState(new Date());
-  const [view, setView] = useState('week');
+  const [view, setView] = useState(() => (window.innerWidth < 768 ? 'day' : 'week'));
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
@@ -391,7 +398,7 @@ const Dashboard = () => {
     <Layout>
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
+        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
           ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
         `}>
           {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
@@ -402,18 +409,18 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="page-shell">
         {/* Header with Stats */}
-        <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <header className="page-header mb-10">
           <div>
-            <h2 className="text-4xl font-black text-secondary tracking-tighter">
+            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">
               {isSpecialRole ? 'Administrative Center' : 'My Schedule'}
             </h2>
-            <p className="text-slate-500 font-medium text-lg">
+            <p className="text-slate-500 font-medium text-base sm:text-lg">
               {isSpecialRole ? 'Manage clinical calendars and patients' : 'Welcome to MedCita Control Center'}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {isSpecialRole && doctors.length > 0 && (
               <div className="flex flex-col">
                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 ml-1 tracking-widest">Select Doctor</label>
@@ -451,7 +458,7 @@ const Dashboard = () => {
         {/* Header with Stats and Legend */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
+          <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-500">
               <CalendarIcon size={32} />
             </div>
@@ -461,7 +468,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
+          <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
             <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center text-green-500 group-hover:bg-green-500 group-hover:text-white transition-colors duration-500">
               <Users size={32} />
             </div>
@@ -471,7 +478,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
+          <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
             <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors duration-500">
               <TrendingUp size={32} />
             </div>
@@ -483,7 +490,7 @@ const Dashboard = () => {
         </div>
 
         {/* Legend Card */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex flex-col justify-center">
+        <div className="card flex flex-col justify-center">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Legend</p>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
@@ -503,7 +510,7 @@ const Dashboard = () => {
       </div>
 
       {/* Appointment Filters */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 mb-8 flex flex-wrap items-center gap-4">
+      <div className="filter-bar mb-8">
         <div className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-widest">
           <Search size={16} />
           Filters
@@ -512,7 +519,7 @@ const Dashboard = () => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm text-secondary outline-none focus:ring-4 focus:ring-primary/10"
+          className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm text-secondary outline-none focus:ring-4 focus:ring-primary/10 w-full sm:w-auto"
         >
           <option value="">All statuses</option>
           <option value="confirmed">Confirmed</option>
@@ -520,11 +527,11 @@ const Dashboard = () => {
           <option value="pending_approval">Pending</option>
         </select>
 
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           {patientFilterId ? (
-            <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-2xl">
+            <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-2xl w-full sm:w-auto">
               <span className="font-bold text-sm text-primary">{patientFilterName}</span>
-              <button onClick={clearPatientFilter} className="text-primary/60 hover:text-primary transition-colors">
+              <button onClick={clearPatientFilter} className="text-primary/60 hover:text-primary transition-colors ml-auto sm:ml-0">
                 <X size={16} />
               </button>
             </div>
@@ -538,10 +545,10 @@ const Dashboard = () => {
                   setPatientFilterQuery(e.target.value);
                   debouncedFilterSearch(e.target.value);
                 }}
-                className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-4 focus:ring-primary/10 w-56"
+                className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-4 focus:ring-primary/10 w-full sm:w-56"
               />
               {patientFilterResults.length > 0 && (
-                <div className="absolute z-20 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-48 overflow-y-auto">
+                <div className="absolute z-20 mt-2 w-full sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-48 overflow-y-auto">
                   {patientFilterResults.map(p => (
                     <button
                       key={p.id}
@@ -572,14 +579,16 @@ const Dashboard = () => {
       </div>
 
         {/* Calendar Section */}
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl relative min-h-[600px]">
+        <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl relative min-h-[600px]">
           {loading && (
             <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
               <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
               <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Syncing agenda...</p>
             </div>
           )}
-          
+
+          <div className="overflow-x-auto">
+          <div className="min-w-[640px]">
           <DnDCalendar
             localizer={localizer}
             events={calendarEvents}
@@ -589,14 +598,14 @@ const Dashboard = () => {
             view={view}
             onNavigate={(newDate) => setDate(newDate)}
             onView={(newView) => setView(newView)}
-            defaultView="week"
+            defaultView={isMobile ? 'day' : 'week'}
             selectable
             resizable={false}
             draggableAccessor={() => true}
             onSelectSlot={handleSelectSlot}
             onSelectEvent={handleSelectEvent}
             onEventDrop={handleEventDrop}
-            style={{ height: 700 }}
+            style={{ height: isMobile ? 500 : 700 }}
             messages={{
               next: "Next",
               previous: "Previous",
@@ -666,13 +675,15 @@ const Dashboard = () => {
                 };
               }}
             />
+          </div>
+          </div>
         </div>
       </div>      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-auto max-h-[95vh]">
+        <div className="modal-overlay">
+          <div className="modal-panel max-w-3xl rounded-[3rem] animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-auto max-h-[95vh]">
             
             {/* Sidebar Info (Calendly Style) */}
-            <div className="bg-slate-50 md:w-72 p-10 border-r border-slate-100 flex flex-col">
+            <div className="bg-slate-50 md:w-72 p-6 sm:p-10 border-r border-slate-100 flex flex-col">
               <div className="mb-8">
                 <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-primary/20">
                   <CalendarIcon size={24} />
@@ -711,14 +722,14 @@ const Dashboard = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col relative">
-              <button 
+              <button
                 onClick={() => setShowModal(false)}
-                className="absolute right-8 top-8 text-slate-300 hover:text-secondary transition-colors z-10"
+                className="absolute right-5 top-5 sm:right-8 sm:top-8 text-slate-300 hover:text-secondary transition-colors z-10"
               >
                 <X size={24} />
               </button>
 
-              <div className="p-10 flex-1 overflow-y-auto">
+              <div className="p-6 sm:p-10 flex-1 overflow-y-auto">
                 
                 {/* Step 1: Select Doctor & Patient */}
                 {modalStep === 1 && (
@@ -800,7 +811,7 @@ const Dashboard = () => {
                         {[1,2,3,4,5,6].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl" />)}
                       </div>
                     ) : availableSlots.length > 0 ? (
-                      <div className="grid grid-cols-4 gap-2 overflow-y-auto max-h-64 pr-2 custom-scrollbar">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto max-h-64 pr-2 custom-scrollbar">
                         {availableSlots.map(slot => (
                           <button 
                             key={slot.time}
@@ -933,22 +944,24 @@ const Dashboard = () => {
           <div className="flex items-center justify-center min-h-screen px-4 py-8">
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowEditModal(false)}></div>
             
-            <div className="relative bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-              <div className="flex">
+            <div className="modal-panel relative rounded-[3rem] max-w-2xl animate-in zoom-in-95 duration-300">
+              <div className="flex flex-col md:flex-row">
                 {/* Status Sidebar */}
-                <div className={`w-1/3 p-8 flex flex-col items-center justify-center text-white text-center
-                  ${selectedEvent.status === 'confirmed' ? 'bg-[#10b981]' : 
+                <div className={`w-full md:w-1/3 p-6 sm:p-8 flex flex-row md:flex-col items-center gap-4 md:gap-0 justify-center text-white text-center
+                  ${selectedEvent.status === 'confirmed' ? 'bg-[#10b981]' :
                     selectedEvent.status === 'pending_approval' ? 'bg-[#f59e0b]' : 'bg-[#0ea5e9]'}
                 `}>
-                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-md">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center md:mb-4 backdrop-blur-md shrink-0">
                     <User size={32} />
                   </div>
-                  <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-1">Appointment</h3>
-                  <p className="text-2xl font-black leading-tight">{selectedEvent.status === 'confirmed' ? 'Confirmed' : 'Pending'}</p>
+                  <div className="text-left md:text-center">
+                    <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-1">Appointment</h3>
+                    <p className="text-2xl font-black leading-tight">{selectedEvent.status === 'confirmed' ? 'Confirmed' : 'Pending'}</p>
+                  </div>
                 </div>
 
                 {/* Details Area */}
-                <div className="flex-1 p-10">
+                <div className="flex-1 p-6 sm:p-10">
                   <div className="flex justify-between items-start mb-8">
                     <div>
                       <h4 className="text-2xl font-black text-secondary">{selectedEvent.Patient?.name}</h4>

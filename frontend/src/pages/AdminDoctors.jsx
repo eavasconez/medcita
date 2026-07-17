@@ -104,7 +104,7 @@ const AdminDoctors = () => {
     <Layout>
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
+        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
           ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
         `}>
           {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
@@ -115,19 +115,19 @@ const AdminDoctors = () => {
         </div>
       )}
 
-      <div className="p-8 max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-10">
+      <div className="page-shell">
+        <header className="page-header mb-10">
           <div>
-            <h2 className="text-4xl font-black text-secondary tracking-tighter">User Management</h2>
-            <p className="text-slate-500 font-medium text-lg mt-1">Platform administrative panel</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">User Management</h2>
+            <p className="text-slate-500 font-medium text-base sm:text-lg mt-1">Platform administrative panel</p>
           </div>
-          <button 
+          <button
             onClick={() => {
               setEditingId(null);
               setFormData({ name: '', email: '', password: '', role: 'doctor' });
               setShowModal(true);
             }}
-            className="bg-secondary text-white px-8 py-4 rounded-3xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3"
+            className="bg-secondary text-white px-8 py-4 rounded-3xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 w-full sm:w-auto"
           >
             <Plus size={24} /> Add New User
           </button>
@@ -136,7 +136,7 @@ const AdminDoctors = () => {
         {loading ? (
           <div className="text-center py-20 font-bold text-slate-400">Loading users...</div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {doctors.map((doc) => (
               <div key={doc.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl transition-all relative group overflow-hidden">
                 <div className={`absolute top-0 right-0 w-32 h-32 opacity-5 pointer-events-none -mr-8 -mt-8 rounded-full ${doc.role === 'admin' ? 'bg-orange-500' : 'bg-primary'}`}></div>
@@ -185,22 +185,22 @@ const AdminDoctors = () => {
 
       {/* Modal CRUD Médico */}
       {showModal && (
-        <div className="fixed inset-0 bg-secondary/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-secondary p-10 text-white relative">
-              <button 
+        <div className="modal-overlay bg-secondary/60">
+          <div className="modal-panel max-w-md rounded-[3rem] animate-in zoom-in-95 duration-200">
+            <div className="bg-secondary p-6 sm:p-10 text-white relative">
+              <button
                 onClick={() => setShowModal(false)}
-                className="absolute right-8 top-8 hover:rotate-90 transition-transform"
+                className="absolute right-6 top-6 sm:right-8 sm:top-8 hover:rotate-90 transition-transform"
               >
                 <X size={24} />
               </button>
               <h3 className="text-3xl font-black tracking-tighter">{editingId ? 'Edit User' : 'New User'}</h3>
               <p className="text-white/40 font-medium mt-1">Configure system access</p>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-10 space-y-5">
+
+            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-5">
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Full Name</label>
+                <label className="form-label">Full Name</label>
                 <input
                   required
                   className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
@@ -211,7 +211,7 @@ const AdminDoctors = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Email (Usuario)</label>
+                <label className="form-label">Email (Usuario)</label>
                 <input
                   required
                   type="email"
@@ -223,7 +223,7 @@ const AdminDoctors = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">
+                <label className="form-label">
                   {editingId ? 'Password (leave blank to keep)' : 'Initial Password'}
                 </label>
                 <input
@@ -237,7 +237,7 @@ const AdminDoctors = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">User Role</label>
+                <label className="form-label">User Role</label>
                 <select
                   className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
                   value={formData.role}

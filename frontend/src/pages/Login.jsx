@@ -26,7 +26,7 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100">
-        <div className="bg-primary p-12 text-center text-white relative">
+        <div className="bg-primary p-8 sm:p-12 text-center text-white relative">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
             {/* Pattern placeholder or subtle grid */}
             <div className="w-full h-full border-2 border-white/20 border-dashed rounded-full scale-150 rotate-45"></div>
@@ -39,7 +39,7 @@ const Login = () => {
           <p className="text-white/70 font-medium">Manage your professional medical agenda</p>
         </div>
 
-        <div className="p-10">
+        <div className="p-6 sm:p-10">
           {error && (
             <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 flex items-center gap-3 animate-shake">
               <span className="w-2 h-2 bg-red-600 rounded-full animate-ping"></span>
@@ -81,7 +81,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-5 bg-primary text-white font-black rounded-3xl shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-sm"
+              className="btn-primary w-full py-5 rounded-3xl shadow-primary/30 hover:shadow-primary/40 flex items-center justify-center gap-3 uppercase tracking-widest text-sm"
             >
               <LogIn size={20} />
               {loading ? 'Entering...' : 'Sign In'}
