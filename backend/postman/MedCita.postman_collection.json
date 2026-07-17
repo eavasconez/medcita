@@ -3259,6 +3259,174 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S1-10 - Concurrencia: sin citas duplicadas (POST /citas)",
+      "item": [
+        {
+          "name": "Login (obtener token válido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('validToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - 5 requests concurrentes al mismo horario, solo 1 gana",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const stamp = Date.now().toString().slice(-6);",
+                  "const date = '2026-08-10';",
+                  "const time = '15:30';",
+                  "const baseUrl = pm.variables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('validToken');",
+                  "",
+                  "const results = [];",
+                  "const transportErrors = [];",
+                  "let remaining = 5;",
+                  "",
+                  "function finish() {",
+                  "  pm.test('Ninguna request tuvo un error de transporte', () => pm.expect(transportErrors.length).to.eql(0));",
+                  "",
+                  "  const succeeded = results.filter(r => r.code === 201);",
+                  "  const losers = results.filter(r => r.code !== 201);",
+                  "",
+                  "  pm.test('Exactamente 1 de 5 requests concurrentes tuvo éxito (201)', () => pm.expect(succeeded.length).to.eql(1));",
+                  "  pm.test('Las otras 4 fueron rechazadas con 400 (conflicto) o 409 (reintentos agotados)', () => {",
+                  "    pm.expect(losers.length).to.eql(4);",
+                  "    losers.forEach(r => pm.expect([400, 409]).to.include(r.code));",
+                  "  });",
+                  "  pm.test('Cada rechazo trae el mensaje correcto según su código', () => {",
+                  "    losers.forEach(r => {",
+                  "      const body = r.json();",
+                  "      if (r.code === 400) {",
+                  "        pm.expect(body.error).to.eql('Ya existe una cita en este horario');",
+                  "      } else {",
+                  "        pm.expect(body.error).to.eql('Could not complete the booking due to a concurrent update, please try again');",
+                  "      }",
+                  "    });",
+                  "  });",
+                  "",
+                  "  if (succeeded[0]) {",
+                  "    pm.collectionVariables.set('s110WinnerApptId', succeeded[0].json().id);",
+                  "  }",
+                  "}",
+                  "",
+                  "for (let i = 1; i <= 5; i++) {",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + '/api/appointments',",
+                  "    method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({",
+                  "      patientName: `S110 Concurrente ${i}`,",
+                  "      patientPhone: `+593900280${stamp}${i}`,",
+                  "      date: date,",
+                  "      time: time",
+                  "    }) }",
+                  "  }, (err, res) => {",
+                  "    if (err) {",
+                  "      transportErrors.push(err);",
+                  "    } else {",
+                  "      results.push(res);",
+                  "    }",
+                  "    remaining--;",
+                  "    if (remaining === 0) finish();",
+                  "  });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - eliminar la cita ganadora",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s110WinnerApptId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s110WinnerApptId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -3396,6 +3564,10 @@
     },
     {
       "key": "s109Token",
+      "value": ""
+    },
+    {
+      "key": "s110WinnerApptId",
       "value": ""
     }
   ]
