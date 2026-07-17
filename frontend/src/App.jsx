@@ -47,10 +47,20 @@ function App() {
     localStorage.removeItem('user');
   };
 
+  // Merge fresh fields into the cached user (e.g. after a profile update) so the
+  // sidebar and other screens reflect the change without forcing a re-login.
+  const updateUser = (fields) => {
+    setUser((prev) => {
+      const next = { ...prev, ...fields };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   if (loading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       <Router>
         <Routes>
           <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />

@@ -48,7 +48,7 @@ const Dashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '95%' });
+  const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [date, setDate] = useState(new Date());
@@ -251,10 +251,17 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
+      // Effectiveness = share of appointments that reached a positive outcome
+      // (confirmed or completed) out of the total loaded — real data, not a
+      // hardcoded figure. Shows '—' when there are no appointments to measure.
+      const positive = res.data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
+      const effectiveness = res.data.length > 0
+        ? `${Math.round((positive / res.data.length) * 100)}%`
+        : '—';
       setStats({
         totalAppointments: res.data.length,
         newPatients: new Set(res.data.map(a => a.patientId)).size,
-        effectiveness: '98%'
+        effectiveness
       });
     } catch (err) {
       console.error(err);
