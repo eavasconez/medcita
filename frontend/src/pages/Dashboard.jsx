@@ -259,17 +259,21 @@ const Dashboard = () => {
     }
   };
 
-  // Headline KPIs: always computed from the doctor's full appointment set,
-  // NOT the filtered calendar view — otherwise filtering by e.g. 'confirmed'
-  // would show 100% effectiveness and 'scheduled' would show 0%. Only scoped
-  // by doctorId so the numbers stay stable regardless of the active filters.
+  // Headline KPIs: always computed from the selected doctor's full appointment
+  // set, NOT the filtered calendar view — otherwise filtering by e.g.
+  // 'confirmed' would show 100% effectiveness and 'scheduled' would show 0%.
+  // Scoped strictly by doctorId so the numbers stay stable regardless of the
+  // active filters.
   const fetchStats = async () => {
+    // Without a selected doctor (admin/secretary before picking one) the API
+    // would return clinic-wide aggregates; show a neutral placeholder instead
+    // until a doctor is chosen, matching the "select a doctor" empty state.
+    if (!formData.doctorId) {
+      setStats({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
+      return;
+    }
     try {
-      const params = new URLSearchParams();
-      if (formData.doctorId) params.set('doctorId', formData.doctorId);
-      const queryString = params.toString();
-
-      const res = await axios.get(`http://localhost:5000/api/appointments${queryString ? `?${queryString}` : ''}`, {
+      const res = await axios.get(`http://localhost:5000/api/appointments?doctorId=${formData.doctorId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = res.data;
