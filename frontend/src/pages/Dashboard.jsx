@@ -732,9 +732,10 @@ const Dashboard = () => {
             <div className="flex-1 flex flex-col relative">
               <button
                 onClick={() => setShowModal(false)}
-                className="absolute right-5 top-5 sm:right-8 sm:top-8 text-slate-300 hover:text-secondary transition-colors z-10"
+                aria-label="Close"
+                className="absolute right-5 top-5 sm:right-8 sm:top-8 p-2 rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-secondary transition-colors z-10"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
 
               <div className="p-6 sm:p-10 flex-1 overflow-y-auto">
