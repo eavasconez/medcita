@@ -86,19 +86,19 @@ const Availability = () => {
 
   return (
     <Layout>
-      <div className="p-8 max-w-4xl mx-auto">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+      <div className="page-shell max-w-4xl">
+        <header className="page-header mb-12">
           <div>
-            <h2 className="text-4xl font-black text-secondary tracking-tight">Working Hours</h2>
+            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">Working Hours</h2>
             <p className="text-slate-500 font-medium mt-1">Define when the clinic is available for appointments</p>
           </div>
-          
-          <div className="flex items-center gap-4 w-full md:w-auto">
+
+          <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
             {isSpecialRole && doctors.length > 0 && (
-              <div className="flex flex-col">
-                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 ml-1 tracking-widest">Select Doctor</label>
-                <select 
-                   className="bg-white border border-slate-200 p-3 rounded-2xl font-bold text-secondary outline-none ring-primary/20 focus:ring-4 shadow-sm min-w-[200px]"
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="form-label">Select Doctor</label>
+                <select
+                   className="bg-white border border-slate-200 p-3 rounded-2xl font-bold text-secondary outline-none ring-primary/20 focus:ring-4 shadow-sm w-full sm:min-w-[200px]"
                    value={selectedDoctorId}
                    onChange={(e) => setSelectedDoctorId(e.target.value)}
                 >
@@ -109,9 +109,9 @@ const Availability = () => {
                 </select>
               </div>
             )}
-            <button 
+            <button
               onClick={saveSchedules}
-              className="flex items-center gap-2 bg-primary text-white px-8 py-4 rounded-3xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all self-end"
+              className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-3xl w-full sm:w-auto sm:self-end"
             >
               <Save size={20} /> Save Changes
             </button>
@@ -141,9 +141,9 @@ const Availability = () => {
               </p>
             ) : (
               schedules.map((s, idx) => (
-                <div key={idx} className="flex flex-col md:flex-row gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 group animate-in slide-in-from-right-4">
-                  <div className="flex-1 w-full md:w-auto">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 ml-1 tracking-widest">Day of week</label>
+                <div key={idx} className="flex flex-col sm:flex-row gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 group animate-in slide-in-from-right-4">
+                  <div className="flex-1 w-full sm:w-auto">
+                    <label className="form-label !mb-1">Day of week</label>
                     <select
                       value={s.dayOfWeek}
                       onChange={(e) => updateRow(idx, 'dayOfWeek', e.target.value)}
@@ -154,8 +154,8 @@ const Availability = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="w-full md:w-32">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 ml-1 tracking-widest">From</label>
+                  <div className="w-full sm:w-32">
+                    <label className="form-label !mb-1">From</label>
                     <input
                       type="time"
                       value={s.startTime}
@@ -163,8 +163,8 @@ const Availability = () => {
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-primary font-bold text-secondary text-sm"
                     />
                   </div>
-                  <div className="w-full md:w-32">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 ml-1 tracking-widest">To</label>
+                  <div className="w-full sm:w-32">
+                    <label className="form-label !mb-1">To</label>
                     <input
                       type="time"
                       value={s.endTime}
@@ -172,8 +172,8 @@ const Availability = () => {
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-primary font-bold text-secondary text-sm"
                     />
                   </div>
-                  <div className="pt-4 md:pt-6">
-                    <button 
+                  <div className="pt-0 sm:pt-6 self-end sm:self-auto">
+                    <button
                       onClick={() => removeRow(idx)}
                       className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                     >

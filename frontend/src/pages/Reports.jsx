@@ -46,10 +46,10 @@ const Reports = () => {
 
   return (
     <Layout>
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="page-shell">
         <header className="mb-10">
-          <h2 className="text-4xl font-black text-secondary tracking-tighter">Clinical Analytics</h2>
-          <p className="text-slate-500 font-medium text-lg">Performance reports and appointment distribution</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">Clinical Analytics</h2>
+          <p className="text-slate-500 font-medium text-base sm:text-lg">Performance reports and appointment distribution</p>
         </header>
 
         {loading ? (
@@ -59,8 +59,8 @@ const Reports = () => {
         ) : (
           <div className="space-y-8">
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group">
+            <div className="stat-grid">
+              <div className="card flex items-center gap-6 group">
                 <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all duration-500">
                   <Calendar size={32} />
                 </div>
@@ -70,7 +70,7 @@ const Reports = () => {
                 </div>
               </div>
 
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group">
+              <div className="card flex items-center gap-6 group">
                 <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center text-green-500 group-hover:bg-green-500 group-hover:text-white transition-all duration-500">
                   <Award size={32} />
                 </div>
@@ -80,7 +80,7 @@ const Reports = () => {
                 </div>
               </div>
 
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex items-center gap-6 group">
+              <div className="card flex items-center gap-6 group">
                 <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-all duration-500">
                   <TrendingUp size={32} />
                 </div>
@@ -94,7 +94,7 @@ const Reports = () => {
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Bar Chart */}
-              <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-2xl border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-primary">
                     <FileBarChart size={24} />
@@ -138,7 +138,7 @@ const Reports = () => {
               </div>
 
               {/* Pie Chart */}
-              <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
+              <div className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-2xl border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center text-green-500">
                     <Users size={24} />

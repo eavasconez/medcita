@@ -5,3 +5,61 @@
 :root {
   background-color: #f8fafc;
 }
+
+/*
+ * Responsive convention used across every page (mobile-first):
+ *   <640px  (base) - phone portrait: single column, full-width controls, stacked headers/modals
+ *   sm  >=640px     - phone landscape / small tablet: 2-col grids allowed, inline controls
+ *   md  >=768px     - tablet portrait+: sidebar becomes static, headers/modals go side-by-side
+ *   lg  >=1024px    - tablet landscape / desktop: full multi-column grids (3-4 cols)
+ * The classes below encode that convention once so every page/template stays consistent.
+ */
+@layer components {
+  .page-shell {
+    @apply p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto;
+  }
+
+  .page-header {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8;
+  }
+
+  .card {
+    @apply bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 p-6 sm:p-8;
+  }
+
+  .stat-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+
+  .entity-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+
+  .filter-bar {
+    @apply bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex flex-wrap items-center gap-4 p-6;
+  }
+
+  .form-label {
+    @apply block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1;
+  }
+
+  .form-input {
+    @apply w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto;
+  }
+
+  .modal-panel {
+    @apply bg-white w-full max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-2xl;
+  }
+
+  .toast {
+    @apply fixed bottom-4 left-4 right-4 sm:left-auto sm:right-8 sm:bottom-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 text-white font-bold sm:max-w-sm;
+  }
+}

@@ -108,7 +108,7 @@ const Patients = () => {
     <Layout>
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
+        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
           ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
         `}>
           {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
@@ -119,15 +119,15 @@ const Patients = () => {
         </div>
       )}
 
-      <div className="p-8 max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
+      <div className="page-shell">
+        <header className="page-header">
           <div>
             <h2 className="text-3xl font-black text-secondary tracking-tight">My Patients</h2>
             <p className="text-slate-500 font-medium mt-1">Complete directory of registered patients</p>
           </div>
-          <button 
+          <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+            className="btn-primary flex items-center justify-center gap-2 px-6 py-3 shadow-lg shadow-primary/20 w-full sm:w-auto"
           >
             <Plus size={20} /> New Patient
           </button>
@@ -150,7 +150,7 @@ const Patients = () => {
             <span className="text-slate-400 font-semibold text-lg">Loading directory...</span>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="entity-grid">
             {patients.length === 0 ? (
               <div className="col-span-full py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
                 <Users className="mx-auto text-slate-200 w-16 h-16 mb-4" />
@@ -210,10 +210,10 @@ const Patients = () => {
 
       {/* Modal Nuevo Paciente */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-primary p-8 text-white relative">
-              <button 
+        <div className="modal-overlay">
+          <div className="modal-panel max-w-md animate-in zoom-in-95 duration-200">
+            <div className="bg-primary p-6 sm:p-8 text-white relative">
+              <button
                 onClick={() => setShowModal(false)}
                 className="absolute right-6 top-6 hover:rotate-90 transition-transform"
               >
@@ -227,12 +227,12 @@ const Patients = () => {
               </p>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-8 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-4">
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">Full Name</label>
+                <label className="form-label">Full Name</label>
                 <input
                   required
-                  className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-secondary text-sm"
+                  className="form-input text-sm"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   placeholder="Ex: John Doe"
@@ -240,9 +240,9 @@ const Patients = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">ID Card (Optional)</label>
+                <label className="form-label">ID Card (Optional)</label>
                 <input
-                  className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-secondary text-sm"
+                  className="form-input text-sm"
                   value={formData.cedula}
                   onChange={(e) => setFormData({...formData, cedula: e.target.value})}
                   placeholder="Ex: 1723456789"
@@ -250,20 +250,20 @@ const Patients = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">WhatsApp</label>
+                <label className="form-label">WhatsApp</label>
                 <input
                   required
-                  className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-secondary text-sm"
+                  className="form-input text-sm"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">Email (Optional)</label>
+                <label className="form-label">Email (Optional)</label>
                 <input
                   type="email"
-                  className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-secondary text-sm"
+                  className="form-input text-sm"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   placeholder="patient@example.com"

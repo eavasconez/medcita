@@ -23,16 +23,16 @@ const Settings = () => {
 
   return (
     <Layout>
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="page-shell max-w-5xl">
         <header className="mb-12">
-          <h1 className="text-4xl font-black text-secondary tracking-tight">Account Settings</h1>
+          <h1 className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">Account Settings</h1>
           <p className="text-slate-400 font-medium mt-2">Manage your profile and clinical preferences</p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Profile Card */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 p-8 overflow-hidden relative">
+            <div className="card overflow-hidden relative">
               <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-primary to-blue-400 opacity-10"></div>
               
               <div className="relative flex flex-col items-center">
@@ -80,7 +80,7 @@ const Settings = () => {
 
           {/* Settings Tabs/Forms */}
           <div className="lg:col-span-2 space-y-8">
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 p-10">
+            <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
                   <User size={24} />
@@ -92,43 +92,43 @@ const Settings = () => {
               </div>
 
               <form className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
-                    <input 
-                      type="text" 
+                    <label className="form-label">Full Name</label>
+                    <input
+                      type="text"
                       defaultValue={user?.name}
-                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all"
+                      className="form-input"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Specialty</label>
-                    <input 
-                      type="text" 
+                    <label className="form-label">Specialty</label>
+                    <input
+                      type="text"
                       placeholder="e.g. Cardiology"
-                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all"
+                      className="form-input"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Professional Bio</label>
-                  <textarea 
+                  <label className="form-label">Professional Bio</label>
+                  <textarea
                     rows="4"
                     placeholder="Brief description for patients..."
-                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all resize-none"
+                    className="form-input resize-none"
                   ></textarea>
                 </div>
 
                 <div className="pt-4">
-                  <button className="bg-primary text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+                  <button className="btn-primary px-10 py-4 uppercase tracking-widest text-xs w-full sm:w-auto">
                     Save Changes
                   </button>
                 </div>
               </form>
             </div>
 
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 p-10">
+            <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 shadow-sm border border-slate-100">
                   <Lock size={24} />
