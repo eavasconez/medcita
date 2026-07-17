@@ -5,11 +5,18 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const bcrypt = require('bcryptjs');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALID_ROLES = ['admin', 'secretary', 'doctor'];
+
 // Protect all routes with authentication
 router.use(auth);
 
 // List all doctors (Accessible by Admin and Secretary)
 router.get('/medicos', async (req, res) => {
+  if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
+    return res.status(403).json({ error: 'Access denied. Admin or secretary rights required.' });
+  }
+
   const { role } = req.query;
   try {
     const doctors = await prisma.doctor.findMany({
@@ -27,7 +34,8 @@ router.get('/medicos', async (req, res) => {
     });
     res.json(doctors);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -37,41 +45,86 @@ router.use(admin);
 // Create new doctor
 router.post('/medicos', async (req, res) => {
   const { name, email, password, role } = req.body;
+
+  const normalizedName = typeof name === 'string' ? name.trim() : '';
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!normalizedName) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  if (!EMAIL_REGEX.test(normalizedEmail)) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  if (role !== undefined && !VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
+  }
+
   try {
-    const existing = await prisma.doctor.findUnique({ where: { email } });
+    const existing = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
     if (existing) return res.status(400).json({ error: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const doctor = await prisma.doctor.create({
       data: {
-        name,
-        email,
+        name: normalizedName,
+        email: normalizedEmail,
         password: hashedPassword,
         role: role || 'doctor'
-      }
+      },
+      select: { id: true, name: true, email: true, role: true, createdAt: true }
     });
     res.status(201).json(doctor);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
 // Update doctor
 router.put('/medicos/:id', async (req, res) => {
   const { name, email, role, password } = req.body;
+
+  const normalizedName = typeof name === 'string' ? name.trim() : name;
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+
+  if (name !== undefined && (typeof name !== 'string' || !normalizedName)) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  if (email !== undefined && !EMAIL_REGEX.test(normalizedEmail)) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (role !== undefined && !VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
+  }
+  if (password !== undefined && (typeof password !== 'string' || password.length < 6)) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
   try {
-    const data = { name, email, role };
+    const data = {
+      ...(normalizedName !== undefined && { name: normalizedName }),
+      ...(normalizedEmail !== undefined && { email: normalizedEmail }),
+      ...(role !== undefined && { role })
+    };
     if (password) {
       data.password = await bcrypt.hash(password, 10);
     }
-    
+
     const doctor = await prisma.doctor.update({
       where: { id: req.params.id },
-      data
+      data,
+      select: { id: true, name: true, email: true, role: true, createdAt: true }
     });
     res.json(doctor);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Doctor not found' });
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -88,7 +141,12 @@ router.delete('/medicos/:id', async (req, res) => {
     });
     res.json({ message: 'Doctor deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Doctor not found' });
+    if (err.code === 'P2003') {
+      return res.status(400).json({ error: 'Cannot delete a doctor with existing appointments or availability' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -112,7 +170,8 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
