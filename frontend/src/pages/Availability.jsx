@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
-import { Clock, Plus, Trash2, Save } from 'lucide-react';
+import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 const DAYS = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
@@ -13,8 +13,18 @@ const Availability = () => {
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
+
+  const showToast = (message, type = 'success') => {
+    // Clear any pending dismissal so an in-flight timer from a prior toast
+    // can't clear this newer one out from under it.
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchAvailability = async (doctorId) => {
     try {
@@ -72,20 +82,38 @@ const Availability = () => {
 
   const saveSchedules = async () => {
     try {
-      await axios.post('http://localhost:5000/api/availability', { 
+      await axios.post('http://localhost:5000/api/availability', {
         schedules,
         doctorId: isSpecialRole ? selectedDoctorId : undefined
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert('Schedules updated successfully');
+      showToast('Schedules updated successfully');
     } catch (err) {
-      alert('Error saving schedules');
+      // Surface the real backend reason (e.g. duplicate day, invalid time
+      // range) instead of a generic message the user can't act on.
+      showToast(err.response?.data?.error || 'Error saving schedules', 'error');
     }
   };
 
   return (
     <Layout>
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
+          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
+        `}>
+          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+          <span className="text-sm shadow-sm">{toast.message}</span>
+          <button onClick={() => setToast(null)} aria-label="Dismiss notification" className="ml-auto hover:opacity-75 transition-opacity">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       <div className="page-shell max-w-4xl">
         <header className="page-header mb-12">
           <div>

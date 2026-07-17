@@ -3985,13 +3985,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111AdminToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/admin/medicos",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "medicos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "medicos"
+              ]
             },
             "body": {
               "mode": "raw",
@@ -4025,13 +4037,24 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111AdminToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/appointments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
             },
             "body": {
               "mode": "raw",
@@ -4101,12 +4124,21 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111AdminToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/appointments/{{s111FkApptId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "{{s111FkApptId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s111FkApptId}}"
+              ]
             }
           },
           "event": [
@@ -4126,12 +4158,22 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{s111AdminToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111AdminToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/admin/medicos/{{s111FkDoctorId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "medicos", "{{s111FkDoctorId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "medicos",
+                "{{s111FkDoctorId}}"
+              ]
             }
           },
           "event": [
@@ -4323,6 +4365,349 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S2-11 - Perfil self-service (GET/PUT /auth/profile)",
+      "item": [
+        {
+          "name": "Login (obtener token válido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s211Token', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - GET /profile sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - GET /profile (datos reales, sin password)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Incluye campos de perfil', () => {",
+                  "  pm.expect(b).to.have.property('id');",
+                  "  pm.expect(b).to.have.property('name');",
+                  "  pm.expect(b).to.have.property('email');",
+                  "  pm.expect(b).to.have.property('role');",
+                  "});",
+                  "pm.test('No expone el password', () => pm.expect(b).to.not.have.property('password'));",
+                  "pm.test('Incluye conteo real de citas', () => pm.expect(b._count).to.have.property('appointments'));",
+                  "pm.collectionVariables.set('s211OriginalProfile', JSON.stringify({ name: b.name, specialty: b.specialty, bio: b.bio }));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - PUT /profile nombre vacío (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de nombre requerido', () => pm.expect(pm.response.json().error).to.match(/name/i));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - PUT /profile bio no-string (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bio\": 123\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de bio inválida', () => pm.expect(pm.response.json().error).to.match(/bio/i));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - PUT /profile actualizar specialty y bio",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialty\": \"Cardiología QA\",\n  \"bio\": \"Bio de prueba S2-11\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Specialty y bio actualizados', () => {",
+                  "  pm.expect(b.specialty).to.eql('Cardiología QA');",
+                  "  pm.expect(b.bio).to.eql('Bio de prueba S2-11');",
+                  "});",
+                  "pm.test('No expone el password', () => pm.expect(b).to.not.have.property('password'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - PUT /profile limpiar specialty (string vacío -> null)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialty\": \"\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Specialty guardado como null', () => pm.expect(pm.response.json().specialty).to.be.null);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - restaurar perfil demo original",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s211Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s211OriginalProfile}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "const orig = JSON.parse(pm.collectionVariables.get('s211OriginalProfile'));",
+                  "pm.test('Perfil restaurado a su estado original exacto', () => {",
+                  "  pm.expect(b.name).to.eql(orig.name);",
+                  "  pm.expect(b.specialty).to.eql(orig.specialty);",
+                  "  pm.expect(b.bio).to.eql(orig.bio);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -4496,6 +4881,14 @@
     },
     {
       "key": "s111FkApptId",
+      "value": ""
+    },
+    {
+      "key": "s211Token",
+      "value": ""
+    },
+    {
+      "key": "s211OriginalProfile",
       "value": ""
     }
   ]

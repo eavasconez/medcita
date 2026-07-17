@@ -13,6 +13,27 @@ import Reports from './pages/Reports';
 export const AuthContext = createContext();
 
 const API_URL = 'http://localhost:5000/api';
+const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
+
+// Registered once at module load (every page shares this same global axios
+// instance). Only reacts to 401s on requests that carried a token — this
+// deliberately excludes /auth/login's own 401 ("Invalid credentials"), which
+// is a normal form-validation error, not a session expiring mid-use.
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const hadAuthHeader = !!error.config?.headers?.Authorization;
+    if (error.response?.status === 401 && hadAuthHeader) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.setItem('authMessage', SESSION_EXPIRED_MESSAGE);
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 function App() {
   const [user, setUser] = useState(null);
@@ -47,10 +68,20 @@ function App() {
     localStorage.removeItem('user');
   };
 
+  // Merge fresh fields into the cached user (e.g. after a profile update) so the
+  // sidebar and other screens reflect the change without forcing a re-login.
+  const updateUser = (fields) => {
+    setUser((prev) => {
+      const next = { ...prev, ...fields };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   if (loading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       <Router>
         <Routes>
           <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />

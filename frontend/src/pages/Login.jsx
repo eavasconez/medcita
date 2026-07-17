@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../App';
 import { Link } from 'react-router-dom';
 import { Stethoscope, Mail, Lock, LogIn } from 'lucide-react';
@@ -9,6 +9,15 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
+
+  // Picked up once after a global 401 (expired/invalid token) redirected here.
+  useEffect(() => {
+    const authMessage = sessionStorage.getItem('authMessage');
+    if (authMessage) {
+      setError(authMessage);
+      sessionStorage.removeItem('authMessage');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
