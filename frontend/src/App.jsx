@@ -13,6 +13,27 @@ import Reports from './pages/Reports';
 export const AuthContext = createContext();
 
 const API_URL = 'http://localhost:5000/api';
+const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
+
+// Registered once at module load (every page shares this same global axios
+// instance). Only reacts to 401s on requests that carried a token — this
+// deliberately excludes /auth/login's own 401 ("Invalid credentials"), which
+// is a normal form-validation error, not a session expiring mid-use.
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const hadAuthHeader = !!error.config?.headers?.Authorization;
+    if (error.response?.status === 401 && hadAuthHeader) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.setItem('authMessage', SESSION_EXPIRED_MESSAGE);
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 function App() {
   const [user, setUser] = useState(null);
