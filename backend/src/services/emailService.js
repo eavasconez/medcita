@@ -8,10 +8,25 @@ const hasBrevoCreds = () =>
   !!(process.env.BREVO_API_KEY && process.env.BREVO_FROM_EMAIL);
 const hasSendGridCreds = () => !!process.env.SENDGRID_API_KEY;
 
+const EMAIL_TIMEOUT_MS = 10000;
+
+/**
+ * Mask an email address for logging (e.g. "jo***@example.com") so
+ * patient contact info doesn't end up in plaintext logs.
+ */
+function maskEmail(to) {
+  const [local, domain] = String(to).split('@');
+  if (!domain) return '***';
+  const visible = local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(local.length - visible.length, 1))}@${domain}`;
+}
+
 /**
  * Send an email through Brevo's transactional email API.
  */
 async function sendEmailViaBrevo(to, subject, text, html) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), EMAIL_TIMEOUT_MS);
   try {
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -25,19 +40,22 @@ async function sendEmailViaBrevo(to, subject, text, html) {
         subject,
         htmlContent: html,
         textContent: text
-      })
+      }),
+      signal: controller.signal
     });
 
     if (!res.ok) {
-      const body = await res.text();
-      console.error(`[BREVO EMAIL ERROR] ${res.status} sending to ${to}:`, body);
+      console.error(`[BREVO EMAIL ERROR] ${res.status} sending to ${maskEmail(to)}`);
       return false;
     }
-    console.log(`[BREVO EMAIL] Email sent successfully to ${to}`);
+    console.log(`[BREVO EMAIL] Email sent successfully to ${maskEmail(to)}`);
     return true;
   } catch (error) {
-    console.error('[BREVO EMAIL ERROR]:', error.message);
+    const reason = error.name === 'AbortError' ? 'request timed out' : error.message;
+    console.error(`[BREVO EMAIL ERROR] sending to ${maskEmail(to)}:`, reason);
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -53,16 +71,31 @@ async function sendEmailViaSendGrid(to, subject, text, html) {
       text,
       html: html || `<p>${text}</p>`
     };
-    await sgMail.send(msg);
-    console.log(`[SENDGRID] Email sent successfully to ${to}`);
+    await Promise.race([
+      sgMail.send(msg),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('request timed out')), EMAIL_TIMEOUT_MS)
+      )
+    ]);
+    console.log(`[SENDGRID] Email sent successfully to ${maskEmail(to)}`);
     return true;
   } catch (error) {
-    console.error(`[SENDGRID ERROR] Failed to send to ${to}:`, error.message);
+    console.error(`[SENDGRID ERROR] Failed to send to ${maskEmail(to)}:`, error.message);
     if (error.response) {
-      console.error(JSON.stringify(error.response.body, null, 2));
+      console.error(`[SENDGRID ERROR] provider status: ${error.response.statusCode}`);
     }
     return false;
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
 }
 
 function baseLayout(title, bodyHtml) {
@@ -80,11 +113,11 @@ function baseLayout(title, bodyHtml) {
 
 function appointmentConfirmationHtml({ patientName, doctorName, date, time }) {
   return baseLayout('Cita confirmada', `
-    <p>Hola <strong>${patientName}</strong>,</p>
-    <p>Tu cita con <strong>${doctorName}</strong> ha sido agendada:</p>
+    <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
+    <p>Tu cita con <strong>${escapeHtml(doctorName)}</strong> ha sido agendada:</p>
     <ul>
-      <li><strong>Fecha:</strong> ${date}</li>
-      <li><strong>Hora:</strong> ${time}</li>
+      <li><strong>Fecha:</strong> ${escapeHtml(date)}</li>
+      <li><strong>Hora:</strong> ${escapeHtml(time)}</li>
     </ul>
     <p>¡Te esperamos!</p>
   `);
@@ -92,29 +125,33 @@ function appointmentConfirmationHtml({ patientName, doctorName, date, time }) {
 
 function reminderHtml({ patientName, doctorName, date, time }) {
   return baseLayout('Recordatorio de cita', `
-    <p>Hola <strong>${patientName}</strong>,</p>
-    <p>Tienes una cita mañana <strong>${date}</strong> a las <strong>${time}</strong> con <strong>${doctorName}</strong>.</p>
+    <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
+    <p>Tienes una cita mañana <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>.</p>
   `);
 }
 
 const emailService = {
   /**
    * Send an email. Provider precedence: Brevo (preferred) -> SendGrid
-   * (fallback) -> mock (console only) when no provider is configured.
+   * (fallback, tried both when Brevo isn't configured and when a
+   * configured Brevo actually fails to deliver) -> mock (console only)
+   * when no provider is configured.
    */
   sendEmail: async (to, subject, text, html) => {
     if (!to || !to.includes('@')) {
-      console.log(`[EMAIL SKIP] Invalid or missing email: ${to}`);
+      console.log(`[EMAIL SKIP] Invalid or missing email: ${maskEmail(to)}`);
       return false;
     }
 
     if (hasBrevoCreds()) {
-      return sendEmailViaBrevo(to, subject, text, html);
+      if (await sendEmailViaBrevo(to, subject, text, html)) return true;
+      if (hasSendGridCreds()) return sendEmailViaSendGrid(to, subject, text, html);
+      return false;
     }
     if (hasSendGridCreds()) {
       return sendEmailViaSendGrid(to, subject, text, html);
     }
-    console.log(`[EMAIL MOCK] To: ${to}, Subject: ${subject}`);
+    console.log(`[EMAIL MOCK] To: ${maskEmail(to)}, Subject: ${subject}`);
     console.log('No email provider configured, mocked output only.');
     return true;
   },
