@@ -6,38 +6,87 @@ if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
+
+const hasMetaCreds = () =>
+  !!(process.env.META_WHATSAPP_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
+const hasTwilioCreds = () =>
+  !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+
+/**
+ * Send a WhatsApp message through Meta's WhatsApp Cloud API.
+ * Cloud API expects the recipient as digits only (no '+' / 'whatsapp:' prefix).
+ */
+async function sendWhatsAppViaMeta(to, message) {
+  const recipient = to.replace(/[^\d]/g, '');
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${process.env.META_WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.META_WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: recipient,
+        type: 'text',
+        text: { preview_url: false, body: message }
+      })
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[META WHATSAPP ERROR] ${res.status} sending to ${recipient}:`, body);
+      return false;
+    }
+    console.log(`[META WHATSAPP] Message sent successfully to ${recipient}`);
+    return true;
+  } catch (error) {
+    console.error('[META WHATSAPP ERROR]:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Send a WhatsApp message through the Twilio API.
+ */
+async function sendWhatsAppViaTwilio(to, message) {
+  try {
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const formattedTo = to.startsWith('+') ? to : `+${to}`;
+    await client.messages.create({
+      body: message,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${formattedTo}`
+    });
+    console.log(`[TWILIO] WhatsApp sent successfully to ${formattedTo}`);
+    return true;
+  } catch (error) {
+    console.error('[TWILIO ERROR]:', error.message);
+    return false;
+  }
+}
+
 /**
  * Service to handle all outbound notifications (WhatsApp + Email)
  */
 const notificationService = {
   /**
-   * Send a WhatsApp message via Twilio
+   * Send a WhatsApp message. Provider precedence: Meta Cloud API (official) ->
+   * Twilio -> mock (console only) when no provider is configured.
    */
   sendWhatsApp: async (to, message) => {
     console.log(`[WHATSAPP MOCK] To: ${to}, Message: ${message}`);
-    
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-      try {
-        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-        
-        // Ensure international format
-        const formattedTo = to.startsWith('+') ? to : `+${to}`;
-        
-        await client.messages.create({
-          body: message,
-          from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-          to: `whatsapp:${formattedTo}`
-        });
-        console.log(`[TWILIO] WhatsApp sent successfully to ${formattedTo}`);
-        return true;
-      } catch (error) {
-        console.error('[TWILIO ERROR]:', error.message);
-        return false;
-      }
-    } else {
-      console.log('Twilio credentials not found, mocked output only.');
-      return true;
+
+    if (hasMetaCreds()) {
+      return sendWhatsAppViaMeta(to, message);
     }
+    if (hasTwilioCreds()) {
+      return sendWhatsAppViaTwilio(to, message);
+    }
+    console.log('No WhatsApp provider configured, mocked output only.');
+    return true;
   },
 
   /**
