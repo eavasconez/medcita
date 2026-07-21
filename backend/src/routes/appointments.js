@@ -135,7 +135,7 @@ router.post('/', async (req, res) => {
         },
         include: {
           patient: true,
-          doctor: { select: { id: true, name: true, email: true, role: true } }
+          doctor: { select: { id: true, name: true, email: true, role: true, address: true } }
         }
       });
     });

@@ -16,6 +16,7 @@ model Doctor {
   role           String         @default("doctor")
   specialty      String?
   bio            String?
+  address        String?
   appointments   Appointment[]
   availabilities Availability[]
 }

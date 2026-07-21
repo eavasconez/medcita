@@ -107,7 +107,8 @@ const notificationService = {
         patientName: patient.name,
         doctorName: doctor.name,
         date,
-        time
+        time,
+        address: doctor.address
       });
       await notificationService.sendEmail(patient.email, subject, msg, html);
     }
