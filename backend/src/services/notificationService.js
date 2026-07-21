@@ -112,6 +112,20 @@ const notificationService = {
       });
       await notificationService.sendEmail(patient.email, subject, msg, html);
     }
+
+    // Notify the doctor by email that a new appointment was booked
+    if (doctor.email) {
+      const doctorSubject = 'Nueva Cita Agendada - MedCita';
+      const doctorMsg = `MedCita: ${patient.name} agendó una cita contigo el ${date} a las ${time}.`;
+      const doctorHtml = emailService.templates.doctorNewAppointmentHtml({
+        doctorName: doctor.name,
+        patientName: patient.name,
+        patientPhone: patient.phone,
+        date,
+        time
+      });
+      await notificationService.sendEmail(doctor.email, doctorSubject, doctorMsg, doctorHtml);
+    }
   },
 
   /**
