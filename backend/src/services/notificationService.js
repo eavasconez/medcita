@@ -1,10 +1,5 @@
-const sgMail = require('@sendgrid/mail');
 const twilio = require('twilio');
-
-// Initialize SendGrid
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
+const emailService = require('./emailService');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 
@@ -90,39 +85,10 @@ const notificationService = {
   },
 
   /**
-   * Send an Email via SendGrid
+   * Send an email. Delegates provider selection and HTML templates to
+   * emailService (Brevo preferred, SendGrid fallback, mock last).
    */
-  sendEmail: async (to, subject, text, html) => {
-    if (!to || !to.includes('@')) {
-      console.log(`[SENDGRID SKIP] Invalid or missing email: ${to}`);
-      return false;
-    }
-
-    if (process.env.SENDGRID_API_KEY) {
-      try {
-        const msg = {
-          to,
-          from: process.env.SENDGRID_FROM_EMAIL || 'no-reply@medcita.ec',
-          subject,
-          text,
-          html: html || `<p>${text}</p>`
-        };
-        await sgMail.send(msg);
-        console.log(`[SENDGRID] Email sent successfully to ${to}`);
-        return true;
-      } catch (error) {
-        console.error(`[SENDGRID ERROR] Failed to send to ${to}:`, error.message);
-        if (error.response) {
-          console.error(JSON.stringify(error.response.body, null, 2));
-        }
-        return false;
-      }
-    } else {
-      console.log(`[EMAIL MOCK] To: ${to}, Subject: ${subject}`);
-      console.log('SendGrid API key not found, mocked output only.');
-      return true;
-    }
-  },
+  sendEmail: emailService.sendEmail,
 
   /**
    * Send a full appointment confirmation (WhatsApp + Email)
@@ -130,14 +96,20 @@ const notificationService = {
   sendAppointmentConfirmation: async (appointment) => {
     const { patient, doctor, date, time } = appointment;
     const msg = `MedCita: Hola ${patient.name}, tu cita con el ${doctor.name} ha sido agendada para el ${date} a las ${time}. ¡Te esperamos!`;
-    
+
     // Send WhatsApp
     await notificationService.sendWhatsApp(patient.phone, msg);
-    
+
     // Send Email if available
     if (patient.email) {
       const subject = 'Confirmación de Cita - MedCita';
-      await notificationService.sendEmail(patient.email, subject, msg);
+      const html = emailService.templates.appointmentConfirmationHtml({
+        patientName: patient.name,
+        doctorName: doctor.name,
+        date,
+        time
+      });
+      await notificationService.sendEmail(patient.email, subject, msg, html);
     }
   },
 
@@ -147,11 +119,17 @@ const notificationService = {
   sendReminder: async (appointment) => {
     const { patient, doctor, date, time } = appointment;
     const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita mañana ${date} a las ${time} con el ${doctor.name}.`;
-    
+
     await notificationService.sendWhatsApp(patient.phone, msg);
-    
+
     if (patient.email && patient.email.includes('@')) {
-      await notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg);
+      const html = emailService.templates.reminderHtml({
+        patientName: patient.name,
+        doctorName: doctor.name,
+        date,
+        time
+      });
+      await notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html);
     }
   }
 };

@@ -169,7 +169,7 @@ const Patients = () => {
                         e.stopPropagation();
                         openEditModal(p);
                       }}
-                      className="text-slate-300 hover:text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                      className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
                     >
                       <Edit size={18} />
                     </button>
