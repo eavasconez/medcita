@@ -13,7 +13,7 @@ const availabilityRoutes = require('./routes/availability');
 const adminRoutes = require('./routes/admin');
 const authMiddleware = require('./middleware/auth');
 const cron = require('node-cron');
-const { sendDailyReminders } = require('./tasks/reminderTask');
+const { sendReminders } = require('./tasks/reminderTask');
 
 const app = express();
 
@@ -29,14 +29,15 @@ app.use('/api/patients', authMiddleware, patientRoutes);
 app.use('/api/availability', authMiddleware, availabilityRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
 
-// Cron Job for 24h reminders (every day at midnight)
-cron.schedule('0 0 * * *', () => {
-  sendDailyReminders();
+// Cron Job for ~24h reminders (runs hourly so each appointment is
+// reminded close to the 24h mark, not just "the day before")
+cron.schedule('0 * * * *', () => {
+  sendReminders();
 });
 
 // Manual trigger for demo purpose
 app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
-  await sendDailyReminders();
+  await sendReminders();
   res.json({ message: 'Reminders task triggered manually' });
 });
 
