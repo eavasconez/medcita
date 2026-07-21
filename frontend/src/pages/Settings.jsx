@@ -206,8 +206,9 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="form-label">Office Address</label>
+                  <label htmlFor="office-address" className="form-label">Office Address</label>
                   <input
+                    id="office-address"
                     type="text"
                     disabled={loading}
                     placeholder="e.g. Av. Amazonas N34-12, Quito"
