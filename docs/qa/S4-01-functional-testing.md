@@ -1,0 +1,56 @@
+# S4-01 — Testing funcional (happy path + casos de error)
+
+> Reporte de pruebas manuales/automatizadas contra el backend y frontend reales corriendo en local (`npm run dev` en ambos). Fecha de ejecución: 2026-07-22.
+
+## Resumen
+
+| Área | Resultado |
+|---|---|
+| Flujo feliz (registro → login → agendar cita) | ✅ Funciona, con 1 bug encontrado (ver hallazgos) |
+| Casos de error — autenticación | ✅ Todos manejados con mensajes claros |
+| Casos de error — creación de citas | ✅ Todos manejados con mensajes claros |
+| Casos de error — doble reserva | ✅ Rechazado correctamente |
+| Casos de error — rutas protegidas | ✅ Rechazado correctamente |
+
+## 1. Flujo feliz (vía UI, Playwright)
+
+| Paso | Resultado |
+|---|---|
+| Registro de nuevo médico (`/register`) | ✅ Redirige a `/dashboard` tras registrar |
+| Login (`/login`) | ✅ Redirige a `/dashboard` |
+| Abrir modal "New Appointment" → "Create New Patient" | ✅ |
+| Seleccionar fecha (+5 días) y slot libre | ✅ Slot disponible, se selecciona |
+| Completar datos del paciente (nombre, WhatsApp, email) y confirmar | ⚠️ **Ver hallazgo #1** |
+
+### Hallazgo #1 (bug encontrado) — Prioridad alta
+Al crear un paciente **sin cédula** desde el modal del Dashboard, el frontend envía `cedula: ""` (string vacío, no `null`/`undefined`, porque es un input controlado de React). El backend pasa ese valor tal cual a `tx.patient.upsert({ ..., create: { cedula: patientCedula } })` (`backend/src/routes/appointments.js:122-123`), y como `cedula` tiene `@unique` en el schema, **el segundo paciente creado sin cédula falla** con un error de restricción única de Prisma.
+
+Peor aún: ese error crudo de Prisma (stack trace completo, incluyendo rutas del filesystem) se expone directamente en un toast al usuario final, en vez de un mensaje manejado.
+
+**Reproducción**: crear dos citas nuevas seguidas, cada una con un paciente nuevo, ambas sin llenar el campo "Identification (Cédula)".
+
+**Impacto**: bloquea agendar citas para cualquier paciente sin cédula a partir del segundo intento — un flujo común, ya que la cédula es opcional.
+
+**Queda para**: issue #43 (S4-03: Corrección de bugs encontrados en testing).
+
+## 2. Casos de error (vía API)
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| 1 | Login con contraseña incorrecta | 401 + mensaje claro | ✅ `401 {"error":"Invalid credentials"}` |
+| 2 | Login con email inexistente | 401 + mensaje claro (sin revelar si el email existe) | ✅ `401 {"error":"Invalid credentials"}` |
+| 3 | Login sin password | 400 + mensaje claro | ✅ `400 {"error":"Email and password are required"}` |
+| 4 | Crear cita sin nombre de paciente | 400 + mensaje claro | ✅ `400 {"error":"Patient name is required"}` |
+| 5 | Crear cita sin teléfono | 400 + mensaje claro | ✅ `400 {"error":"Patient phone is required"}` |
+| 6 | Crear cita con fecha en formato inválido | 400 + mensaje claro | ✅ `400 {"error":"A valid date (YYYY-MM-DD) is required"}` |
+| 7 | Crear cita con hora en formato inválido | 400 + mensaje claro | ✅ `400 {"error":"A valid time (HH:MM) is required"}` |
+| 8 | Doble reserva (mismo médico, misma fecha/hora) | 400 + mensaje de conflicto | ✅ `400 {"error":"Ya existe una cita en este horario"}` |
+| 9 | Acceso a ruta protegida sin token | 401 | ✅ `401 {"error":"No token provided"}` |
+| 10 | Acceso con token inválido | 401 | ✅ `401 {"error":"Invalid token"}` |
+| 11 | Disparo manual del job de recordatorios | 200 | ✅ `200 {"message":"Reminders task triggered manually"}` |
+
+## Datos de prueba
+Se crearon y limpiaron después de la verificación: 1 médico de prueba, 1 paciente de prueba, 2 citas de prueba (una vía UI con conflicto, una vía API para el test de doble-reserva).
+
+## Conclusión
+El flujo feliz completo (registro → login → agendar) funciona de punta a punta, y los 8 casos de error probados devuelven respuestas claras y con el código HTTP correcto — **excepto por el Hallazgo #1**, que expone un error crudo de Prisma al usuario y bloquea un flujo común (paciente sin cédula). Ese bug queda documentado para arreglarse en S4-03.
