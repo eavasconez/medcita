@@ -6,7 +6,8 @@
 
 | Área | Resultado |
 |---|---|
-| Flujo feliz (registro → login → agendar cita) | ✅ Funciona, con 1 bug encontrado (ver hallazgos) |
+| Flujo feliz (registro → login → agendar cita) | ⚠️ Funciona, pero con 1 bug encontrado que lo rompe en un escenario común (ver Hallazgo #1) |
+| Recordatorio de WhatsApp (24h antes) | ✅ Entrega real confirmada |
 | Casos de error — autenticación | ✅ Todos manejados con mensajes claros |
 | Casos de error — creación de citas | ✅ Todos manejados con mensajes claros |
 | Casos de error — doble reserva | ✅ Rechazado correctamente |
@@ -47,10 +48,11 @@ Peor aún: ese error crudo de Prisma (stack trace completo, incluyendo rutas del
 | 8 | Doble reserva (mismo médico, misma fecha/hora) | 400 + mensaje de conflicto | ✅ `400 {"error":"Ya existe una cita en este horario"}` |
 | 9 | Acceso a ruta protegida sin token | 401 | ✅ `401 {"error":"No token provided"}` |
 | 10 | Acceso con token inválido | 401 | ✅ `401 {"error":"Invalid token"}` |
-| 11 | Disparo manual del job de recordatorios | 200 | ✅ `200 {"message":"Reminders task triggered manually"}` |
+| 11 | Disparo manual del job de recordatorios (`POST /api/tasks/reminders`) | 200 | ✅ `200 {"message":"Reminders task triggered manually"}` |
+| 12 | Entrega real del recordatorio de WhatsApp | El paciente recibe el mensaje | ✅ Cita real creada para "mañana" con `status: scheduled`; tras disparar el job, **confirmado por el usuario que el WhatsApp llegó**, y la cita pasó a `status: confirmed` en la base de datos (evita reenvío duplicado) |
 
 ## Datos de prueba
-Se crearon y limpiaron después de la verificación: 1 médico de prueba, 1 paciente de prueba, 2 citas de prueba (una vía UI con conflicto, una vía API para el test de doble-reserva).
+Se crearon y limpiaron después de la verificación: 1 médico de prueba, 1 paciente de prueba, 3 citas de prueba (una vía UI con conflicto de cédula, una vía API para el test de doble-reserva, una vía API para la evidencia de entrega del recordatorio).
 
 ## Conclusión
-El flujo feliz completo (registro → login → agendar) funciona de punta a punta, y los 8 casos de error probados devuelven respuestas claras y con el código HTTP correcto — **excepto por el Hallazgo #1**, que expone un error crudo de Prisma al usuario y bloquea un flujo común (paciente sin cédula). Ese bug queda documentado para arreglarse en S4-03.
+El flujo feliz (registro → login → agendar → recordatorio WhatsApp) funciona de punta a punta, incluyendo la entrega real confirmada del WhatsApp de recordatorio (caso #12) — **con la excepción del Hallazgo #1**: crear un paciente sin cédula rompe el flujo a partir del segundo intento, exponiendo un error crudo de Prisma al usuario. Los 10 casos de error probados (#1–#10) devuelven respuestas claras y con el código HTTP correcto. En resumen: el happy path **no está 100% funcional** para el escenario de paciente sin cédula; ese bug queda documentado para arreglarse en S4-03.
