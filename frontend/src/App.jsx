@@ -1,14 +1,18 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Patients from './pages/Patients';
-import Availability from './pages/Availability';
-import AdminDoctors from './pages/AdminDoctors';
-import Settings from './pages/Settings';
-import Reports from './pages/Reports';
+
+// Route-level code splitting: each page (and its own dependencies, e.g.
+// Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
+// all being bundled into the initial load.
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Patients = lazy(() => import('./pages/Patients'));
+const Availability = lazy(() => import('./pages/Availability'));
+const AdminDoctors = lazy(() => import('./pages/AdminDoctors'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 export const AuthContext = createContext();
 
@@ -83,17 +87,19 @@ function App() {
   return (
     <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       <Router>
-        <Routes>
-          <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
-          <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
-          <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
-          <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
-          <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
-          <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
-          <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
-          <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
-          <Route path="*" element={<Navigate to="/dashboard" />} />
-        </Routes>
+        <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
+          <Routes>
+            <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
+            <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
+            <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
+            <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
+            <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
+            <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
+            <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
+            <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
+            <Route path="*" element={<Navigate to="/dashboard" />} />
+          </Routes>
+        </Suspense>
       </Router>
     </AuthContext.Provider>
   );

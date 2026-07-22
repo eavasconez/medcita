@@ -2,23 +2,27 @@ import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
-import { 
-  Users, 
-  Search, 
-  Plus, 
-  Phone, 
-  Mail, 
+import {
+  Users,
+  Search,
+  Plus,
+  Phone,
+  Mail,
   Edit,
   User,
   CreditCard,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 const Patients = () => {
   const [patients, setPatients] = useState([]);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -38,13 +42,15 @@ const Patients = () => {
     cedula: ''
   });
 
-  const fetchPatients = async (query = '') => {
+  const fetchPatients = async (query = '', pageNum = 1) => {
     try {
       setLoading(true);
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
+      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}&page=${pageNum}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPatients(res.data);
+      setPatients(res.data.patients);
+      setTotalPages(res.data.totalPages);
+      setPage(res.data.page);
     } catch (err) {
       console.error(err);
     } finally {
@@ -58,7 +64,12 @@ const Patients = () => {
 
   const handleSearch = (e) => {
     setSearch(e.target.value);
-    fetchPatients(e.target.value);
+    fetchPatients(e.target.value, 1);
+  };
+
+  const goToPage = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return;
+    fetchPatients(search, nextPage);
   };
 
   const handleSubmit = async (e) => {
@@ -79,7 +90,7 @@ const Patients = () => {
       setFormData({ name: '', phone: '+593', email: '', cedula: '' });
       setIsEditing(false);
       setCurrentPatientId(null);
-      fetchPatients();
+      fetchPatients(search, page);
     } catch (err) {
       showToast(err.response?.data?.error || 'Error processing request', 'error');
     }
@@ -204,6 +215,28 @@ const Patients = () => {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8">
+            <button
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+              aria-label="Previous page"
+              className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:text-slate-500 transition-colors"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-sm font-bold text-slate-500">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages}
+              aria-label="Next page"
+              className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:text-slate-500 transition-colors"
+            >
+              <ChevronRight size={18} />
+            </button>
           </div>
         )}
       </div>

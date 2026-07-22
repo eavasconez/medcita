@@ -4,31 +4,46 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 
 // All patient routes are protected
 router.use(auth);
 
-// Get all patients (optionally search by name or phone)
+// Get patients (optionally search by name/phone/cedula), paginated so a
+// growing patient list doesn't return every row on every load.
 router.get('/', async (req, res) => {
   const { search } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize, 10) || DEFAULT_PAGE_SIZE));
+
+  const where = search ? {
+    OR: [
+      { name: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search } },
+      { cedula: { contains: search } }
+    ]
+  } : {};
+
   try {
-    const patients = await prisma.patient.findMany({
-      where: search ? {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search } },
-          { cedula: { contains: search } }
-        ]
-      } : {},
-      include: {
-        _count: {
-          select: { appointments: true }
-        }
-      }
-    });
-    res.json(patients);
+    const [patients, total] = await Promise.all([
+      prisma.patient.findMany({
+        where,
+        include: {
+          _count: {
+            select: { appointments: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      }),
+      prisma.patient.count({ where })
+    ]);
+    res.json({ patients, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('List patients error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 

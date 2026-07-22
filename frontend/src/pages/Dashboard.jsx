@@ -123,7 +123,7 @@ const Dashboard = () => {
       const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPatients(res.data);
+      setPatients(res.data.patients);
     } catch (err) {
       console.error(err);
     }
@@ -238,6 +238,18 @@ const Dashboard = () => {
     fetchAvailability();
   }, [isSpecialRole, showModal, token, formData.doctorId]);
 
+  const computeStats = (data) => {
+    const positive = data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
+    const effectiveness = data.length > 0
+      ? `${Math.round((positive / data.length) * 100)}%`
+      : '—';
+    return {
+      totalAppointments: data.length,
+      newPatients: new Set(data.map(a => a.patientId)).size,
+      effectiveness
+    };
+  };
+
   // Calendar list: reflects the active status/patient filters.
   const fetchAppointments = async () => {
     try {
@@ -252,6 +264,13 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
+
+      // With no calendar filter active, this response already IS the
+      // selected doctor's full appointment set - reuse it for the KPIs
+      // instead of letting fetchStats fire an identical second request.
+      if (formData.doctorId && !statusFilter && !patientFilterId) {
+        setStats(computeStats(res.data));
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -272,20 +291,15 @@ const Dashboard = () => {
       setStats({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
       return;
     }
+    // No filter active: fetchAppointments' effect runs alongside this one and
+    // already computes stats from the same (unfiltered) response - skip the
+    // duplicate network round-trip.
+    if (!statusFilter && !patientFilterId) return;
     try {
       const res = await axios.get(`http://localhost:5000/api/appointments?doctorId=${formData.doctorId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = res.data;
-      const positive = data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
-      const effectiveness = data.length > 0
-        ? `${Math.round((positive / data.length) * 100)}%`
-        : '—';
-      setStats({
-        totalAppointments: data.length,
-        newPatients: new Set(data.map(a => a.patientId)).size,
-        effectiveness
-      });
+      setStats(computeStats(res.data));
     } catch (err) {
       console.error(err);
     }
@@ -300,7 +314,7 @@ const Dashboard = () => {
       const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPatientFilterResults(res.data);
+      setPatientFilterResults(res.data.patients);
     } catch (err) {
       console.error(err);
     }

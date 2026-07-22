@@ -8,6 +8,11 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed', 'cancelled'];
 
+// Only the patient fields actually consumed by callers (frontend Dashboard,
+// notificationService) - avoids pulling the full row (e.g. createdAt) on
+// every appointment list/create/update.
+const PATIENT_SELECT = { id: true, name: true, phone: true, email: true, cedula: true };
+
 // Thrown for expected scheduling conflicts inside the appointment transaction,
 // so the catch block can tell them apart from unexpected DB/runtime errors
 class ScheduleConflictError extends Error {}
@@ -41,7 +46,7 @@ router.get('/', async (req, res) => {
         ...(patientId && { patientId }),
         ...(status && { status })
       },
-      include: { patient: true, doctor: { select: { name: true } } },
+      include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
       orderBy: [{ date: 'asc' }, { time: 'asc' }]
     });
     
@@ -134,7 +139,7 @@ router.post('/', async (req, res) => {
           status: 'pending_approval' // Default always pending for confirmation
         },
         include: {
-          patient: true,
+          patient: { select: PATIENT_SELECT },
           doctor: { select: { id: true, name: true, email: true, role: true, address: true } }
         }
       });
@@ -185,13 +190,14 @@ router.put('/:id', async (req, res) => {
         ...(status && { status }),
         ...(notes && { notes })
       },
-      include: { patient: true }
+      include: { patient: { select: PATIENT_SELECT } }
     });
 
     res.json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
-    res.status(500).json({ error: err.message });
+    console.error('Update appointment error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
