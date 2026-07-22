@@ -122,9 +122,17 @@ router.post('/', async (req, res) => {
       }
 
       // 3. Upsert Patient
+      // On update, only touch email/cedula when a non-empty value was
+      // actually submitted - an existing patient rebooking with those
+      // fields left blank must keep their previously stored values,
+      // not have them wiped to null.
       const patient = await tx.patient.upsert({
         where: { phone: normalizedPatientPhone },
-        update: { name: normalizedPatientName, email: normalizedPatientEmail, cedula: normalizedPatientCedula },
+        update: {
+          name: normalizedPatientName,
+          ...(normalizedPatientEmail && { email: normalizedPatientEmail }),
+          ...(normalizedPatientCedula && { cedula: normalizedPatientCedula })
+        },
         create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: normalizedPatientEmail, cedula: normalizedPatientCedula }
       });
 
@@ -160,9 +168,16 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'Could not complete the booking due to a concurrent update, please try again' });
     }
     if (err.code === 'P2002') {
-      const field = Array.isArray(err.meta?.target) ? err.meta.target[0] : 'field';
+      // Appointment itself has no unique constraints, so this can only come
+      // from the Patient upsert above - map its known unique fields to a
+      // clear message, and fall back to a generic one for anything else.
+      const target = Array.isArray(err.meta?.target) ? err.meta.target[0] : null;
+      const fieldMessages = {
+        cedula: 'Ya existe un paciente con esa cédula',
+        phone: 'Ya existe un paciente con ese teléfono'
+      };
       console.error('Appointment creation unique constraint error:', err.message);
-      return res.status(400).json({ error: `A patient with that ${field} already exists` });
+      return res.status(400).json({ error: fieldMessages[target] || 'Ya existe un paciente con esos datos' });
     }
     console.error('Appointment creation error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
