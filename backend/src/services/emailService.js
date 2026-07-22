@@ -134,6 +134,22 @@ function reminderHtml({ patientName, doctorName, date, time }) {
   `);
 }
 
+function doctorNewAppointmentHtml({ doctorName, patientName, patientPhone, date, time }) {
+  const phoneItem = patientPhone
+    ? `<li><strong>Teléfono:</strong> ${escapeHtml(patientPhone)}</li>`
+    : '';
+  return baseLayout('Nueva cita agendada', `
+    <p>Hola <strong>${escapeHtml(doctorName)}</strong>,</p>
+    <p>Un paciente ha agendado una nueva cita contigo:</p>
+    <ul>
+      <li><strong>Paciente:</strong> ${escapeHtml(patientName)}</li>
+      ${phoneItem}
+      <li><strong>Fecha:</strong> ${escapeHtml(date)}</li>
+      <li><strong>Hora:</strong> ${escapeHtml(time)}</li>
+    </ul>
+  `);
+}
+
 const emailService = {
   /**
    * Send an email. Provider precedence: Brevo (preferred) -> SendGrid
@@ -162,7 +178,8 @@ const emailService = {
 
   templates: {
     appointmentConfirmationHtml,
-    reminderHtml
+    reminderHtml,
+    doctorNewAppointmentHtml
   }
 };
 
