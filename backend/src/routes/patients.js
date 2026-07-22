@@ -50,7 +50,10 @@ router.post('/', async (req, res) => {
   if (!normalizedPhone) {
     return res.status(400).json({ error: 'Patient phone is required' });
   }
-  if (email !== undefined && email !== '' && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
+  if (email !== undefined && email !== '' && typeof email !== 'string') {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
@@ -81,6 +84,10 @@ router.put('/:id', async (req, res) => {
 
   const normalizedName = typeof name === 'string' ? name.trim() : name;
   const normalizedPhone = typeof phone === 'string' ? phone.trim() : phone;
+  // Same trim-to-null normalization as POST /, so a whitespace-only value
+  // doesn't get stored as a real (and potentially colliding) cedula/email.
+  const normalizedEmail = typeof email === 'string' ? (email.trim() || null) : email;
+  const normalizedCedula = typeof cedula === 'string' ? (cedula.trim() || null) : cedula;
 
   if (name !== undefined && (typeof name !== 'string' || !normalizedName)) {
     return res.status(400).json({ error: 'Patient name is required' });
@@ -88,7 +95,10 @@ router.put('/:id', async (req, res) => {
   if (phone !== undefined && (typeof phone !== 'string' || !normalizedPhone)) {
     return res.status(400).json({ error: 'Patient phone is required' });
   }
-  if (email !== undefined && email !== '' && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
+  if (email !== undefined && email !== '' && typeof email !== 'string') {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
@@ -98,8 +108,8 @@ router.put('/:id', async (req, res) => {
       data: {
         ...(normalizedName !== undefined && { name: normalizedName }),
         ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
-        ...(email !== undefined && { email: email === '' ? null : email }),
-        ...(cedula !== undefined && { cedula: cedula === '' ? null : cedula })
+        ...(email !== undefined && { email: normalizedEmail }),
+        ...(cedula !== undefined && { cedula: normalizedCedula })
       }
     });
     res.json(patient);

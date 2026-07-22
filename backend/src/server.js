@@ -15,12 +15,20 @@ const authMiddleware = require('./middleware/auth');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
 
-// Refuse to start with a missing or known-example JWT secret - tokens signed
-// with a guessable/checked-in secret can be forged by anyone who's read the
-// repo, so this must be a hard failure, not a warning.
-const INSECURE_JWT_SECRETS = new Set(['demo_secret_key_123']);
-if (!process.env.JWT_SECRET || INSECURE_JWT_SECRETS.has(process.env.JWT_SECRET)) {
-  console.error('FATAL: JWT_SECRET is missing or set to the insecure example value. Set a strong, unique secret in .env before starting the server.');
+// Refuse to start with a missing, known-example, or too-short JWT secret -
+// tokens signed with a guessable/checked-in secret can be forged by anyone
+// who's read the repo, so this must be a hard failure, not a warning. The
+// length check (rather than only an exact-match list) also catches any
+// future example/placeholder value in .env.example without needing this
+// list updated every time that placeholder changes.
+const INSECURE_JWT_SECRETS = new Set(['demo_secret_key_123', 'replace_me_with_a_generated_secret']);
+const MIN_JWT_SECRET_LENGTH = 32;
+if (
+  !process.env.JWT_SECRET ||
+  INSECURE_JWT_SECRETS.has(process.env.JWT_SECRET) ||
+  process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH
+) {
+  console.error(`FATAL: JWT_SECRET is missing, insecure, or shorter than ${MIN_JWT_SECRET_LENGTH} characters. Set a strong, unique secret in .env before starting the server.`);
   process.exit(1);
 }
 
