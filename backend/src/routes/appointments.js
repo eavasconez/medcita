@@ -65,6 +65,11 @@ router.post('/', async (req, res) => {
 
   const normalizedPatientName = typeof patientName === 'string' ? patientName.trim() : '';
   const normalizedPatientPhone = typeof patientPhone === 'string' ? patientPhone.trim() : '';
+  // Empty string (sent by the "optional" cedula/email fields in the booking
+  // form) must become null, not "" - cedula is @unique, so leaving it as an
+  // empty string collides with the next patient created without one.
+  const normalizedPatientCedula = typeof patientCedula === 'string' && patientCedula.trim() ? patientCedula.trim() : null;
+  const normalizedPatientEmail = typeof patientEmail === 'string' && patientEmail.trim() ? patientEmail.trim() : null;
 
   if (!normalizedPatientName) {
     return res.status(400).json({ error: 'Patient name is required' });
@@ -119,8 +124,8 @@ router.post('/', async (req, res) => {
       // 3. Upsert Patient
       const patient = await tx.patient.upsert({
         where: { phone: normalizedPatientPhone },
-        update: { name: normalizedPatientName, email: patientEmail, cedula: patientCedula },
-        create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: patientEmail, cedula: patientCedula }
+        update: { name: normalizedPatientName, email: normalizedPatientEmail, cedula: normalizedPatientCedula },
+        create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: normalizedPatientEmail, cedula: normalizedPatientCedula }
       });
 
       // 4. Create Appointment
@@ -154,7 +159,13 @@ router.post('/', async (req, res) => {
     if (err.code === 'P2034') {
       return res.status(409).json({ error: 'Could not complete the booking due to a concurrent update, please try again' });
     }
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2002') {
+      const field = Array.isArray(err.meta?.target) ? err.meta.target[0] : 'field';
+      console.error('Appointment creation unique constraint error:', err.message);
+      return res.status(400).json({ error: `A patient with that ${field} already exists` });
+    }
+    console.error('Appointment creation error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
