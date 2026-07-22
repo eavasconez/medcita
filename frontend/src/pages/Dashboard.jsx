@@ -503,7 +503,7 @@ const Dashboard = () => {
 
         {/* Header with Stats and Legend */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-500">
               <CalendarIcon size={32} />

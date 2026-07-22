@@ -65,6 +65,11 @@ router.post('/', async (req, res) => {
 
   const normalizedPatientName = typeof patientName === 'string' ? patientName.trim() : '';
   const normalizedPatientPhone = typeof patientPhone === 'string' ? patientPhone.trim() : '';
+  // Empty string (sent by the "optional" cedula/email fields in the booking
+  // form) must become null, not "" - cedula is @unique, so leaving it as an
+  // empty string collides with the next patient created without one.
+  const normalizedPatientCedula = typeof patientCedula === 'string' && patientCedula.trim() ? patientCedula.trim() : null;
+  const normalizedPatientEmail = typeof patientEmail === 'string' && patientEmail.trim() ? patientEmail.trim() : null;
 
   if (!normalizedPatientName) {
     return res.status(400).json({ error: 'Patient name is required' });
@@ -117,10 +122,18 @@ router.post('/', async (req, res) => {
       }
 
       // 3. Upsert Patient
+      // On update, only touch email/cedula when a non-empty value was
+      // actually submitted - an existing patient rebooking with those
+      // fields left blank must keep their previously stored values,
+      // not have them wiped to null.
       const patient = await tx.patient.upsert({
         where: { phone: normalizedPatientPhone },
-        update: { name: normalizedPatientName, email: patientEmail, cedula: patientCedula },
-        create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: patientEmail, cedula: patientCedula }
+        update: {
+          name: normalizedPatientName,
+          ...(normalizedPatientEmail && { email: normalizedPatientEmail }),
+          ...(normalizedPatientCedula && { cedula: normalizedPatientCedula })
+        },
+        create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: normalizedPatientEmail, cedula: normalizedPatientCedula }
       });
 
       // 4. Create Appointment
@@ -154,7 +167,20 @@ router.post('/', async (req, res) => {
     if (err.code === 'P2034') {
       return res.status(409).json({ error: 'Could not complete the booking due to a concurrent update, please try again' });
     }
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2002') {
+      // Appointment itself has no unique constraints, so this can only come
+      // from the Patient upsert above - map its known unique fields to a
+      // clear message, and fall back to a generic one for anything else.
+      const target = Array.isArray(err.meta?.target) ? err.meta.target[0] : null;
+      const fieldMessages = {
+        cedula: 'Ya existe un paciente con esa cédula',
+        phone: 'Ya existe un paciente con ese teléfono'
+      };
+      console.error('Appointment creation unique constraint error:', err.message);
+      return res.status(400).json({ error: fieldMessages[target] || 'Ya existe un paciente con esos datos' });
+    }
+    console.error('Appointment creation error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
