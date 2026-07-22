@@ -97,10 +97,11 @@ const notificationService = {
     const { patient, doctor, date, time } = appointment;
     const msg = `MedCita: Hola ${patient.name}, tu cita con el ${doctor.name} ha sido agendada para el ${date} a las ${time}. ¡Te esperamos!`;
 
-    // Send WhatsApp
-    await notificationService.sendWhatsApp(patient.phone, msg);
+    // Each notification is independent: run them concurrently and don't let
+    // one recipient's failure suppress the others (allSettled, not all).
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg)];
 
-    // Send Email if available
+    // Patient confirmation email
     if (patient.email) {
       const subject = 'Confirmación de Cita - MedCita';
       const html = emailService.templates.appointmentConfirmationHtml({
@@ -110,10 +111,10 @@ const notificationService = {
         time,
         address: doctor.address
       });
-      await notificationService.sendEmail(patient.email, subject, msg, html);
+      tasks.push(notificationService.sendEmail(patient.email, subject, msg, html));
     }
 
-    // Notify the doctor by email that a new appointment was booked
+    // Doctor notification email that a new appointment was booked
     if (doctor.email) {
       const doctorSubject = 'Nueva Cita Agendada - MedCita';
       const doctorMsg = `MedCita: ${patient.name} agendó una cita contigo el ${date} a las ${time}.`;
@@ -124,8 +125,10 @@ const notificationService = {
         date,
         time
       });
-      await notificationService.sendEmail(doctor.email, doctorSubject, doctorMsg, doctorHtml);
+      tasks.push(notificationService.sendEmail(doctor.email, doctorSubject, doctorMsg, doctorHtml));
     }
+
+    await Promise.allSettled(tasks);
   },
 
   /**
