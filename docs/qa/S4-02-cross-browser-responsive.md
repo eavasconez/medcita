@@ -16,24 +16,34 @@
 
 Se probó login → Dashboard → Patients → Settings en cada motor:
 
-- **Chromium**: todo funciona correctamente, sin errores de consola. Capturas verificadas visualmente, layout idéntico al esperado.
+- **Chromium**: todo funciona correctamente, sin errores de consola. Layout idéntico al esperado.
+  - [Dashboard](screenshots/s4-02/chromium-dashboard.png) · [Patients](screenshots/s4-02/chromium-patients.png) · [Settings](screenshots/s4-02/chromium-settings.png)
 - **WebKit** (motor de Safari): todo funciona correctamente, sin errores de consola. Layout visualmente idéntico a Chromium (calendario, tarjetas de stats, sidebar).
+  - [Dashboard](screenshots/s4-02/webkit-dashboard.png) · [Patients](screenshots/s4-02/webkit-patients.png) · [Settings](screenshots/s4-02/webkit-settings.png)
 - **Firefox**: **no se pudo probar** — el binario de Firefox cacheado en este entorno de pruebas no es compatible con el protocolo de la versión de Playwright instalada (`Browser.setDefaultViewport` rechaza el schema). Esto es una limitación del entorno de testing, no evidencia de un problema en la app. Queda pendiente probar con un entorno donde `npx playwright install firefox` pueda correr limpio, o manualmente en un Firefox real.
 
 ## 2. Responsive — Móvil (390×844)
 
 Probado: Login, Dashboard, Patients, apertura del modal "New Appointment".
 
-- ✅ Sidebar colapsa correctamente a menú hamburguesa.
+- ✅ Sidebar colapsa correctamente a menú hamburguesa — [captura del menú abierto](screenshots/s4-02/mobile-menu-open.png)
 - ✅ Tarjetas de stats se apilan en una columna, legibles.
 - ✅ Modal "New Appointment" ocupa el ancho completo, usable, botón de cerrar visible.
 - ✅ Tarjetas de pacientes se ven bien, ícono de editar visible (fix de S3-07).
 - ✅ Sin errores de consola.
 
+Capturas: [Login](screenshots/s4-02/mobile-login.png) · [Dashboard](screenshots/s4-02/mobile-dashboard.png) · [Patients](screenshots/s4-02/mobile-patients.png) · [Modal "New Appointment"](screenshots/s4-02/mobile-modal.png)
+
 ## 3. Responsive — Tablet (768×1024)
+
+Probado: Login, Dashboard, Patients, menú, modal "New Appointment".
+
+Capturas: [Login](screenshots/s4-02/tablet-login.png) · [Dashboard](screenshots/s4-02/tablet-dashboard.png) · [Patients](screenshots/s4-02/tablet-patients.png) · [Menú](screenshots/s4-02/tablet-menu-open.png) · [Modal "New Appointment"](screenshots/s4-02/tablet-modal.png)
 
 ### Hallazgo #1 (bug encontrado) — Prioridad media
 En el Dashboard, a 768px de ancho, la fila de tarjetas de estadísticas (Total Appointments / Total Patients / Effectiveness) **se desborda del viewport sin ningún mecanismo de scroll**: la tercera tarjeta ("Effectiveness") queda cortada contra el borde derecho de la pantalla, con su etiqueta y valor parcialmente inaccesibles.
+
+**Captura**: [tablet-dashboard.png](screenshots/s4-02/tablet-dashboard.png) (fila de stats cortada) — recorte de detalle en [tablet-kpi-check.png](screenshots/s4-02/tablet-kpi-check.png), mostrando la tarjeta "Effectiveness" partida justo en el borde del viewport.
 
 Esto contrasta con el calendario semanal, que sí maneja correctamente su propio desbordamiento horizontal mediante un contenedor `overflow-x-auto` (confirmado: `scrollWidth: 640` vs `clientWidth: 414`, con scroll funcional) — el body/documento no tiene scroll horizontal global (`scrollWidth === clientWidth === 768`), así que el problema es específico de la fila de tarjetas de stats, que no tiene ni scroll ni un breakpoint que la haga apilarse/reducirse a este ancho.
 
