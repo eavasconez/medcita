@@ -28,7 +28,8 @@ router.get('/', async (req, res) => {
     });
     res.json(patients);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('List patients error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -38,6 +39,10 @@ router.post('/', async (req, res) => {
 
   const normalizedName = typeof name === 'string' ? name.trim() : '';
   const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
+  // Empty string means "not provided" here, not a value to store - cedula is
+  // @unique, so leaving it as "" collides with the next cedula-less patient.
+  const normalizedEmail = typeof email === 'string' && email.trim() ? email.trim() : null;
+  const normalizedCedula = typeof cedula === 'string' && cedula.trim() ? cedula.trim() : null;
 
   if (!normalizedName) {
     return res.status(400).json({ error: 'Patient name is required' });
@@ -52,8 +57,12 @@ router.post('/', async (req, res) => {
   try {
     const patient = await prisma.patient.upsert({
       where: { phone: normalizedPhone },
-      update: { name: normalizedName, email, cedula },
-      create: { name: normalizedName, phone: normalizedPhone, email, cedula }
+      update: {
+        name: normalizedName,
+        ...(normalizedEmail && { email: normalizedEmail }),
+        ...(normalizedCedula && { cedula: normalizedCedula })
+      },
+      create: { name: normalizedName, phone: normalizedPhone, email: normalizedEmail, cedula: normalizedCedula }
     });
     res.status(201).json(patient);
   } catch (err) {
@@ -61,7 +70,8 @@ router.post('/', async (req, res) => {
       const field = err.meta?.target?.includes('cedula') ? 'cedula' : 'phone';
       return res.status(400).json({ error: `A patient with this ${field} already exists` });
     }
-    res.status(500).json({ error: err.message });
+    console.error('Create patient error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -89,7 +99,7 @@ router.put('/:id', async (req, res) => {
         ...(normalizedName !== undefined && { name: normalizedName }),
         ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
         ...(email !== undefined && { email: email === '' ? null : email }),
-        ...(cedula !== undefined && { cedula })
+        ...(cedula !== undefined && { cedula: cedula === '' ? null : cedula })
       }
     });
     res.json(patient);
@@ -99,7 +109,8 @@ router.put('/:id', async (req, res) => {
       const field = err.meta?.target?.includes('cedula') ? 'cedula' : 'phone';
       return res.status(400).json({ error: `A patient with this ${field} already exists` });
     }
-    res.status(500).json({ error: err.message });
+    console.error('Update patient error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 

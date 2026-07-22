@@ -15,9 +15,22 @@ const authMiddleware = require('./middleware/auth');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
 
+// Refuse to start with a missing or known-example JWT secret - tokens signed
+// with a guessable/checked-in secret can be forged by anyone who's read the
+// repo, so this must be a hard failure, not a warning.
+const INSECURE_JWT_SECRETS = new Set(['demo_secret_key_123']);
+if (!process.env.JWT_SECRET || INSECURE_JWT_SECRETS.has(process.env.JWT_SECRET)) {
+  console.error('FATAL: JWT_SECRET is missing or set to the insecure example value. Set a strong, unique secret in .env before starting the server.');
+  process.exit(1);
+}
+
 const app = express();
 
-app.use(cors());
+// Restrict CORS to known frontend origin(s) instead of allowing any origin.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim());
+app.use(cors({ origin: allowedOrigins }));
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
@@ -37,8 +50,12 @@ cron.schedule('0 * * * *', () => {
   });
 });
 
-// Manual trigger for demo purpose
+// Manual trigger for demo purpose - restricted to admin/secretary so any
+// authenticated doctor can't fire off a system-wide notification batch.
 app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
+  if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     await sendReminders();
     res.json({ message: 'Reminders task triggered manually' });

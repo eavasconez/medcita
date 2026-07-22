@@ -52,7 +52,8 @@ router.get('/', async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('List appointments error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -217,7 +218,8 @@ router.put('/:id', async (req, res) => {
     res.json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
-    res.status(500).json({ error: err.message });
+    console.error('Update appointment error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -235,7 +237,8 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Appointment cancelled successfully' });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
-    res.status(500).json({ error: err.message });
+    console.error('Delete appointment error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 

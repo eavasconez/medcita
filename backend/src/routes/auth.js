@@ -44,7 +44,8 @@ router.post('/register', async (req, res) => {
     res.status(201).json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
-    res.status(500).json({ error: err.message });
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -64,7 +65,8 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
