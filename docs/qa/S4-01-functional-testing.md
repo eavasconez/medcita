@@ -15,18 +15,20 @@
 
 ## 1. Flujo feliz (vía UI, Playwright)
 
-| Paso | Resultado |
-|---|---|
-| Registro de nuevo médico (`/register`) | ✅ Redirige a `/dashboard` tras registrar |
-| Login (`/login`) | ✅ Redirige a `/dashboard` |
-| Abrir modal "New Appointment" → "Create New Patient" | ✅ |
-| Seleccionar fecha (+5 días) y slot libre | ✅ Slot disponible, se selecciona |
-| Completar datos del paciente (nombre, WhatsApp, email) y confirmar | ⚠️ **Ver hallazgo #1** |
+| Paso | Resultado | Captura |
+|---|---|---|
+| Registro de nuevo médico (`/register`) | ✅ Redirige a `/dashboard` tras registrar | [formulario](screenshots/s4-01/01-register-filled.png) · [tras registrar](screenshots/s4-01/02-after-register.png) |
+| Login (`/login`) | ✅ Redirige a `/dashboard` | [dashboard tras login](screenshots/s4-01/03-dashboard-after-login.png) |
+| Abrir modal "New Appointment" → "Create New Patient" | ✅ | [paso 1](screenshots/s4-01/04-modal-step1-patient.png) |
+| Seleccionar fecha (+5 días) y slot libre | ✅ Slot disponible, se selecciona | [paso 2](screenshots/s4-01/05-modal-step2-date.png) |
+| Completar datos del paciente (nombre, WhatsApp, email) y confirmar | ⚠️ **Ver hallazgo #1** | [paso 3](screenshots/s4-01/06-modal-step3-details.png) · [formulario lleno](screenshots/s4-01/07-modal-filled.png) |
 
 ### Hallazgo #1 (bug encontrado) — Prioridad alta
 Al crear un paciente **sin cédula** desde el modal del Dashboard, el frontend envía `cedula: ""` (string vacío, no `null`/`undefined`, porque es un input controlado de React). El backend pasa ese valor tal cual a `tx.patient.upsert({ ..., create: { cedula: patientCedula } })` (`backend/src/routes/appointments.js:122-123`), y como `cedula` tiene `@unique` en el schema, **el segundo paciente creado sin cédula falla** con un error de restricción única de Prisma.
 
 Peor aún: ese error crudo de Prisma (stack trace completo, incluyendo rutas del filesystem) se expone directamente en un toast al usuario final, en vez de un mensaje manejado.
+
+**Captura del error real**: [08-after-confirm.png](screenshots/s4-01/08-after-confirm.png) — se ve el toast rojo con el stack trace de Prisma superpuesto al modal.
 
 **Reproducción**: crear dos citas nuevas seguidas, cada una con un paciente nuevo, ambas sin llenar el campo "Identification (Cédula)".
 
