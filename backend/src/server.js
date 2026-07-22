@@ -32,13 +32,19 @@ app.use('/api/admin', authMiddleware, adminRoutes);
 // Cron Job for ~24h reminders (runs hourly so each appointment is
 // reminded close to the 24h mark, not just "the day before")
 cron.schedule('0 * * * *', () => {
-  sendReminders();
+  sendReminders().catch((error) => {
+    console.error('Scheduled reminder task failed:', error.message);
+  });
 });
 
 // Manual trigger for demo purpose
 app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
-  await sendReminders();
-  res.json({ message: 'Reminders task triggered manually' });
+  try {
+    await sendReminders();
+    res.json({ message: 'Reminders task triggered manually' });
+  } catch (error) {
+    res.status(500).json({ error: 'Reminders task failed' });
+  }
 });
 
 const PORT = process.env.PORT || 5000;

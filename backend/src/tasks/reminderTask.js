@@ -41,21 +41,28 @@ const sendReminders = async () => {
     console.log(`Found ${due.length} appointment(s) within ${REMINDER_WINDOW_HOURS}h`);
 
     for (const apt of due) {
-      // Send reminder via service (WhatsApp + Email)
-      await sendReminder(apt);
-
-      // Mark as 'confirmed' so this same appointment isn't reminded again
-      // on the next hourly run.
-      await prisma.appointment.update({
-        where: { id: apt.id },
+      // Atomically claim the appointment (only succeeds if it's still
+      // 'scheduled') before sending anything, so an overlapping cron run
+      // or a manual trigger can't both read the same row and send a
+      // duplicate reminder.
+      const claim = await prisma.appointment.updateMany({
+        where: { id: apt.id, status: 'scheduled' },
         data: { status: 'confirmed' }
       });
+      if (claim.count === 0) {
+        // Another invocation already claimed and is handling this one.
+        continue;
+      }
+
+      // Send reminder via service (WhatsApp + Email)
+      await sendReminder(apt);
       console.log(`Reminder sent to ${apt.patient.name}`);
     }
 
     console.log('Reminder task completed successfully');
   } catch (error) {
     console.error('Error in reminder task:', error);
+    throw error;
   }
 };
 
