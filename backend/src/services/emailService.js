@@ -111,13 +111,17 @@ function baseLayout(title, bodyHtml) {
 </div>`;
 }
 
-function appointmentConfirmationHtml({ patientName, doctorName, date, time }) {
+function appointmentConfirmationHtml({ patientName, doctorName, date, time, address }) {
+  const addressItem = address
+    ? `<li><strong>Dirección:</strong> ${escapeHtml(address)}</li>`
+    : '';
   return baseLayout('Cita confirmada', `
     <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
     <p>Tu cita con <strong>${escapeHtml(doctorName)}</strong> ha sido agendada:</p>
     <ul>
       <li><strong>Fecha:</strong> ${escapeHtml(date)}</li>
       <li><strong>Hora:</strong> ${escapeHtml(time)}</li>
+      ${addressItem}
     </ul>
     <p>¡Te esperamos!</p>
   `);

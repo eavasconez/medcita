@@ -16,6 +16,7 @@ const PROFILE_SELECT = {
   role: true,
   specialty: true,
   bio: true,
+  address: true,
   createdAt: true,
   _count: { select: { appointments: true } }
 };
@@ -86,7 +87,7 @@ router.get('/profile', auth, async (req, res) => {
 router.put('/profile', auth, async (req, res) => {
   // Guard against a bodyless request or a literal JSON null, which would throw
   // on destructuring and surface as an uncontrolled 500 instead of a 400.
-  const { name, specialty, bio } = req.body || {};
+  const { name, specialty, bio, address } = req.body || {};
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim()) {
@@ -99,6 +100,9 @@ router.put('/profile', auth, async (req, res) => {
   if (bio !== undefined && bio !== null && typeof bio !== 'string') {
     return res.status(400).json({ error: 'Bio must be a string' });
   }
+  if (address !== undefined && address !== null && typeof address !== 'string') {
+    return res.status(400).json({ error: 'Address must be a string' });
+  }
 
   const data = {};
   if (name !== undefined) data.name = name.trim();
@@ -110,6 +114,10 @@ router.put('/profile', auth, async (req, res) => {
   if (bio !== undefined) {
     const trimmed = typeof bio === 'string' ? bio.trim() : bio;
     data.bio = trimmed ? trimmed : null;
+  }
+  if (address !== undefined) {
+    const trimmed = typeof address === 'string' ? address.trim() : address;
+    data.address = trimmed ? trimmed : null;
   }
 
   try {

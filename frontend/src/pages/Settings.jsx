@@ -19,7 +19,7 @@ const Settings = () => {
   const { user, token, updateUser } = useContext(AuthContext);
 
   const [profile, setProfile] = useState(null);
-  const [formData, setFormData] = useState({ name: '', specialty: '', bio: '' });
+  const [formData, setFormData] = useState({ name: '', specialty: '', bio: '', address: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -40,7 +40,8 @@ const Settings = () => {
         setFormData({
           name: res.data.name || '',
           specialty: res.data.specialty || '',
-          bio: res.data.bio || ''
+          bio: res.data.bio || '',
+          address: res.data.address || ''
         });
       } catch (err) {
         console.error(err);
@@ -202,6 +203,20 @@ const Settings = () => {
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                     className="form-input resize-none disabled:opacity-60"
                   ></textarea>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="office-address" className="form-label">Office Address</label>
+                  <input
+                    id="office-address"
+                    type="text"
+                    disabled={loading}
+                    placeholder="e.g. Av. Amazonas N34-12, Quito"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="form-input disabled:opacity-60"
+                  />
+                  <p className="text-slate-400 text-xs font-medium">Included in appointment confirmation emails sent to patients</p>
                 </div>
 
                 <div className="pt-4">
