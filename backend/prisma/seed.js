@@ -18,6 +18,22 @@ function addDays(base, days) {
   return d;
 }
 
+// Doctors' availability is Mon-Fri only, so demo appointments must land on
+// business days - a raw calendar offset (e.g. "+2 days" from a Thursday)
+// can land on a Saturday and silently produce an appointment outside any
+// configured availability. Returns `count` weekdays starting from `base`
+// (inclusive if `base` itself is a weekday).
+function nextBusinessDays(base, count) {
+  const result = [];
+  let d = new Date(base);
+  while (result.length < count) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) result.push(new Date(d));
+    d = addDays(d, 1);
+  }
+  return result;
+}
+
 async function main() {
   // Clear existing data
   await prisma.appointment.deleteMany();
@@ -99,29 +115,33 @@ async function main() {
   const allPatients = await prisma.patient.findMany();
 
   const today = new Date();
-  const dateFor = (offsetDays) => toLocalDateStr(addDays(today, offsetDays));
+  // 3 consecutive business days from today (e.g. Thu/Fri/Mon if today is a
+  // Thursday) - indexed 0/1/2 below instead of raw calendar offsets, so a
+  // weekend never ends up with a demo appointment nobody's available for.
+  const businessDays = nextBusinessDays(today, 3);
+  const dateFor = (dayIndex) => toLocalDateStr(businessDays[dayIndex]);
 
-  // A spread of appointments per doctor, across today/tomorrow/day after and
+  // A spread of appointments per doctor, across the next 3 business days and
   // across statuses, so the calendar and status filters have something real
   // to show in a demo instead of a single flat list.
   const appointmentPlan = [
     // Dr. Santiago Pérez (Medicina General)
-    { doctor: pilotDoctors[0], patient: allPatients[0], offsetDays: 0, time: '09:00', status: 'confirmed' },
-    { doctor: pilotDoctors[0], patient: allPatients[1], offsetDays: 0, time: '10:00', status: 'scheduled' },
-    { doctor: pilotDoctors[0], patient: allPatients[2], offsetDays: 0, time: '14:00', status: 'pending_approval' },
-    { doctor: pilotDoctors[0], patient: allPatients[3], offsetDays: 1, time: '16:30', status: 'confirmed' },
+    { doctor: pilotDoctors[0], patient: allPatients[0], dayIndex: 0, time: '09:00', status: 'confirmed' },
+    { doctor: pilotDoctors[0], patient: allPatients[1], dayIndex: 0, time: '10:00', status: 'scheduled' },
+    { doctor: pilotDoctors[0], patient: allPatients[2], dayIndex: 0, time: '14:00', status: 'pending_approval' },
+    { doctor: pilotDoctors[0], patient: allPatients[3], dayIndex: 1, time: '16:30', status: 'confirmed' },
     // Dra. Camila Torres (Pediatría)
-    { doctor: pilotDoctors[1], patient: allPatients[4], offsetDays: 0, time: '09:30', status: 'confirmed' },
-    { doctor: pilotDoctors[1], patient: allPatients[5], offsetDays: 1, time: '11:00', status: 'pending_approval' },
-    { doctor: pilotDoctors[1], patient: allPatients[6], offsetDays: 2, time: '15:00', status: 'scheduled' },
+    { doctor: pilotDoctors[1], patient: allPatients[4], dayIndex: 0, time: '09:30', status: 'confirmed' },
+    { doctor: pilotDoctors[1], patient: allPatients[5], dayIndex: 1, time: '11:00', status: 'pending_approval' },
+    { doctor: pilotDoctors[1], patient: allPatients[6], dayIndex: 2, time: '15:00', status: 'scheduled' },
     // Dr. Andrés Mendoza (Medicina Familiar)
-    { doctor: pilotDoctors[2], patient: allPatients[7], offsetDays: 0, time: '08:30', status: 'scheduled' },
-    { doctor: pilotDoctors[2], patient: allPatients[0], offsetDays: 2, time: '13:00', status: 'confirmed' }
+    { doctor: pilotDoctors[2], patient: allPatients[7], dayIndex: 0, time: '08:30', status: 'scheduled' },
+    { doctor: pilotDoctors[2], patient: allPatients[0], dayIndex: 2, time: '13:00', status: 'confirmed' }
   ];
 
   await prisma.appointment.createMany({
     data: appointmentPlan.map(a => ({
-      date: dateFor(a.offsetDays),
+      date: dateFor(a.dayIndex),
       time: a.time,
       doctorId: a.doctor.id,
       patientId: a.patient.id,

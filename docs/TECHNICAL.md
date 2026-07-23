@@ -50,6 +50,7 @@ Si ninguna credencial de WhatsApp/Email está presente, ambos servicios caen a m
 Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`) requieren header `Authorization: Bearer <token>`. Roles: `doctor` (default), `secretary`, `admin`.
 
 ### Auth (`/api/auth`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | POST | `/register` | Público | Crea un nuevo médico (rol `doctor` por defecto) |
@@ -58,6 +59,7 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 | PUT | `/profile` | Autenticado | Actualiza el propio perfil |
 
 ### Citas (`/api/appointments`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/` | Autenticado | Lista citas (admin/secretaria ven todas o filtran por `doctorId`; un doctor solo ve las suyas). Filtros: `date`, `patientId`, `doctorId`, `status` |
@@ -66,6 +68,7 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 | DELETE | `/:id` | Autenticado (dueño, o admin/secretaria) | Cancela/elimina la cita |
 
 ### Pacientes (`/api/patients`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/` | Autenticado | Lista paginada (`page`, `pageSize`; máx. 100 por página), con búsqueda por `search` (nombre, teléfono, cédula) |
@@ -75,6 +78,7 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 No existe `DELETE /api/patients/:id` (pendiente, ver `docs/ESTADO_PROYECTO.md`).
 
 ### Disponibilidad (`/api/availability`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/` | Autenticado | Horario semanal del médico (o `doctorId` dado). Si no hay ninguno configurado, devuelve un fallback de demo (Lun-Vie 8:00-18:00) |
@@ -82,6 +86,7 @@ No existe `DELETE /api/patients/:id` (pendiente, ver `docs/ESTADO_PROYECTO.md`).
 | POST | `/` | Autenticado | Reemplaza el horario completo del médico (array de `{ dayOfWeek, startTime, endTime }`) |
 
 ### Administración (`/api/admin`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/medicos` | admin, secretary | Lista médicos (filtro opcional `role`) |
@@ -91,6 +96,7 @@ No existe `DELETE /api/patients/:id` (pendiente, ver `docs/ESTADO_PROYECTO.md`).
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico |
 
 ### Tareas (`server.js`)
+
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | POST | `/api/tasks/reminders` | admin, secretary | Dispara manualmente el recordatorio de 24h (normalmente corre por cron cada hora) |
