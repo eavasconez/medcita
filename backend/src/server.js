@@ -43,6 +43,13 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
 
+// Unauthenticated health check - gives uptime monitors (and any future
+// platform health check) a stable 200 target that doesn't require a token,
+// instead of them having to interpret a 401/404 from a real route as "down".
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/appointments', authMiddleware, appointmentRoutes);
