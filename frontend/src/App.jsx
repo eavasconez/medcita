@@ -2,7 +2,6 @@ import React, { useState, useEffect, createContext, useContext, Suspense, lazy }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from './config/api';
-
 // Route-level code splitting: each page (and its own dependencies, e.g.
 // Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
 // all being bundled into the initial load.
