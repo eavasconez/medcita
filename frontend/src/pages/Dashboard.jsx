@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../App';
 import axios from 'axios';
 import Layout from '../components/Layout';
@@ -118,14 +118,23 @@ const Dashboard = () => {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Uses axios' `params` (not string interpolation) so a query containing
+  // &/#/+ doesn't get mangled, and cancels any still-in-flight previous
+  // request so a slower older response can't overwrite fresher results.
+  const patientPickerAbortRef = useRef(null);
   const fetchPatients = async (query = '') => {
+    patientPickerAbortRef.current?.abort();
+    const controller = new AbortController();
+    patientPickerAbortRef.current = controller;
     try {
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.get('http://localhost:5000/api/patients', {
+        params: { search: query },
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
       });
       setPatients(res.data.patients);
     } catch (err) {
-      console.error(err);
+      if (err.code !== 'ERR_CANCELED') console.error(err);
     }
   };
 
@@ -305,18 +314,24 @@ const Dashboard = () => {
     }
   };
 
+  const patientFilterAbortRef = useRef(null);
   const searchFilterPatients = async (query) => {
     if (!query) {
       setPatientFilterResults([]);
       return;
     }
+    patientFilterAbortRef.current?.abort();
+    const controller = new AbortController();
+    patientFilterAbortRef.current = controller;
     try {
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.get('http://localhost:5000/api/patients', {
+        params: { search: query },
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
       });
       setPatientFilterResults(res.data.patients);
     } catch (err) {
-      console.error(err);
+      if (err.code !== 'ERR_CANCELED') console.error(err);
     }
   };
 

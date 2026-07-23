@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
@@ -29,6 +29,7 @@ const Patients = () => {
   const [currentPatientId, setCurrentPatientId] = useState(null);
   const [toast, setToast] = useState(null);
   const { token } = useContext(AuthContext);
+  const fetchAbortRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -42,19 +43,28 @@ const Patients = () => {
     cedula: ''
   });
 
+  // Uses axios' `params` (not string interpolation) so a query containing
+  // &/#/+ doesn't get mangled, and cancels any still-in-flight previous
+  // request so a slower older response can't overwrite fresher results
+  // (e.g. typing "Ana" then quickly "An" - the "Ana" response landing last).
   const fetchPatients = async (query = '', pageNum = 1) => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
     try {
       setLoading(true);
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}&page=${pageNum}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.get('http://localhost:5000/api/patients', {
+        params: { search: query, page: pageNum },
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
       });
       setPatients(res.data.patients);
       setTotalPages(res.data.totalPages);
       setPage(res.data.page);
     } catch (err) {
-      console.error(err);
+      if (err.code !== 'ERR_CANCELED') console.error(err);
     } finally {
-      setLoading(false);
+      if (fetchAbortRef.current === controller) setLoading(false);
     }
   };
 

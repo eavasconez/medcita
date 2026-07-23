@@ -6,6 +6,10 @@ const auth = require('../middleware/auth');
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
+// Upper bound on skip/offset - well beyond any real patient list, but keeps
+// a bogus/huge page number from producing an expensive full-table scan or
+// an offset outside what Postgres/Prisma can sanely handle.
+const MAX_SKIP = 1_000_000;
 
 // All patient routes are protected
 router.use(auth);
@@ -14,8 +18,21 @@ router.use(auth);
 // growing patient list doesn't return every row on every load.
 router.get('/', async (req, res) => {
   const { search } = req.query;
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize, 10) || DEFAULT_PAGE_SIZE));
+
+  const page = req.query.page !== undefined ? Number(req.query.page) : 1;
+  if (!Number.isInteger(page) || page < 1) {
+    return res.status(400).json({ error: 'page must be a positive integer' });
+  }
+
+  const pageSizeInput = req.query.pageSize !== undefined ? Number(req.query.pageSize) : DEFAULT_PAGE_SIZE;
+  if (!Number.isInteger(pageSizeInput) || pageSizeInput < 1) {
+    return res.status(400).json({ error: 'pageSize must be a positive integer' });
+  }
+  const pageSize = Math.min(MAX_PAGE_SIZE, pageSizeInput);
+
+  if ((page - 1) * pageSize > MAX_SKIP) {
+    return res.status(400).json({ error: 'page is out of range' });
+  }
 
   const where = search ? {
     OR: [

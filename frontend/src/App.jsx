@@ -16,6 +16,43 @@ const Reports = lazy(() => import('./pages/Reports'));
 
 export const AuthContext = createContext();
 
+// React.lazy() rejects (e.g. a chunk fails to load after a new deploy ships
+// different asset hashes) throw during render, which Suspense does NOT
+// catch - only an error boundary can. Without this, a stale tab hitting a
+// missing chunk would show a blank/broken app with no way to recover short
+// of the user manually refreshing.
+class RouteErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('Failed to load a page chunk:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-10 text-center">
+          <p className="mb-4">Something went wrong loading this page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-primary text-white font-bold"
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const API_URL = 'http://localhost:5000/api';
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
 
@@ -87,19 +124,21 @@ function App() {
   return (
     <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       <Router>
-        <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
-          <Routes>
-            <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
-            <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
-            <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
-            <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
-            <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
-            <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
-            <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
-            <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
-            <Route path="*" element={<Navigate to="/dashboard" />} />
-          </Routes>
-        </Suspense>
+        <RouteErrorBoundary>
+          <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
+            <Routes>
+              <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
+              <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
+              <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
+              <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
+              <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
+              <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
+              <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
+              <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
+              <Route path="*" element={<Navigate to="/dashboard" />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </Router>
     </AuthContext.Provider>
   );
