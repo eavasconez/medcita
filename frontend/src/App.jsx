@@ -1,6 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from './config/api';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -12,7 +13,7 @@ import Reports from './pages/Reports';
 
 export const AuthContext = createContext();
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = `${API_BASE_URL}/api`;
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
 
 // Registered once at module load (every page shares this same global axios

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../App';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
@@ -120,7 +121,7 @@ const Dashboard = () => {
 
   const fetchPatients = async (query = '') => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/patients?search=${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPatients(res.data);
@@ -141,7 +142,7 @@ const Dashboard = () => {
     if (!doctorId) return;
     try {
       setLoadingSlots(true);
-      const res = await axios.get(`http://localhost:5000/api/availability/slots?date=${date}&doctorId=${doctorId}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/availability/slots?date=${date}&doctorId=${doctorId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAvailableSlots(res.data);
@@ -176,7 +177,7 @@ const Dashboard = () => {
 
   const fetchDoctors = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/admin/medicos?role=doctor', {
+      const res = await axios.get(`${API_BASE_URL}/api/admin/medicos?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);
@@ -223,7 +224,7 @@ const Dashboard = () => {
     const fetchAvailability = async () => {
       if (!formData.doctorId) return;
       try {
-        const res = await axios.get(`http://localhost:5000/api/availability?doctorId=${formData.doctorId}`, {
+        const res = await axios.get(`${API_BASE_URL}/api/availability?doctorId=${formData.doctorId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setWeeklyAvailability(res.data);
@@ -248,7 +249,7 @@ const Dashboard = () => {
       if (patientFilterId) params.set('patientId', patientFilterId);
       const queryString = params.toString();
 
-      const res = await axios.get(`http://localhost:5000/api/appointments${queryString ? `?${queryString}` : ''}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/appointments${queryString ? `?${queryString}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
@@ -273,7 +274,7 @@ const Dashboard = () => {
       return;
     }
     try {
-      const res = await axios.get(`http://localhost:5000/api/appointments?doctorId=${formData.doctorId}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/appointments?doctorId=${formData.doctorId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = res.data;
@@ -297,7 +298,7 @@ const Dashboard = () => {
       return;
     }
     try {
-      const res = await axios.get(`http://localhost:5000/api/patients?search=${query}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/patients?search=${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPatientFilterResults(res.data);
@@ -327,7 +328,7 @@ const Dashboard = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5000/api/appointments', formData, {
+      await axios.post(`${API_BASE_URL}/api/appointments`, formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setShowModal(false);
@@ -352,7 +353,7 @@ const Dashboard = () => {
     setAppointments(updatedApts);
 
     try {
-      await axios.put(`http://localhost:5000/api/appointments/${aptId}`, {
+      await axios.put(`${API_BASE_URL}/api/appointments/${aptId}`, {
         date: newDate,
         time: newTime
       }, {
@@ -377,7 +378,7 @@ const Dashboard = () => {
       // Optimistic update
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
       
-      await axios.put(`http://localhost:5000/api/appointments/${id}`, { status }, {
+      await axios.put(`${API_BASE_URL}/api/appointments/${id}`, { status }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setToast({ message: `Appointment ${status === 'confirmed' ? 'confirmed' : 'updated'}`, type: 'success' });
@@ -393,7 +394,7 @@ const Dashboard = () => {
   const handleDeleteAppointment = async (id) => {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/appointments/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/appointments/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setToast({ message: 'Appointment cancelled', type: 'success' });

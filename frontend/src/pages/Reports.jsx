@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
 import { 
@@ -27,7 +28,7 @@ const Reports = () => {
     const fetchReport = async () => {
       try {
         setLoading(true);
-        const res = await axios.get('http://localhost:5000/api/admin/reports/appointments-by-doctor', {
+        const res = await axios.get(`${API_BASE_URL}/api/admin/reports/appointments-by-doctor`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setData(res.data);
