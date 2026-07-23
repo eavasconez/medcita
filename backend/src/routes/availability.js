@@ -42,7 +42,8 @@ router.get('/', async (req, res) => {
 
     res.json(availabilities);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Get availability error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -124,7 +125,8 @@ router.get('/slots', async (req, res) => {
 
     res.json(slots);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Get free slots error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
@@ -179,7 +181,8 @@ router.post('/', async (req, res) => {
 
     res.json({ message: 'Availability updated successfully', count: newSchedules.count });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Set availability error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 
