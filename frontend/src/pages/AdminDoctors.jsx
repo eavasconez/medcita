@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
 import { 
@@ -39,7 +40,7 @@ const AdminDoctors = () => {
   const fetchDoctors = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/admin/medicos', {
+      const res = await axios.get(`${API_BASE_URL}/api/admin/medicos`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);
@@ -58,11 +59,11 @@ const AdminDoctors = () => {
     e.preventDefault();
     try {
       if (editingId) {
-        await axios.put(`http://localhost:5000/api/admin/medicos/${editingId}`, formData, {
+        await axios.put(`${API_BASE_URL}/api/admin/medicos/${editingId}`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } else {
-        await axios.post('http://localhost:5000/api/admin/medicos', formData, {
+        await axios.post(`${API_BASE_URL}/api/admin/medicos`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
@@ -90,7 +91,7 @@ const AdminDoctors = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this user? All associated data will be lost.')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/admin/medicos/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/admin/medicos/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchDoctors();

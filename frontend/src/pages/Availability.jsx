@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
 import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
@@ -29,7 +30,7 @@ const Availability = () => {
   const fetchAvailability = async (doctorId) => {
     try {
       setLoading(true);
-      const url = `http://localhost:5000/api/availability${doctorId ? `?doctorId=${doctorId}` : ''}`;
+      const url = `${API_BASE_URL}/api/availability${doctorId ? `?doctorId=${doctorId}` : ''}`;
       const res = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -43,7 +44,7 @@ const Availability = () => {
 
   const fetchDoctors = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/admin/medicos?role=doctor', {
+      const res = await axios.get(`${API_BASE_URL}/api/admin/medicos?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);
@@ -82,7 +83,7 @@ const Availability = () => {
 
   const saveSchedules = async () => {
     try {
-      await axios.post('http://localhost:5000/api/availability', {
+      await axios.post(`${API_BASE_URL}/api/availability`, {
         schedules,
         doctorId: isSpecialRole ? selectedDoctorId : undefined
       }, {

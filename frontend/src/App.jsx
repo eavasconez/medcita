@@ -1,6 +1,7 @@
 import React, { useState, useEffect, createContext, useContext, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from './config/api';
 
 // Route-level code splitting: each page (and its own dependencies, e.g.
 // Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
@@ -53,7 +54,7 @@ class RouteErrorBoundary extends React.Component {
   }
 }
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = `${API_BASE_URL}/api`;
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
 
 // Registered once at module load (every page shares this same global axios

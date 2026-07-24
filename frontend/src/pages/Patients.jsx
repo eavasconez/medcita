@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
 import {
@@ -53,7 +54,7 @@ const Patients = () => {
     fetchAbortRef.current = controller;
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/patients', {
+      const res = await axios.get(`${API_BASE_URL}/api/patients`, {
         params: { search: query, page: pageNum },
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal
@@ -86,12 +87,12 @@ const Patients = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        await axios.put(`http://localhost:5000/api/patients/${currentPatientId}`, formData, {
+        await axios.put(`${API_BASE_URL}/api/patients/${currentPatientId}`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
         showToast('Patient updated successfully');
       } else {
-        await axios.post('http://localhost:5000/api/patients', formData, {
+        await axios.post(`${API_BASE_URL}/api/patients`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
         showToast('Patient registered successfully');

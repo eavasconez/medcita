@@ -1,5 +1,6 @@
 import React, { useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../App';
 import {
@@ -33,7 +34,7 @@ const Settings = () => {
     const fetchProfile = async () => {
       try {
         setLoading(true);
-        const res = await axios.get('http://localhost:5000/api/auth/profile', {
+        const res = await axios.get(`${API_BASE_URL}/api/auth/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setProfile(res.data);
@@ -57,7 +58,7 @@ const Settings = () => {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await axios.put('http://localhost:5000/api/auth/profile', formData, {
+      const res = await axios.put(`${API_BASE_URL}/api/auth/profile`, formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setProfile(res.data);
