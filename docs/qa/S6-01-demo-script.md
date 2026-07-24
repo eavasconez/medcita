@@ -36,6 +36,8 @@ Hacer esto **en la app real desplegada** (`https://medcita-frontend.onrender.com
 
 > Antes de empezar: no usar el número de teléfono de ningún paciente de demo ya sembrado (Juan Carlos Cevallos, María Elena Lasso, Ricardo Andrade, etc.) para la prueba en vivo — ver el hallazgo documentado en `docs/qa/S5-03-production-validation.md` sección 5 sobre la colisión de teléfono con datos de demo. Usar siempre un número que no esté ya en la base.
 
+> **Prerrequisito crítico — coordinar antes de la llamada, no durante:** las notificaciones de WhatsApp corren sobre el Sandbox de Twilio (modo de prueba). El número de WhatsApp del médico **debe unirse al sandbox antes de la demo**, o el "momento wow" del paso 6 simplemente no va a llegar. Pedirle por WhatsApp, con tiempo, que le escriba `join cotton-left` al número `+1 415 523 8886` — el mismo paso que se documenta en la sección de prerrequisitos de `frontend/public/medcita-demo-guide.pdf`. La sesión expira a las ~72h sin actividad, así que si ya lo hizo hace más de 3 días, pedirle que lo repita el mismo día de la demo.
+
 ### Paso 1 — Login
 
 Entrar con la cuenta que se le creó al médico de antemano (ver checklist de `docs/qa/S5-04-onboarding-plan.md`).
