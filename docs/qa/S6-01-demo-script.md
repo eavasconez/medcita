@@ -32,16 +32,51 @@ Puntos a tocar:
 
 ## 3. Live demo (5 min) — el momento clave
 
-Hacer esto **en la app real desplegada** (`https://medcita-frontend.onrender.com` o el dominio final), no en capturas.
+Hacer esto **en la app real desplegada** (`https://medcita-frontend.onrender.com` o el dominio final), no en capturas — las capturas de abajo son la referencia de qué esperar en cada paso, tomadas contra la app real en producción.
 
-1. **Login** con la cuenta que se le creó al médico de antemano (ver checklist de `docs/qa/S5-04-onboarding-plan.md`).
-2. Mostrar su **calendario** (vacío o con 1-2 citas de ejemplo) — señalar la leyenda de colores (confirmada / agendada / pendiente).
-3. **Agendar una cita en vivo**: buscar/crear un paciente de prueba usando **el propio número de WhatsApp del médico** (para que la notificación le llegue a él mismo, en vivo, durante la demo).
-4. Confirmar la cita → mostrar el toast "Appointment scheduled! Notifications are being sent."
-5. **Esperar la notificación real** (WhatsApp o Email) y que el médico la vea llegar en su propio celular — este es el momento que vende la demo, no una explicación teórica.
-6. (Si hay tiempo) Mostrar brevemente **Availability** (cómo ajusta su propio horario) y **Patients** (directorio con búsqueda).
+> Antes de empezar: no usar el número de teléfono de ningún paciente de demo ya sembrado (Juan Carlos Cevallos, María Elena Lasso, Ricardo Andrade, etc.) para la prueba en vivo — ver el hallazgo documentado en `docs/qa/S5-03-production-validation.md` sección 5 sobre la colisión de teléfono con datos de demo. Usar siempre un número que no esté ya en la base.
 
-> Nota: no usar el número de teléfono de ningún paciente de demo ya sembrado (Juan Carlos Cevallos, María Elena Lasso, Ricardo Andrade, etc.) para esta prueba en vivo — ver el hallazgo documentado en `docs/qa/S5-03-production-validation.md` sección 5 sobre la colisión de teléfono con datos de demo.
+### Paso 1 — Login
+
+Entrar con la cuenta que se le creó al médico de antemano (ver checklist de `docs/qa/S5-04-onboarding-plan.md`).
+
+[Pantalla de login](screenshots/s6-01/01-login-empty.png) · [con las credenciales completadas](screenshots/s6-01/02-login-filled.png)
+
+### Paso 2 — Mostrar el calendario
+
+Tras iniciar sesión, señalar la leyenda de colores (confirmada / agendada / pendiente) y la vista semanal.
+
+[Dashboard / calendario](screenshots/s6-01/03-dashboard.png)
+
+### Paso 3 — Abrir "New Appointment" y buscar/crear paciente
+
+Clic en **"New Appointment"** (arriba a la derecha) → se abre el paso 1 de 3, **"Who are we seeing?"**. Si el paciente no existe, clic en **"Create New Patient"**.
+
+[Modal paso 1 — buscar paciente](screenshots/s6-01/04-modal-step1-search.png)
+
+### Paso 4 — Elegir fecha y horario
+
+Paso 2 de 3, **"When?"** — elegir la fecha (por defecto hoy) y un horario libre (en verde, "LIBRE").
+
+[Modal paso 2 — horarios disponibles](screenshots/s6-01/05-modal-step2-slots.png)
+
+### Paso 5 — Completar los datos del paciente
+
+Paso 3 de 3, **"Last details"** — nombre completo, número de WhatsApp (**usar el del médico para esta demo**, no un dato de prueba genérico), email opcional.
+
+[Modal paso 3 — formulario vacío](screenshots/s6-01/06-modal-step3-empty.png) · [formulario completado](screenshots/s6-01/07-modal-step3-filled.png)
+
+### Paso 6 — Confirmar y esperar la notificación real
+
+Clic en **"Confirm Appointment"** → aparece el toast **"Appointment scheduled! Notifications are being sent."** y la cita se ve en el calendario.
+
+[Cita confirmada — toast y calendario actualizado](screenshots/s6-01/08-confirmed-toast.png)
+
+**Esperar la notificación real** (WhatsApp o Email) y que el médico la vea llegar en su propio celular — este es el momento que vende la demo, no una explicación teórica.
+
+### Paso 7 (si hay tiempo)
+
+Mostrar brevemente **Availability** (cómo ajusta su propio horario) y **Patients** (directorio con búsqueda).
 
 ## 4. Precios (1 min)
 
