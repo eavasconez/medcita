@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { AuthContext } from '../App';
 import axios from 'axios';
 import Layout from '../components/Layout';
@@ -35,6 +35,10 @@ const locales = {
   'en': enUS,
   'es': esES
 };
+
+// Distinct from the status colors (#10b981/#0ea5e9/#f59e0b) used on the
+// event background, so a doctor's identifying stripe never reads as a status.
+const DOCTOR_COLOR_PALETTE = ['#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#06b6d4', '#d946ef'];
 
 const localizer = dateFnsLocalizer({
   format,
@@ -78,6 +82,15 @@ const Dashboard = () => {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [doctors, setDoctors] = useState([]);
+  // Maps doctorId -> a stable color, assigned by list order, so the combined
+  // (no-doctor-selected) calendar can visually distinguish whose appointment
+  // is whose without relying on the status color (which means something else).
+  const doctorColorMap = useMemo(() => {
+    return doctors.reduce((acc, doc, i) => {
+      acc[doc.id] = DOCTOR_COLOR_PALETTE[i % DOCTOR_COLOR_PALETTE.length];
+      return acc;
+    }, {});
+  }, [doctors]);
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -100,6 +113,10 @@ const Dashboard = () => {
     time: '',
     notes: ''
   });
+  // True while an admin/secretary is viewing the clinic-wide calendar (no
+  // doctor picked yet) - the view where events from multiple doctors overlap
+  // and need the per-doctor color stripe/legend to stay distinguishable.
+  const showCombinedView = isSpecialRole && !formData.doctorId;
 
   // Ensure doctorId is set once user is available
   useEffect(() => {
@@ -457,6 +474,26 @@ const Dashboard = () => {
     setShowModal(true);
   };
 
+  // react-big-calendar renders event content through the `components.event`
+  // prop - NOT through anything returned from eventPropGetter (that getter's
+  // return is only used for `className`/`style` on the event wrapper). This
+  // is the actual hook for adding the per-doctor identifier to the combined
+  // (no-doctor-selected) calendar view.
+  const EventContent = ({ event, title }) => (
+    <span className="flex items-center gap-1 truncate">
+      {showCombinedView && (
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: doctorColorMap[event.resource?.doctorId] || '#94a3b8' }}
+        ></span>
+      )}
+      <span className="truncate">
+        {title}
+        {showCombinedView && event.resource?.doctor?.name ? ` · ${event.resource.doctor.name}` : ''}
+      </span>
+    </span>
+  );
+
   const calendarEvents = appointments.map(apt => {
     const start = new Date(`${apt.date}T${apt.time}`);
     const end = new Date(start.getTime() + 30 * 60000); // 30 min duration
@@ -506,7 +543,10 @@ const Dashboard = () => {
                 >
                   <option value="">Select a doctor</option>
                   {doctors.map(dr => (
-                    <option key={dr.id} value={dr.id}>Dr. {dr.name}</option>
+                    // Doctor names already carry their own title (e.g. "Dr. Santiago
+                    // Pérez", "Dra. Camila Torres") - only prepend "Dr." for names
+                    // that don't, instead of always doubling it up.
+                    <option key={dr.id} value={dr.id}>{/^dra?\.?\s/i.test(dr.name) ? dr.name : `Dr. ${dr.name}`}</option>
                   ))}
                 </select>
               </div>
@@ -581,6 +621,20 @@ const Dashboard = () => {
               <span className="text-xs font-bold text-secondary">Pending</span>
             </div>
           </div>
+
+          {showCombinedView && doctors.length > 0 && (
+            <>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-5 mb-4">Doctors</p>
+              <div className="space-y-3">
+                {doctors.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: doctorColorMap[doc.id] }}></div>
+                    <span className="text-xs font-bold text-secondary truncate">{doc.name}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -692,6 +746,7 @@ const Dashboard = () => {
               noEventsInRange: "No appointments in this range"
             }}
             culture="en-US"
+            components={{ event: EventContent }}
               eventPropGetter={(event) => {
                 const status = event.resource?.status;
                 let backgroundColor = '#1e293b'; // Default secondary
