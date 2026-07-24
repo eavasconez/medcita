@@ -4,29 +4,60 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+// Upper bound on skip/offset - well beyond any real patient list, but keeps
+// a bogus/huge page number from producing an expensive full-table scan or
+// an offset outside what Postgres/Prisma can sanely handle.
+const MAX_SKIP = 1_000_000;
 
 // All patient routes are protected
 router.use(auth);
 
-// Get all patients (optionally search by name or phone)
+// Get patients (optionally search by name/phone/cedula), paginated so a
+// growing patient list doesn't return every row on every load.
 router.get('/', async (req, res) => {
   const { search } = req.query;
+
+  const page = req.query.page !== undefined ? Number(req.query.page) : 1;
+  if (!Number.isInteger(page) || page < 1) {
+    return res.status(400).json({ error: 'page must be a positive integer' });
+  }
+
+  const pageSizeInput = req.query.pageSize !== undefined ? Number(req.query.pageSize) : DEFAULT_PAGE_SIZE;
+  if (!Number.isInteger(pageSizeInput) || pageSizeInput < 1) {
+    return res.status(400).json({ error: 'pageSize must be a positive integer' });
+  }
+  const pageSize = Math.min(MAX_PAGE_SIZE, pageSizeInput);
+
+  if ((page - 1) * pageSize > MAX_SKIP) {
+    return res.status(400).json({ error: 'page is out of range' });
+  }
+
+  const where = search ? {
+    OR: [
+      { name: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search } },
+      { cedula: { contains: search } }
+    ]
+  } : {};
+
   try {
-    const patients = await prisma.patient.findMany({
-      where: search ? {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search } },
-          { cedula: { contains: search } }
-        ]
-      } : {},
-      include: {
-        _count: {
-          select: { appointments: true }
-        }
-      }
-    });
-    res.json(patients);
+    const [patients, total] = await Promise.all([
+      prisma.patient.findMany({
+        where,
+        include: {
+          _count: {
+            select: { appointments: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      }),
+      prisma.patient.count({ where })
+    ]);
+    res.json({ patients, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (err) {
     console.error('List patients error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
