@@ -132,23 +132,30 @@ const notificationService = {
   },
 
   /**
-   * Send a reminder (WhatsApp + Email)
+   * Send a reminder (WhatsApp + Email). `dayLabel` is 'hoy' or 'mañana'
+   * depending on when the appointment is. Resolves to true if at least one
+   * channel delivered, so callers can retry when nothing went out.
    */
-  sendReminder: async (appointment) => {
+  sendReminder: async (appointment, { dayLabel = 'mañana' } = {}) => {
     const { patient, doctor, date, time } = appointment;
-    const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita mañana ${date} a las ${time} con el ${doctor.name}.`;
+    const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita ${dayLabel} ${date} a las ${time} con el ${doctor.name}.`;
 
-    await notificationService.sendWhatsApp(patient.phone, msg);
+    // Each channel is independent: one failing must not suppress the other.
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg)];
 
     if (patient.email && patient.email.includes('@')) {
       const html = emailService.templates.reminderHtml({
         patientName: patient.name,
         doctorName: doctor.name,
         date,
-        time
+        time,
+        dayLabel
       });
-      await notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html);
+      tasks.push(notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html));
     }
+
+    const results = await Promise.allSettled(tasks);
+    return results.some((result) => result.status === 'fulfilled' && result.value === true);
   }
 };
 
