@@ -1,6 +1,8 @@
 const mockTwilioCreate = jest.fn();
 jest.mock('twilio', () => jest.fn(() => ({ messages: { create: mockTwilioCreate } })));
 
+const fs = require('fs');
+const path = require('path');
 const notificationService = require('../src/services/notificationService');
 const { buildTemplate, TEMPLATES } = require('../src/services/whatsappTemplates');
 
@@ -47,12 +49,12 @@ describe('buildTemplate', () => {
     expect(t.text).toBe('MedCita: Hola María, tu cita con Dr. Pérez ha sido agendada para el 2030-01-15 a las 10:00. ¡Te esperamos!');
   });
 
-  it('fills the reminder, with the day label as its own variable', () => {
-    const t = buildTemplate('appointmentReminder', { patientName: 'María', dayLabel: 'mañana', date: '2030-01-15', time: '10:00', doctorName: 'Dr. Pérez' }, {});
+  it('fills the reminder, with the day and the date as one variable', () => {
+    const t = buildTemplate('appointmentReminder', { patientName: 'María', whenText: 'mañana 2030-01-15', time: '10:00', doctorName: 'Dr. Pérez' }, {});
 
     expect(t.name).toBe('recordatorio_cita');
-    expect(t.params).toEqual(['María', 'mañana', '2030-01-15', '10:00', 'Dr. Pérez']);
-    expect(t.text).toBe('Recordatorio MedCita: Hola María, tienes una cita mañana 2030-01-15 a las 10:00 con Dr. Pérez.');
+    expect(t.params).toEqual(['María', 'mañana 2030-01-15', '10:00', 'Dr. Pérez']);
+    expect(t.text).toBe('Recordatorio MedCita: Hola María, tienes una cita mañana 2030-01-15 a las 10:00 con Dr. Pérez. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!');
   });
 
   it('uses the template name and language from the environment when they are set', () => {
@@ -120,7 +122,7 @@ describe('sendWhatsApp through Meta', () => {
     expect(delivered).toBe(true);
     expect(sentBody().type).toBe('template');
     expect(sentBody().template.name).toBe('recordatorio_cita');
-    expect(sentBody().template.components[0].parameters.map((p) => p.text)).toEqual(['María Andrade', dayLabel, '2030-01-15', '10:00', 'Dra. Camila Torres']);
+    expect(sentBody().template.components[0].parameters.map((p) => p.text)).toEqual(['María Andrade', `${dayLabel} 2030-01-15`, '10:00', 'Dra. Camila Torres']);
   });
 
   it('uses the template names and language configured in the environment', async () => {
@@ -185,7 +187,7 @@ describe('without Meta credentials', () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mockTwilioCreate).not.toHaveBeenCalled();
     const printed = console.log.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(printed).toContain('Recordatorio MedCita: Hola María Andrade, tienes una cita hoy 2030-01-15 a las 10:00 con Dra. Camila Torres.');
+    expect(printed).toContain('Recordatorio MedCita: Hola María Andrade, tienes una cita hoy 2030-01-15 a las 10:00 con Dra. Camila Torres. Si no puedes asistir');
   });
 
   it('prefers Meta over Twilio when both are configured', async () => {
@@ -264,5 +266,16 @@ describe('what gets logged', () => {
 
     expect(delivered).toBe(false);
     expect(console.error.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('502 <html>Bad gateway</html>');
+  });
+});
+
+describe('docs/DEPLOY.md', () => {
+  const deploy = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'DEPLOY.md'), 'utf8');
+
+  // Whoever registers the templates in Meta copies them from the guide: the text
+  // there must be the one the code fills in, or every send fails with error 132001.
+  it.each(Object.entries(TEMPLATES))('lists the exact text and default name of the %s template', (_key, template) => {
+    expect(deploy).toContain(template.body);
+    expect(deploy).toContain(`nombre \`${template.defaultName}\``);
   });
 });

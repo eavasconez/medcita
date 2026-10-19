@@ -83,7 +83,7 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
    | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
-   | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local) |
+   | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para WhatsApp con Meta (plantillas, número de prueba gratuito) ver la sección 7 |
 
    > **Verificar `TRUST_PROXY` tras desplegar**: el login limita los intentos fallidos por IP y por correo, y la IP depende de cuántos proxies hay delante (en Render: Cloudflare + balanceador). Con un token de admin:
    > ```bash
@@ -146,6 +146,110 @@ curl -X POST https://medcita-backend.onrender.com/api/auth/login \
 ```
 
 Luego, en el navegador: entrar a la URL del frontend, iniciar sesión, y confirmar en las DevTools (pestaña Network) que las peticiones van al dominio del backend real, sin errores de CORS ni en la consola. Ver `docs/qa/S5-02-deploy-verification.md` para el detalle completo de esta verificación con capturas.
+
+## 7. WhatsApp con Meta Cloud API (plantillas)
+
+Hasta ahora producción enviaba WhatsApp con el **sandbox de Twilio**, que obliga a cada destinatario a «unirse» a mano antes de recibir nada. Con la API de Meta no hace falta: el **número de prueba es gratuito** y se pueden agregar hasta 5 destinatarios desde el panel de Meta, sin escribirle nunca al número.
+
+> **Por qué plantillas.** Meta solo deja que un negocio abra una conversación con una **plantilla aprobada**. El texto libre únicamente se entrega dentro de las 24 h posteriores a que el paciente escribió. La confirmación de cita y el recordatorio los inicia MedCita, así que desde S7-06 se envían como plantillas (`backend/src/services/whatsappTemplates.js`). Sin credenciales de Meta nada cambia: Twilio y el modo mock envían el mismo texto como mensaje normal.
+
+> Meta cambia los nombres de los menús con frecuencia. Si algo no está donde se indica, búscalo por su nombre en el buscador del panel.
+
+### 7.1 Crear la app y el número de prueba (una sola vez)
+
+1. Entra a [developers.facebook.com](https://developers.facebook.com) con la cuenta de Facebook que administrará esto → **My Apps → Create App** → tipo **Business** → asocia (o crea) un *business portfolio*.
+2. En el panel de la app, agrega el producto **WhatsApp**. Meta crea una cuenta de WhatsApp Business de prueba con un **número de prueba**.
+3. En **WhatsApp → API Setup** anota dos datos:
+   - **Phone number ID** (un número largo; **no** es el teléfono): va en `META_WHATSAPP_PHONE_NUMBER_ID`.
+   - **WhatsApp Business Account ID**: lo pedirá Meta al crear plantillas.
+
+### 7.2 Agregar a quienes recibirán los mensajes de prueba (máx. 5)
+
+**WhatsApp → API Setup →** campo **To →** **Manage phone number list →** agrega cada número con su código de país (por ejemplo `+593…`). Meta manda un código por WhatsApp a ese número para confirmarlo. Con el número de prueba, **un número que no esté en esta lista no recibe nada** (el error es el 131030).
+
+### 7.3 Token permanente
+
+El token que muestra *API Setup* es temporal y **vence a las 24 h**. Para uno permanente:
+
+1. [business.facebook.com/settings](https://business.facebook.com/settings) → **Users → System users → Add** (rol *Admin*).
+2. **Add assets**: la **app** (control total) y la **cuenta de WhatsApp** (control total).
+3. **Generate new token** → elige la app → marca los permisos `whatsapp_business_messaging` y `whatsapp_business_management` → vencimiento **Never**.
+4. Copia el token (solo se muestra una vez) a `META_WHATSAPP_TOKEN`. Es una credencial: va en las variables de entorno de Render, nunca en el repositorio.
+
+### 7.4 Registrar las dos plantillas
+
+En **WhatsApp Manager → Message templates → Create template** (o **WhatsApp → Message templates** en el panel de la app). Para las dos:
+
+- **Category: Utility** · **Language: Spanish** (código `es`) · sin encabezado, pie ni botones.
+- El nombre admite solo minúsculas, números y guiones bajos.
+- Pega el texto **exactamente** como está abajo, con sus variables `{{1}}`, `{{2}}`… y completa los **ejemplos** que Meta pide para cada variable.
+
+**Confirmación de cita** — nombre `cita_confirmada`:
+
+```
+MedCita: Hola {{1}}, tu cita con {{2}} ha sido agendada para el {{3}} a las {{4}}. ¡Te esperamos!
+```
+Ejemplos: `{{1}}` María Andrade · `{{2}}` Dr. Santiago Pérez · `{{3}}` 2026-10-21 · `{{4}}` 10:00
+
+**Recordatorio de 24 h** — nombre `recordatorio_cita`:
+
+```
+Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
+```
+Ejemplos: `{{1}}` María Andrade · `{{2}}` mañana 2026-10-21 · `{{3}}` 10:00 · `{{4}}` Dr. Santiago Pérez
+
+> Meta rechaza una plantilla con demasiadas variables para lo corto que es el texto («demasiadas variables en relación con su longitud»), y no admite una variable al principio ni al final. Por eso el día y la fecha viajan juntos en `{{2}}` y el texto cierra con una frase.
+
+La revisión es automática y puede tardar desde minutos hasta 24 h; solo las plantillas en estado **APPROVED** se pueden enviar. Si Meta las recategoriza como *Marketing*, el texto parece promocional: edítalo para que sea solo informativo. Si registras otro nombre o idioma (por ejemplo `es_MX`), indícalo en `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER` o `META_WHATSAPP_TEMPLATE_LANGUAGE`.
+
+Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar también la plantilla en Meta (se vuelve a aprobar); mientras tanto los envíos fallan con el error 132001. Un test comprueba que este documento y el código tengan el mismo texto.
+
+### 7.5 Variables de entorno (Render)
+
+| Key | Value |
+|---|---|
+| `META_WHATSAPP_TOKEN` | El token permanente del paso 7.3 |
+| `META_WHATSAPP_PHONE_NUMBER_ID` | El *Phone number ID* del paso 7.1 |
+| `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | Opcionales. Nombres de las plantillas (por defecto `cita_confirmada` y `recordatorio_cita`) |
+| `META_WHATSAPP_TEMPLATE_LANGUAGE` | Opcional. Idioma de las plantillas (por defecto `es`) |
+
+Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio, borra las variables `TWILIO_*`.
+
+### 7.6 Comprobar que funciona
+
+Desde `backend/`, con esas variables en tu `.env` local (o exportadas), y con tu número en la lista del paso 7.2:
+
+```bash
+npm run whatsapp:test -- +593999999999             # confirmación
+npm run whatsapp:test -- +593999999999 reminder    # recordatorio
+```
+
+Debe imprimir `Provider: Meta Cloud API`, el nombre de la plantilla y `OK: Meta Cloud API accepted the message`, y el mensaje llega al teléfono **sin que nadie le haya escrito antes al número**. Si falla, el error de Meta aparece en las líneas anteriores con una pista de qué corregir. Los más comunes:
+
+| Código | Qué pasó | Qué hacer |
+|---|---|---|
+| 190 | El token venció o es inválido | Genera el token permanente (7.3) y actualiza `META_WHATSAPP_TOKEN` |
+| 131030 | El número no está en la lista de destinatarios del número de prueba | Agrégalo en 7.2 |
+| 132001 | No hay una plantilla **aprobada** con ese nombre e idioma | Revisa el estado en WhatsApp Manager y los nombres/idioma de 7.4 y 7.5 |
+| 132000 / 132012 | La cantidad o el formato de las variables no coincide con la plantilla | Registra la plantilla con el texto exacto de 7.4 |
+| 132015 / 132016 | Plantilla pausada o deshabilitada por baja calidad | Edítala en WhatsApp Manager o crea otra |
+| 131047 | Mensaje de texto libre fuera de la ventana de 24 h | No debería pasar con plantillas: avisa si lo ves |
+
+Después prueba el flujo real: agenda una cita con tu número como paciente y espera el WhatsApp de confirmación (y el recordatorio cuando falten menos de 24 h).
+
+### 7.7 Checklist para pasar a un número real
+
+El número de prueba sirve para validar, no para clientes reales (solo 5 destinatarios). Para producción:
+
+- [ ] **Verificación del negocio** en Meta Business Suite (Business settings → Security centre). Sin ella los límites de envío son bajos.
+- [ ] **Número propio** que no esté activo en la app de WhatsApp normal, con su *display name* aprobado.
+- [ ] **Método de pago** en la cuenta de WhatsApp Business (Business settings → Payments). Sin él, Meta no deja enviar plantillas a destinatarios nuevos.
+- [ ] **Plantillas aprobadas en la cuenta del número real.** Las plantillas pertenecen a la cuenta de WhatsApp Business: si el número real queda en otra cuenta que el de prueba, hay que registrarlas allí otra vez (7.4).
+- [ ] Actualizar `META_WHATSAPP_PHONE_NUMBER_ID` (y el token si es de otra app) en Render.
+- [ ] **Consentimiento de los pacientes.** La política de WhatsApp pide que el paciente haya aceptado recibir mensajes del negocio. Hoy el formulario de la cita no lo pregunta ni lo guarda.
+- [ ] Revisar la **tarifa vigente**.
+
+**Costo.** Los mensajes *utility* enviados **fuera** de la ventana de 24 h de atención al cliente (el caso de una confirmación o un recordatorio a quien no escribió) se cobran por mensaje; dentro de la ventana son gratis. Ecuador está en la región «Rest of Latin America». Como orden de magnitud, una guía de terceros de julio de 2026 lista unos US$0,0113 por mensaje *utility* en esa región (confirmación + recordatorio ≈ US$0,02 por cita): es una referencia, no un precio. Meta actualiza sus tarifas el primer día de cada trimestre; la vigente está en [developers.facebook.com/docs/whatsapp/pricing](https://developers.facebook.com/docs/whatsapp/pricing).
 
 ## Notas para futuros redeploys
 

@@ -65,7 +65,7 @@ describe('sendReminders', () => {
 
     const [message] = sentTo(patient.phone);
     expect(message.template).toMatchObject({ name: 'recordatorio_cita', language: 'es' });
-    expect(message.template.params).toEqual([patient.name, expect.stringMatching(/^(hoy|mañana)$/), appointment.date, appointment.time, 'Dr. Santiago Pérez']);
+    expect(message.template.params).toEqual([patient.name, expect.stringMatching(new RegExp(`^(hoy|mañana) ${appointment.date}$`)), appointment.time, 'Dr. Santiago Pérez']);
   });
 
   it.each(['cancelled', 'completed'])('does not remind a %s appointment', async (status) => {

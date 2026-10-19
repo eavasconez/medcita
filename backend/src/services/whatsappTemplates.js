@@ -21,8 +21,11 @@ const TEMPLATES = {
   appointmentReminder: {
     nameEnvVar: 'META_WHATSAPP_TEMPLATE_REMINDER',
     defaultName: 'recordatorio_cita',
-    body: 'Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} {{3}} a las {{4}} con {{5}}.',
-    fields: ['patientName', 'dayLabel', 'date', 'time', 'doctorName']
+    // Meta rejects a template with too many variables for its length (5 in a short text
+    // was refused), so the day and the date travel as ONE variable ("mañana 2026-10-21")
+    // and the text has a closing sentence.
+    body: 'Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!',
+    fields: ['patientName', 'whenText', 'time', 'doctorName']
   }
 };
 

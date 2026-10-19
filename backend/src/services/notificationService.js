@@ -208,8 +208,7 @@ const notificationService = {
     const { patient, doctor, date, time } = appointment;
     const whatsapp = buildTemplate('appointmentReminder', {
       patientName: patient.name,
-      dayLabel,
-      date,
+      whenText: `${dayLabel} ${date}`,
       time,
       doctorName: doctor.name
     });
