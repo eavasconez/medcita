@@ -127,10 +127,10 @@ function appointmentConfirmationHtml({ patientName, doctorName, date, time, addr
   `);
 }
 
-function reminderHtml({ patientName, doctorName, date, time }) {
+function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana' }) {
   return baseLayout('Recordatorio de cita', `
     <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
-    <p>Tienes una cita mañana <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>.</p>
+    <p>Tienes una cita ${escapeHtml(dayLabel)} <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>.</p>
   `);
 }
 

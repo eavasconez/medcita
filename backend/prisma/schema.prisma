@@ -46,11 +46,13 @@ model Appointment {
   id        String   @id @default(uuid())
   date      String
   time      String
-  status    String   @default("scheduled")
+  status    String   @default("pending_approval")
   notes     String?
   doctorId  String
   patientId String
   createdAt DateTime @default(now())
+  // Set when the 24h reminder is claimed/sent; null means it is still owed.
+  reminderSentAt DateTime?
   doctor    Doctor   @relation(fields: [doctorId], references: [id])
   patient   Patient  @relation(fields: [patientId], references: [id])
 }
