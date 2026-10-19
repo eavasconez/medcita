@@ -160,11 +160,7 @@ router.post('/', async (req, res) => {
     });
 
     // 5. Send Notification (WhatsApp + Email) - outside the transaction, after commit
-    console.log('Sending confirmation for appointment:', {
-      id: appointment.id,
-      patientEmail: appointment.patient.email,
-      patientPhone: appointment.patient.phone
-    });
+    console.log('Sending confirmation for appointment:', appointment.id);
     await sendAppointmentConfirmation(appointment);
 
     res.status(201).json({ ...appointment, Patient: appointment.patient });
