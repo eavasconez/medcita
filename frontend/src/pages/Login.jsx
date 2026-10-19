@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../App';
-import { Link } from 'react-router-dom';
-import { Stethoscope, Mail, Lock, LogIn, FileText, Download } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Stethoscope, Mail, Lock, LogIn, FileText, Download, CheckCircle2 } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -9,6 +9,15 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Success message handed over by the reset password page. Kept in state, and the
+  // router state is cleared so refreshing the page doesn't bring it back.
+  const [notice] = useState(location.state?.notice || '');
+  useEffect(() => {
+    if (location.state?.notice) navigate(location.pathname, { replace: true, state: null });
+  }, [location, navigate]);
 
   // Picked up once after a global 401 (expired/invalid token) redirected here.
   useEffect(() => {
@@ -78,6 +87,13 @@ const Login = () => {
         </div>
 
         <div className="p-6 sm:p-10">
+          {notice && (
+            <div role="status" className="mb-8 p-4 bg-emerald-50 text-emerald-700 rounded-2xl text-sm font-bold border border-emerald-100 flex items-center gap-3">
+              <CheckCircle2 size={18} className="shrink-0" />
+              {notice}
+            </div>
+          )}
+
           {error && (
             <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 flex items-center gap-3 animate-shake">
               <span className="w-2 h-2 bg-red-600 rounded-full animate-ping"></span>
@@ -102,7 +118,12 @@ const Login = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Password</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Password</label>
+                <Link to="/forgot-password" className="text-[11px] font-bold text-primary hover:underline underline-offset-4">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={20} />
                 <input

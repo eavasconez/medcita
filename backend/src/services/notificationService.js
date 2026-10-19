@@ -156,6 +156,24 @@ const notificationService = {
 
     const results = await Promise.allSettled(tasks);
     return results.some((result) => result.status === 'fulfilled' && result.value === true);
+  },
+
+  /**
+   * Email the account owner a password reset link. Resolves to true when the
+   * email was delivered.
+   */
+  sendPasswordReset: async ({ doctor, resetUrl, expiresInMinutes }) => {
+    const text = [
+      `Hola ${doctor.name},`,
+      '',
+      'Recibimos una solicitud para restablecer la contraseña de tu cuenta de MedCita.',
+      `Abre este enlace para elegir una nueva (vale ${expiresInMinutes} minutos y solo se puede usar una vez):`,
+      resetUrl,
+      '',
+      'Si no pediste este cambio, ignora este correo: tu contraseña no se modificará.'
+    ].join('\n');
+    const html = emailService.templates.passwordResetHtml({ name: doctor.name, resetUrl, expiresInMinutes });
+    return notificationService.sendEmail(doctor.email, 'Restablece tu contraseña - MedCita', text, html);
   }
 };
 

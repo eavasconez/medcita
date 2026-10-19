@@ -150,6 +150,17 @@ router.delete('/medicos/:id', async (req, res) => {
   }
 });
 
+// Diagnostic for the TRUST_PROXY setting: `ip` must be the caller's real public
+// IP. If it shows a proxy address, raise TRUST_PROXY; if it shows an address the
+// caller doesn't own, lower it (see config/trustProxy.js).
+router.get('/client-ip', (req, res) => {
+  res.json({
+    ip: req.ip,
+    forwardedFor: req.headers['x-forwarded-for'] || null,
+    trustProxy: req.app.get('trust proxy')
+  });
+});
+
 // Get reports (Appointments by doctor)
 router.get('/reports/appointments-by-doctor', async (req, res) => {
   try {

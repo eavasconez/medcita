@@ -55,7 +55,17 @@ El plan original (Sprint 5) contemplaba DigitalOcean + dominio comprado + Nginx/
    | `DATABASE_URL` | La misma connection string de Neon usada en el paso 2 |
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
+   | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
    | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local) |
+
+   > **Verificar `TRUST_PROXY` tras desplegar**: el login limita los intentos fallidos por IP y por correo, y la IP depende de cuántos proxies hay delante (en Render: Cloudflare + balanceador). Con un token de admin:
+   > ```bash
+   > curl -H "Authorization: Bearer <token-admin>" https://medcita-backend.onrender.com/api/admin/client-ip
+   > # {"ip":"<tu IP pública>","forwardedFor":"...","trustProxy":2}
+   > ```
+   > `ip` debe ser **tu IP pública** (compárala con `curl ifconfig.me`). Si muestra una IP de Cloudflare o privada, sube `TRUST_PROXY` en 1; si muestra una IP que no es tuya, bájalo en 1. El límite por correo funciona igual aunque este valor esté mal; solo el límite por IP depende de él.
+
+   > **Recuperación de contraseña**: necesita un proveedor de email real (`BREVO_API_KEY` y `BREVO_FROM_EMAIL`, o `SENDGRID_API_KEY`) y que `FRONTEND_URL` sea la URL real del frontend, porque el enlace del correo se arma con ella. Al desplegar este cambio hay que correr `npx prisma db push` contra Neon (crea la tabla `PasswordResetToken`; es aditivo, no toca datos).
 
 4. **"Create Web Service"**. Al terminar el build, Render asigna una URL tipo `https://medcita-backend.onrender.com` — confirmarla con:
    ```bash
