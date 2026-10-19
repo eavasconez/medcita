@@ -27,15 +27,40 @@ El plan original (Sprint 5) contemplaba DigitalOcean + dominio comprado + Nginx/
    ```bash
    echo 'DATABASE_URL="<connection-string-de-neon>"' > backend/.env.production.local
    ```
-3. Sincronizar el esquema y cargar los datos de demo contra Neon:
+3. Crear las tablas y cargar los datos de demo contra Neon:
    ```bash
    cd backend
    set -a; source .env.production.local; set +a
-   npx prisma db push
+   npx prisma migrate deploy
    npx prisma db seed
    ```
-   Esto crea 1 admin + 3 médicos piloto + 8 pacientes + 9 citas de ejemplo (ver `prisma/seed.js`). **Correr `db seed` de nuevo borra y recrea todo** — no ejecutarlo contra datos reales de producción una vez haya pacientes reales.
+   `migrate deploy` aplica las migraciones de `backend/prisma/migrations` (crea las tablas y anota cada migración aplicada en la tabla `_prisma_migrations`). El seed crea 1 admin + 3 médicos piloto + 8 pacientes + 9 citas de ejemplo (ver `prisma/seed.js`). **Correr `db seed` de nuevo borra y recrea todo** — no ejecutarlo contra datos reales de producción una vez haya pacientes reales.
 4. Verificar (opcional): en el dashboard de Neon, menú lateral → **"Tables"** (explorador visual) o **"SQL Editor"** (`SELECT * FROM "Doctor";`).
+
+> **Usa la connection string directa de Neon** (el host no lleva `-pooler`). Prisma Migrate toma un bloqueo de sesión que el pooler de Neon (PgBouncer) puede dejar colgado.
+
+### Neon que ya existía (creada con `db push`): registrar el historial, una sola vez
+
+Hasta S7-03 el esquema se subía a Neon con `db push`, que crea las tablas pero **no deja historial**. Con ese Neon, `migrate deploy` se niega a correr (error `P3005`, no modifica nada) hasta que se le diga a Prisma que la migración `20261019202135_baseline` —el esquema completo tal como estaba al cerrar S7-03— ya está aplicada. Registrarla **no ejecuta SQL ni toca datos**: solo crea la tabla `_prisma_migrations` y anota la migración.
+
+```bash
+cd backend
+set -a; source .env.production.local; set +a
+
+# 1. Solo lectura: comprobar que Neon es idéntica al esquema actual.
+#    Debe responder "-- This is an empty migration." (código de salida 0)
+npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script --exit-code
+
+# 2. Registrar la baseline como ya aplicada
+npx prisma migrate resolve --applied 20261019202135_baseline
+
+# 3. Verificar: debe decir "Database schema is up to date!"
+npx prisma migrate status
+```
+
+Si el paso 1 imprime SQL (código de salida 2), a Neon le falta algo de un PR anterior (por ejemplo la columna `reminderSentAt` de S7-01 o la tabla `PasswordResetToken` de S7-03). Si el SQL solo agrega cosas (`CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD …`), corre `npx prisma db push` y repite el paso 1. Si aparece algún `DROP`, **detente y revísalo antes** de seguir: `db push` pediría `--accept-data-loss`.
+
+Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en Render (sección 3). Hacerlo antes haría fallar el build con `P3005` (la versión anterior seguiría sirviendo, no se pierde nada).
 
 ## 3. Backend (Render Web Service)
 
@@ -45,9 +70,11 @@ El plan original (Sprint 5) contemplaba DigitalOcean + dominio comprado + Nginx/
    - **Branch**: la rama que se quiera desplegar (idealmente `main` una vez todos los PRs estén mergeados)
    - **Root Directory**: `backend`
    - **Runtime**: Node
-   - **Build Command**: `npm install`
+   - **Build Command**: `npm install && npx prisma migrate deploy`
    - **Start Command**: `node src/server.js`
    - **Instance Type**: Free
+
+   `migrate deploy` aplica en cada deploy las migraciones pendientes contra `DATABASE_URL` (Neon) y no hace nada si no hay ninguna. Si una migración falla, el build falla y Render sigue sirviendo la versión anterior. Para un servicio que **ya existe**, cambiar el Build Command en *Settings → Build & Deploy*, pero solo después de registrar el historial en Neon (sección 2). El CLI `prisma` está en `dependencies` (no en `devDependencies`) para que este comando lo encuentre aunque el build omita las dependencias de desarrollo.
 3. **Environment Variables** (antes de crear el servicio):
 
    | Key | Value |
@@ -65,7 +92,7 @@ El plan original (Sprint 5) contemplaba DigitalOcean + dominio comprado + Nginx/
    > ```
    > `ip` debe ser **tu IP pública** (compárala con `curl ifconfig.me`). Si muestra una IP de Cloudflare o privada, sube `TRUST_PROXY` en 1; si muestra una IP que no es tuya, bájalo en 1. El límite por correo funciona igual aunque este valor esté mal; solo el límite por IP depende de él.
 
-   > **Recuperación de contraseña**: necesita un proveedor de email real (`BREVO_API_KEY` y `BREVO_FROM_EMAIL`, o `SENDGRID_API_KEY`) y que `FRONTEND_URL` sea la URL real del frontend, porque el enlace del correo se arma con ella. Al desplegar este cambio hay que correr `npx prisma db push` contra Neon (crea la tabla `PasswordResetToken`; es aditivo, no toca datos).
+   > **Recuperación de contraseña**: necesita un proveedor de email real (`BREVO_API_KEY` y `BREVO_FROM_EMAIL`, o `SENDGRID_API_KEY`) y que `FRONTEND_URL` sea la URL real del frontend, porque el enlace del correo se arma con ella. La tabla `PasswordResetToken` forma parte de la migración baseline: en una Neon creada antes de S7-03, el paso 1 de la sección 2 avisa si todavía no la tiene.
 
 4. **"Create Web Service"**. Al terminar el build, Render asigna una URL tipo `https://medcita-backend.onrender.com` — confirmarla con:
    ```bash
@@ -122,6 +149,7 @@ Luego, en el navegador: entrar a la URL del frontend, iniciar sesión, y confirm
 
 ## Notas para futuros redeploys
 
+- Cada deploy del backend ejecuta `prisma migrate deploy`. Para cambiar el esquema a partir de ahora (migraciones, qué revisar, cómo se prueba) ver `docs/TECHNICAL.md`, sección 7. Nunca usar `db push` contra Neon: no deja historial.
 - Si se cambia de rama (ej. al mergear un PR a `main`), actualizar el campo **"Branch"** en la configuración de ambos servicios de Render (backend y frontend) — no se actualiza solo.
 - `backend/.env.production.local` nunca se commitea (está en `.gitignore`) — si se pierde, hay que volver a copiar la connection string desde el dashboard de Neon.
 - Neon "scales to zero" el compute cuando no hay actividad — la primera consulta tras un rato inactivo puede tardar un poco más (cold start de la base), separado del sleep del backend en Render.

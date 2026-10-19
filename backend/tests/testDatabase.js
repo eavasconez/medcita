@@ -27,4 +27,13 @@ function getTestDatabaseUrl() {
   return url;
 }
 
-module.exports = { getTestDatabaseUrl };
+// The Postgres schema the test tables live in ("?schema=public" in the URL).
+function getTestSchemaName(url = getTestDatabaseUrl()) {
+  const schema = new URL(url).searchParams.get('schema') || 'public';
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)) {
+    throw new Error(`TEST_DATABASE_URL has an unsupported schema name: "${schema}".`);
+  }
+  return schema;
+}
+
+module.exports = { getTestDatabaseUrl, getTestSchemaName };
