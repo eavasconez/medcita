@@ -11,8 +11,20 @@ const VALID_ROLES = ['admin', 'secretary', 'doctor'];
 // Protect all routes with authentication
 router.use(auth);
 
+// /doctors used to be called /medicos. The old paths still work as an alias for
+// clients that haven't been updated yet (e.g. a frontend still cached in a
+// browser) and answer with a Deprecation header. Remove them once no client
+// uses them.
+const DOCTORS = ['/doctors', '/medicos'];
+const DOCTOR = ['/doctors/:id', '/medicos/:id'];
+router.use('/medicos', (req, res, next) => {
+  res.set('Deprecation', 'true');
+  res.set('Link', '</api/admin/doctors>; rel="successor-version"');
+  next();
+});
+
 // List all doctors (Accessible by Admin and Secretary)
-router.get('/medicos', async (req, res) => {
+router.get(DOCTORS, async (req, res) => {
   if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
     return res.status(403).json({ error: 'Access denied. Admin or secretary rights required.' });
   }
@@ -44,7 +56,7 @@ router.get('/medicos', async (req, res) => {
 router.use(admin);
 
 // Create new doctor
-router.post('/medicos', async (req, res) => {
+router.post(DOCTORS, async (req, res) => {
   const { name, email, password, role } = req.body;
 
   const normalizedName = typeof name === 'string' ? name.trim() : '';
@@ -86,7 +98,7 @@ router.post('/medicos', async (req, res) => {
 });
 
 // Update doctor
-router.put('/medicos/:id', async (req, res) => {
+router.put(DOCTOR, async (req, res) => {
   const { name, email, role, password } = req.body;
 
   const normalizedName = typeof name === 'string' ? name.trim() : name;
@@ -130,7 +142,7 @@ router.put('/medicos/:id', async (req, res) => {
 });
 
 // Delete doctor
-router.delete('/medicos/:id', async (req, res) => {
+router.delete(DOCTOR, async (req, res) => {
   try {
     // Prevent self-deletion if needed
     if (req.params.id === req.doctorId) {

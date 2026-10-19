@@ -229,7 +229,7 @@ const Dashboard = () => {
 
   const fetchDoctors = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/admin/medicos?role=doctor`, {
+      const res = await axios.get(`${API_BASE_URL}/api/admin/doctors?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);

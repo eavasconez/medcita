@@ -625,7 +625,7 @@ describe('DELETE /api/appointments/:id (cancels the appointment)', () => {
 
     await del(owner.token, appointment.id);
     const patients = await request(app).get('/api/patients').set(bearer(owner.token));
-    const doctors = await request(app).get('/api/admin/medicos').query({ role: 'doctor' }).set(bearer(staff.token));
+    const doctors = await request(app).get('/api/admin/doctors').query({ role: 'doctor' }).set(bearer(staff.token));
     const report = await request(app).get('/api/admin/reports/appointments-by-doctor').set(bearer(staff.token));
 
     expect(patients.body.patients[0]._count.appointments).toBe(1);
