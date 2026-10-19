@@ -68,10 +68,13 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/` | Autenticado | Lista citas (admin/secretaria ven todas o filtran por `doctorId`; un doctor solo ve las suyas). Filtros: `date`, `patientId`, `doctorId`, `status` |
+| GET | `/` | Autenticado | Lista **paginada** de citas (admin/secretaria ven todas o filtran por `doctorId`; un doctor solo ve las suyas). Filtros: `date`, `from` y `to` (rango inclusive `YYYY-MM-DD`), `patientId`, `doctorId`, `status`. Paginación: `page` (desde 1) y `pageSize` (por defecto 100, máx. 500). Responde `{ appointments, total, page, pageSize, totalPages }`. Las citas **canceladas no aparecen** salvo con `status=cancelled` |
+| GET | `/stats` | Autenticado | Números del dashboard calculados en la base: `{ total, positive, cancelled, patients }` (`positive` = confirmadas o completadas; `total` y `patients` no cuentan las canceladas). Mismas reglas de visibilidad que la lista (`doctorId` para admin/secretaria) |
 | POST | `/` | Autenticado | Crea cita (transacción serializable: valida disponibilidad, evita doble reserva, upsert de paciente). Envía confirmación por WhatsApp/Email |
 | PUT | `/:id` | Autenticado (dueño, o admin/secretaria) | Actualiza fecha, hora, estado o notas |
-| DELETE | `/:id` | Autenticado (dueño, o admin/secretaria) | Cancela/elimina la cita |
+| DELETE | `/:id` | Autenticado (dueño, o admin/secretaria) | **Cancela** la cita: la deja con `status: "cancelled"` (no se borra, para conservar historial y estadísticas) y libera el horario. Repetirlo da el mismo resultado. Responde `{ message, appointment }` |
+
+El calendario del frontend pide solo el rango de fechas que está mostrando (semana, mes, día o los 30 días de la agenda) y sigue las páginas hasta completarlo; los KPIs salen de `/stats`.
 
 ### Pacientes (`/api/patients`)
 
@@ -80,8 +83,7 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 | GET | `/` | Autenticado | Lista paginada (`page`, `pageSize`; máx. 100 por página), con búsqueda por `search` (nombre, teléfono, cédula) |
 | POST | `/` | Autenticado | Crea o actualiza (upsert por teléfono) |
 | PUT | `/:id` | Autenticado | Actualiza datos del paciente |
-
-No existe `DELETE /api/patients/:id` (pendiente, ver `docs/ESTADO_PROYECTO.md`).
+| DELETE | `/:id` | Autenticado | Elimina un paciente **sin citas** (pensado para registros creados por error). Con cualquier cita —activa, cancelada o completada— responde `409` y lo conserva, porque ese historial es suyo; el mensaje distingue «tiene citas activas, cancélalas primero» de «tiene historial». `404` si no existe |
 
 ### Disponibilidad (`/api/availability`)
 
@@ -95,12 +97,14 @@ No existe `DELETE /api/patients/:id` (pendiente, ver `docs/ESTADO_PROYECTO.md`).
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/medicos` | admin, secretary | Lista médicos (filtro opcional `role`) |
-| POST | `/medicos` | admin | Crea médico/secretaria |
-| PUT | `/medicos/:id` | admin | Actualiza médico |
-| DELETE | `/medicos/:id` | admin | Elimina médico (falla si tiene citas/disponibilidad asociadas) |
-| GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico |
+| GET | `/doctors` | admin, secretary | Lista médicos (filtro opcional `role`) |
+| POST | `/doctors` | admin | Crea médico/secretaria |
+| PUT | `/doctors/:id` | admin | Actualiza médico |
+| DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
+| GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
 | GET | `/client-ip` | admin | Diagnóstico de `TRUST_PROXY`: devuelve `{ ip, forwardedFor, trustProxy }`; `ip` debe ser tu IP pública |
+
+`/api/admin/medicos` es el **nombre anterior** de `/api/admin/doctors`. Sigue respondiendo igual (mismos métodos y permisos) como alias temporal para clientes que no se hayan actualizado, por ejemplo un frontend viejo en caché mientras el backend ya está desplegado, y sus respuestas llevan el header `Deprecation: true`. Está pensado para eliminarse más adelante.
 
 ### Tareas (`server.js`)
 
@@ -147,7 +151,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** médicos, pacientes, dis
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, conflictos de horario, reservas simultáneas, actualizar, borrar), disponibilidad/slots y el cron de recordatorios (`backend/tests/`). El frontend se valida con `npm run lint`.
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots y el cron de recordatorios (`backend/tests/`). El frontend se valida con `npm run lint`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
