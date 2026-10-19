@@ -82,3 +82,66 @@ describe('GET /api/patients', () => {
     expect(res.body.patients[0]._count.appointments).toBe(2);
   });
 });
+
+describe('DELETE /api/patients/:id', () => {
+  const del = (token, id) => request(app).delete(`/api/patients/${id}`).set(bearer(token));
+
+  it('requires authentication', async () => {
+    const patient = await createPatient();
+
+    const res = await request(app).delete(`/api/patients/${patient.id}`);
+
+    expect(res.status).toBe(401);
+    expect(await prisma.patient.count()).toBe(1);
+  });
+
+  it('deletes a patient that has no appointments', async () => {
+    const { token } = await createUser();
+    const patient = await createPatient();
+    const other = await createPatient();
+
+    const res = await del(token, patient.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Patient deleted successfully');
+    expect((await prisma.patient.findMany()).map((p) => p.id)).toEqual([other.id]);
+  });
+
+  it.each(['scheduled', 'pending_approval', 'confirmed'])('refuses a patient with a %s appointment', async (status) => {
+    const { user, token } = await createUser();
+    const patient = await createPatient();
+    await createAppointment({ doctor: user, patient, date: TUESDAY, time: '09:00', status });
+
+    const res = await del(token, patient.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/active appointments.*Cancel them first/);
+    expect(await prisma.patient.count()).toBe(1);
+  });
+
+  it.each(['cancelled', 'completed'])('keeps a patient whose history has a %s appointment', async (status) => {
+    const { user, token } = await createUser();
+    const patient = await createPatient();
+    await createAppointment({ doctor: user, patient, date: TUESDAY, time: '09:00', status });
+
+    const res = await del(token, patient.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/appointment history/);
+    expect(await prisma.patient.count()).toBe(1);
+    expect(await prisma.appointment.count()).toBe(1);
+  });
+
+  it('returns 404 for an unknown patient, also when deleting twice', async () => {
+    const { token } = await createUser();
+    const patient = await createPatient();
+
+    const first = await del(token, patient.id);
+    const again = await del(token, patient.id);
+    const unknown = await del(token, '00000000-0000-4000-8000-000000000000');
+
+    expect(first.status).toBe(200);
+    expect(again.status).toBe(404);
+    expect(unknown.status).toBe(404);
+  });
+});

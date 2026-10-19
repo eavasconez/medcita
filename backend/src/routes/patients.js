@@ -141,4 +141,39 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Delete a patient. This is for records created by mistake: a patient who has
+// any appointment is kept, even if all of them are cancelled or completed,
+// because that appointment history belongs to the patient (and the database
+// would refuse anyway: appointments reference their patient).
+const ACTIVE_STATUSES = ['scheduled', 'pending_approval', 'confirmed'];
+
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const patient = await prisma.patient.findUnique({
+      where: { id },
+      select: { _count: { select: { appointments: true } } }
+    });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    if (patient._count.appointments > 0) {
+      const active = await prisma.appointment.count({ where: { patientId: id, status: { in: ACTIVE_STATUSES } } });
+      return res.status(409).json({
+        error: active > 0
+          ? 'This patient has active appointments. Cancel them first; a patient with appointment history cannot be deleted.'
+          : 'This patient has appointment history and cannot be deleted.'
+      });
+    }
+
+    await prisma.patient.delete({ where: { id } });
+    res.json({ message: 'Patient deleted successfully' });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });
+    // an appointment was booked for this patient between the check and the delete
+    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history and cannot be deleted.' });
+    console.error('Delete patient error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
 module.exports = router;

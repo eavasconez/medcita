@@ -10,6 +10,7 @@ import {
   Phone,
   Mail,
   Edit,
+  Trash2,
   User,
   CreditCard,
   X,
@@ -107,6 +108,20 @@ const Patients = () => {
     }
   };
 
+  const handleDelete = async (patient) => {
+    if (!window.confirm(`Delete ${patient.name}? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API_BASE_URL}/api/patients/${patient.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showToast('Patient deleted');
+      // deleting the last patient of a page: go back one page instead of showing an empty one
+      fetchPatients(search, patients.length === 1 && page > 1 ? page - 1 : page);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Error deleting patient', 'error');
+    }
+  };
+
   const openCreateModal = () => {
     setFormData({ name: '', phone: '+593', email: '', cedula: '' });
     setIsEditing(false);
@@ -186,15 +201,30 @@ const Patients = () => {
                     <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
                       <User size={28} />
                     </div>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditModal(p);
-                      }}
-                      className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
-                    >
-                      <Edit size={18} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(p);
+                        }}
+                        aria-label={`Edit ${p.name}`}
+                        className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(p);
+                        }}
+                        disabled={(p._count?.appointments || 0) > 0}
+                        title={(p._count?.appointments || 0) > 0 ? 'Patients with appointments cannot be deleted' : 'Delete patient'}
+                        aria-label={`Delete ${p.name}`}
+                        className="text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                   
                   <h3 className="text-xl font-extrabold text-secondary mb-1 truncate">{p.name}</h3>
