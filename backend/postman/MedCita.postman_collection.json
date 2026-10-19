@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "MedCita API",
-    "description": "Colección de pruebas por ticket. Cada carpeta corresponde a un ticket de Sprint 1 (S1-XX). Importar junto con el environment MedCita.postman_environment.json.",
+    "description": "Colección de pruebas por ticket. Cada carpeta corresponde a un ticket (S1-XX de Sprint 1; S7-05 cubre la paginación, la cancelación de citas, el borrado de pacientes y /slots). Importar junto con el environment MedCita.postman_environment.json.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -923,7 +923,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('El médico no atiende en el horario seleccionado'));"
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('The doctor does not work at the selected time'));"
                 ],
                 "type": "text/javascript"
               }
@@ -1008,7 +1008,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Ya existe una cita en este horario'));"
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('An appointment already exists at this time'));"
                 ],
                 "type": "text/javascript"
               }
@@ -1016,7 +1016,7 @@
           ]
         },
         {
-          "name": "Cleanup - eliminar cita creada",
+          "name": "Cleanup - cancelar cita creada",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1274,7 +1274,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().appointments;",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "pm.test('Devuelve un arreglo', () => pm.expect(arr).to.be.an('array'));",
                   "pm.test('Todas las citas son de la fecha filtrada', () => arr.forEach(a => pm.expect(a.date).to.eql(pm.collectionVariables.get('s105Date'))));",
@@ -1317,7 +1317,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().appointments;",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "pm.test('Todas las citas tienen status confirmed', () => arr.forEach(a => pm.expect(a.status).to.eql('confirmed')));",
                   "pm.test('Incluye la cita A confirmada', () => pm.expect(arr.map(a => a.id)).to.include(pm.collectionVariables.get('s105ApptA')));"
@@ -1359,7 +1359,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().appointments;",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "pm.test('Todas las citas son del paciente filtrado', () => arr.forEach(a => pm.expect(a.patientId).to.eql(pm.collectionVariables.get('s105PatientA'))));",
                   "pm.test('Incluye la cita A del paciente filtrado', () => pm.expect(arr.map(a => a.id)).to.include(pm.collectionVariables.get('s105ApptA')));"
@@ -1370,7 +1370,7 @@
           ]
         },
         {
-          "name": "Cleanup - eliminar cita A",
+          "name": "Cleanup - cancelar cita A",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1404,7 +1404,7 @@
           ]
         },
         {
-          "name": "Cleanup - eliminar cita B",
+          "name": "Cleanup - cancelar cita B",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1793,7 +1793,7 @@
           ]
         },
         {
-          "name": "Éxito - cancelar (eliminar) la cita propia",
+          "name": "Éxito - cancelar la cita propia (queda con status cancelled, no se borra)",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1820,7 +1820,8 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Mensaje de éxito correcto', () => pm.expect(pm.response.json().message).to.eql('Appointment cancelled successfully'));"
+                  "pm.test('Mensaje de éxito correcto', () => pm.expect(pm.response.json().message).to.eql('Appointment cancelled successfully'));",
+                  "pm.test('La cita queda cancelled', () => pm.expect(pm.response.json().appointment.status).to.eql('cancelled'));"
                 ],
                 "type": "text/javascript"
               }
@@ -1828,7 +1829,7 @@
           ]
         },
         {
-          "name": "Falla - cancelar de nuevo la misma cita (404, no 500)",
+          "name": "Éxito - cancelar de nuevo la misma cita (idempotente, 200)",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1854,8 +1855,92 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Appointment not found'));"
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sigue cancelled', () => pm.expect(pm.response.json().appointment.status).to.eql('cancelled'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la cita cancelada ya no aparece en el listado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?pageSize=500",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "500"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No aparece la cita cancelada', () => pm.expect(pm.response.json().appointments.map(a => a.id)).to.not.include(pm.collectionVariables.get('s106ApptId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - sí aparece al pedir status=cancelled",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?status=cancelled&pageSize=500",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "cancelled"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "500"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Aparece la cita cancelada', () => pm.expect(pm.response.json().appointments.map(a => a.id)).to.include(pm.collectionVariables.get('s106ApptId')));"
                 ],
                 "type": "text/javascript"
               }
@@ -2259,7 +2344,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().patients;",
                   "pm.test('Devuelve un arreglo', () => pm.expect(arr).to.be.an('array'));",
                   "pm.test('Incluye al paciente creado', () => pm.expect(arr.map(p => p.id)).to.include(pm.collectionVariables.get('s107PatientId')));"
                 ],
@@ -2709,7 +2794,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().patients;",
                   "pm.test('Encuentra al paciente editado por nombre', () => pm.expect(arr.map(p => p.id)).to.include(pm.collectionVariables.get('s108PatientId')));"
                 ],
                 "type": "text/javascript"
@@ -2750,7 +2835,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const arr = pm.response.json();",
+                  "const arr = pm.response.json().patients;",
                   "pm.test('Encuentra al segundo paciente por cédula', () => pm.expect(arr.length).to.be.at.least(1));",
                   "pm.test('Todos los resultados tienen esa cédula', () => arr.forEach(p => pm.expect(p.cedula).to.eql(pm.collectionVariables.get('s108Cedula'))));"
                 ],
@@ -3257,6 +3342,47 @@
               }
             }
           ]
+        },
+        {
+          "name": "Éxito - /slots no ofrece horarios un día que el médico no atiende (solo configuró el viernes)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s109Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/availability/slots?date=2030-01-14",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "availability",
+                "slots"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2030-01-14"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Un lunes sin horario configurado no tiene slots', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     },
@@ -3353,7 +3479,7 @@
                   "    losers.forEach(r => {",
                   "      const body = r.json();",
                   "      if (r.code === 400) {",
-                  "        pm.expect(body.error).to.eql('Ya existe una cita en este horario');",
+                  "        pm.expect(body.error).to.eql('An appointment already exists at this time');",
                   "      } else {",
                   "        pm.expect(body.error).to.eql('Could not complete the booking due to a concurrent update, please try again');",
                   "      }",
@@ -3393,7 +3519,7 @@
           ]
         },
         {
-          "name": "Cleanup - eliminar la cita ganadora",
+          "name": "Cleanup - cancelar la cita ganadora",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3510,7 +3636,43 @@
           ]
         },
         {
-          "name": "Éxito - GET /medicos (admin y secretaria pueden listar)",
+          "name": "Éxito - GET /doctors (admin y secretaria pueden listar)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s111AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve un arreglo', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('El nombre actual no lleva Deprecation', () => pm.expect(pm.response.headers.has('Deprecation')).to.eql(false));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el nombre anterior /medicos sigue funcionando y avisa con Deprecation",
           "request": {
             "method": "GET",
             "header": [
@@ -3537,7 +3699,8 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Devuelve un arreglo', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                  "pm.test('Header Deprecation: true', () => pm.expect(pm.response.headers.get('Deprecation')).to.eql('true'));",
+                  "pm.test('Link apunta a /api/admin/doctors', () => pm.expect(pm.response.headers.get('Link')).to.include('/api/admin/doctors'));"
                 ],
                 "type": "text/javascript"
               }
@@ -3555,14 +3718,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             }
           },
@@ -3593,14 +3756,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3646,14 +3809,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3689,14 +3852,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3732,14 +3895,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3774,14 +3937,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3819,14 +3982,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -3862,14 +4025,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111DoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111DoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111DoctorId}}"
               ]
             },
@@ -3908,14 +4071,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111DoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111DoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111DoctorId}}"
               ]
             },
@@ -3951,14 +4114,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/00000000-0000-0000-0000-000000000000",
+              "raw": "{{baseUrl}}/api/admin/doctors/00000000-0000-0000-0000-000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "00000000-0000-0000-0000-000000000000"
               ]
             },
@@ -3995,14 +4158,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos",
+              "raw": "{{baseUrl}}/api/admin/doctors",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos"
+                "doctors"
               ]
             },
             "body": {
@@ -4094,14 +4257,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111FkDoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111FkDoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111FkDoctorId}}"
               ]
             }
@@ -4120,7 +4283,7 @@
           ]
         },
         {
-          "name": "Cleanup - eliminar la cita de prueba (quita la dependencia FK)",
+          "name": "Cancelar la cita de prueba (se conserva como cancelled; el médico mantiene su historial)",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4154,7 +4317,7 @@
           ]
         },
         {
-          "name": "Éxito - eliminar médico FK tras quitar la dependencia",
+          "name": "Falla - tras cancelar la cita el médico sigue sin poder eliminarse (el historial se conserva)",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4164,14 +4327,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111FkDoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111FkDoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111FkDoctorId}}"
               ]
             }
@@ -4181,7 +4344,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Cannot delete a doctor with existing appointments or availability'));"
                 ],
                 "type": "text/javascript"
               }
@@ -4199,14 +4363,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111DoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111DoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111DoctorId}}"
               ]
             }
@@ -4234,14 +4398,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/admin/medicos/{{s111DoctorId}}",
+              "raw": "{{baseUrl}}/api/admin/doctors/{{s111DoctorId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "admin",
-                "medicos",
+                "doctors",
                 "{{s111DoctorId}}"
               ]
             }
@@ -4701,6 +4865,827 @@
                   "  pm.expect(b.specialty).to.eql(orig.specialty);",
                   "  pm.expect(b.bio).to.eql(orig.bio);",
                   "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "S7-05 - Pulido de API (paginación, cancelar, pacientes, slots)",
+      "item": [
+        {
+          "name": "Login (obtener token válido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('validToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear cita A (09:00)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S705 Paciente A\",\n  \"patientPhone\": \"{{s705PhoneA}}\",\n  \"date\": \"2031-03-03\",\n  \"time\": \"09:00\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s705PhoneA', '+5939007' + Date.now().toString().slice(-5) + '1');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s705ApptA', pm.response.json().id);",
+                  "pm.collectionVariables.set('s705PatientA', pm.response.json().patientId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear cita B (09:30)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S705 Paciente B\",\n  \"patientPhone\": \"{{s705PhoneB}}\",\n  \"date\": \"2031-03-03\",\n  \"time\": \"09:30\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s705PhoneB', '+5939007' + Date.now().toString().slice(-5) + '2');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s705ApptB', pm.response.json().id);",
+                  "pm.collectionVariables.set('s705PatientB', pm.response.json().patientId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear cita C (10:00)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S705 Paciente C\",\n  \"patientPhone\": \"{{s705PhoneC}}\",\n  \"date\": \"2031-03-03\",\n  \"time\": \"10:00\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s705PhoneC', '+5939007' + Date.now().toString().slice(-5) + '3');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s705ApptC', pm.response.json().id);",
+                  "pm.collectionVariables.set('s705PatientC', pm.response.json().patientId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paginación - página 1 de 2 (pageSize=2)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?date=2031-03-03&pageSize=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2031-03-03"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve un objeto con la página, no un arreglo', () => pm.expect(b.appointments).to.be.an('array'));",
+                  "pm.test('2 citas en la página, 3 en total, 2 páginas', () => { pm.expect(b.appointments.length).to.eql(2); pm.expect(b.total).to.eql(3); pm.expect(b.page).to.eql(1); pm.expect(b.pageSize).to.eql(2); pm.expect(b.totalPages).to.eql(2); });",
+                  "pm.test('Ordenadas por hora', () => pm.expect(b.appointments.map(a => a.time)).to.eql(['09:00', '09:30']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paginación - página 2 de 2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?date=2031-03-03&pageSize=2&page=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2031-03-03"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "2"
+                },
+                {
+                  "key": "page",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Queda 1 cita, la de las 10:00', () => pm.expect(b.appointments.map(a => a.time)).to.eql(['10:00']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rango - from y to incluyen sus extremos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?from=2031-03-03&to=2031-03-03",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2031-03-03"
+                },
+                {
+                  "key": "to",
+                  "value": "2031-03-03"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae las 3 citas del día', () => pm.expect(b.total).to.eql(3));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - pageSize inválido (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?pageSize=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('pageSize must be a positive integer'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - from con fecha inexistente (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?from=2031-02-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2031-02-31"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('from must be a valid date (YYYY-MM-DD)'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - GET /stats devuelve los totales",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "stats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae total, positive, cancelled y patients como números', () => ['total', 'positive', 'cancelled', 'patients'].forEach(k => pm.expect(b[k]).to.be.a('number')));",
+                  "pm.test('Incluye al menos las 3 citas activas del setup', () => pm.expect(b.total).to.be.at.least(3));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un paciente con citas activas no se elimina (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s705PatientA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s705PatientA}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Pide cancelar las citas primero', () => pm.expect(pm.response.json().error).to.include('active appointments'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - cancelar cita A",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s705ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s705ApptA}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - cancelar cita B",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s705ApptB}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s705ApptB}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - cancelar cita C",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s705ApptC}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s705ApptC}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - con las citas canceladas sigue teniendo historial (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s705PatientA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s705PatientA}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Menciona el historial', () => pm.expect(pm.response.json().error).to.include('appointment history'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - los horarios cancelados quedan libres en /slots",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/availability/slots?date=2031-03-03",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "availability",
+                "slots"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2031-03-03"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const t = pm.response.json().filter(s => ['09:00', '09:30', '10:00'].includes(s.time));",
+                  "pm.test('Las 3 horas vuelven a estar disponibles', () => { pm.expect(t.length).to.eql(3); t.forEach(s => pm.expect(s.status).to.eql('available')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear un paciente sin citas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S705 Paciente por error\",\n  \"phone\": \"{{s705PhoneE}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s705PhoneE', '+5939007' + Date.now().toString().slice(-5) + '9');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s705PatientE', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - eliminar un paciente sin citas",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s705PatientE}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s705PatientE}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Mensaje de éxito correcto', () => pm.expect(pm.response.json().message).to.eql('Patient deleted successfully'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - eliminarlo de nuevo (404, no 500)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{validToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s705PatientE}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s705PatientE}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Patient not found'));"
                 ],
                 "type": "text/javascript"
               }

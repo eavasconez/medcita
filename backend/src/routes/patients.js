@@ -2,14 +2,11 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
+const { parsePagination, pageInfo } = require('../utils/pagination');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-// Upper bound on skip/offset - well beyond any real patient list, but keeps
-// a bogus/huge page number from producing an expensive full-table scan or
-// an offset outside what Postgres/Prisma can sanely handle.
-const MAX_SKIP = 1_000_000;
 
 // All patient routes are protected
 router.use(auth);
@@ -19,20 +16,9 @@ router.use(auth);
 router.get('/', async (req, res) => {
   const { search } = req.query;
 
-  const page = req.query.page !== undefined ? Number(req.query.page) : 1;
-  if (!Number.isInteger(page) || page < 1) {
-    return res.status(400).json({ error: 'page must be a positive integer' });
-  }
-
-  const pageSizeInput = req.query.pageSize !== undefined ? Number(req.query.pageSize) : DEFAULT_PAGE_SIZE;
-  if (!Number.isInteger(pageSizeInput) || pageSizeInput < 1) {
-    return res.status(400).json({ error: 'pageSize must be a positive integer' });
-  }
-  const pageSize = Math.min(MAX_PAGE_SIZE, pageSizeInput);
-
-  if ((page - 1) * pageSize > MAX_SKIP) {
-    return res.status(400).json({ error: 'page is out of range' });
-  }
+  const paging = parsePagination(req.query, { defaultPageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE });
+  if (paging.error) return res.status(400).json({ error: paging.error });
+  const { page, pageSize, skip } = paging;
 
   const where = search ? {
     OR: [
@@ -48,16 +34,16 @@ router.get('/', async (req, res) => {
         where,
         include: {
           _count: {
-            select: { appointments: true }
+            select: { appointments: { where: { status: { not: 'cancelled' } } } }
           }
         },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
+        skip,
         take: pageSize
       }),
       prisma.patient.count({ where })
     ]);
-    res.json({ patients, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+    res.json({ patients, ...pageInfo({ total, page, pageSize }) });
   } catch (err) {
     console.error('List patients error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
@@ -151,6 +137,41 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: `A patient with this ${field} already exists` });
     }
     console.error('Update patient error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Delete a patient. This is for records created by mistake: a patient who has
+// any appointment is kept, even if all of them are cancelled or completed,
+// because that appointment history belongs to the patient (and the database
+// would refuse anyway: appointments reference their patient).
+const ACTIVE_STATUSES = ['scheduled', 'pending_approval', 'confirmed'];
+
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const patient = await prisma.patient.findUnique({
+      where: { id },
+      select: { _count: { select: { appointments: true } } }
+    });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    if (patient._count.appointments > 0) {
+      const active = await prisma.appointment.count({ where: { patientId: id, status: { in: ACTIVE_STATUSES } } });
+      return res.status(409).json({
+        error: active > 0
+          ? 'This patient has active appointments. Cancel them first; a patient with appointment history cannot be deleted.'
+          : 'This patient has appointment history and cannot be deleted.'
+      });
+    }
+
+    await prisma.patient.delete({ where: { id } });
+    res.json({ message: 'Patient deleted successfully' });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });
+    // an appointment was booked for this patient between the check and the delete
+    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history and cannot be deleted.' });
+    console.error('Delete patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

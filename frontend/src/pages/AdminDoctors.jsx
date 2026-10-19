@@ -40,7 +40,7 @@ const AdminDoctors = () => {
   const fetchDoctors = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/api/admin/medicos`, {
+      const res = await axios.get(`${API_BASE_URL}/api/admin/doctors`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);
@@ -59,11 +59,11 @@ const AdminDoctors = () => {
     e.preventDefault();
     try {
       if (editingId) {
-        await axios.put(`${API_BASE_URL}/api/admin/medicos/${editingId}`, formData, {
+        await axios.put(`${API_BASE_URL}/api/admin/doctors/${editingId}`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } else {
-        await axios.post(`${API_BASE_URL}/api/admin/medicos`, formData, {
+        await axios.post(`${API_BASE_URL}/api/admin/doctors`, formData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
@@ -91,7 +91,7 @@ const AdminDoctors = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this user? All associated data will be lost.')) return;
     try {
-      await axios.delete(`${API_BASE_URL}/api/admin/medicos/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/admin/doctors/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchDoctors();

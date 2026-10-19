@@ -143,7 +143,7 @@ describe('JWT middleware (protected routes)', () => {
     expect(res.body.error).toBe('Invalid token');
   });
 
-  it.each(['/api/appointments', '/api/patients', '/api/availability', '/api/admin/medicos'])(
+  it.each(['/api/appointments', '/api/patients', '/api/availability', '/api/admin/doctors', '/api/admin/medicos'])(
     'protects %s',
     async (path) => {
       const res = await request(app).get(path);
