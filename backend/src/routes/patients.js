@@ -2,14 +2,11 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
+const { parsePagination, pageInfo } = require('../utils/pagination');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-// Upper bound on skip/offset - well beyond any real patient list, but keeps
-// a bogus/huge page number from producing an expensive full-table scan or
-// an offset outside what Postgres/Prisma can sanely handle.
-const MAX_SKIP = 1_000_000;
 
 // All patient routes are protected
 router.use(auth);
@@ -19,20 +16,9 @@ router.use(auth);
 router.get('/', async (req, res) => {
   const { search } = req.query;
 
-  const page = req.query.page !== undefined ? Number(req.query.page) : 1;
-  if (!Number.isInteger(page) || page < 1) {
-    return res.status(400).json({ error: 'page must be a positive integer' });
-  }
-
-  const pageSizeInput = req.query.pageSize !== undefined ? Number(req.query.pageSize) : DEFAULT_PAGE_SIZE;
-  if (!Number.isInteger(pageSizeInput) || pageSizeInput < 1) {
-    return res.status(400).json({ error: 'pageSize must be a positive integer' });
-  }
-  const pageSize = Math.min(MAX_PAGE_SIZE, pageSizeInput);
-
-  if ((page - 1) * pageSize > MAX_SKIP) {
-    return res.status(400).json({ error: 'page is out of range' });
-  }
+  const paging = parsePagination(req.query, { defaultPageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE });
+  if (paging.error) return res.status(400).json({ error: paging.error });
+  const { page, pageSize, skip } = paging;
 
   const where = search ? {
     OR: [
@@ -52,12 +38,12 @@ router.get('/', async (req, res) => {
           }
         },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
+        skip,
         take: pageSize
       }),
       prisma.patient.count({ where })
     ]);
-    res.json({ patients, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+    res.json({ patients, ...pageInfo({ total, page, pageSize }) });
   } catch (err) {
     console.error('List patients error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
