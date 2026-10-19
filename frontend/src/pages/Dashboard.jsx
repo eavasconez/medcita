@@ -981,7 +981,7 @@ const Dashboard = () => {
                           >
                             <span>{slot.time}</span>
                             <span className="text-[8px] uppercase tracking-tighter opacity-70">
-                              {slot.status === 'booked' ? 'Ocupado' : 'Libre'}
+                              {slot.status === 'booked' ? 'Booked' : 'Free'}
                             </span>
                           </button>
                         ))}
