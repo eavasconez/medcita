@@ -37,6 +37,9 @@ async function runSerializableTransaction(fn, maxAttempts = 3) {
   }
 }
 
+// What "cancelled" leaves out of lists and counts (see DELETE /:id).
+const NOT_CANCELLED = { not: 'cancelled' };
+
 const isValidDate = (value) => typeof value === 'string' && DATE_REGEX.test(value) && !isNaN(parseISO(value).getTime());
 
 // Which doctors' appointments the caller may see: doctors only their own,
@@ -49,7 +52,8 @@ const doctorScope = (req) => {
 
 // List appointments for the doctor, one page at a time. Dates are "YYYY-MM-DD"
 // text, so ?from / ?to (inclusive) filter a range, which is what the calendar
-// asks for instead of loading the whole history.
+// asks for instead of loading the whole history. Cancelled appointments are kept
+// in the database but left out unless asked for with ?status=cancelled.
 router.get('/', async (req, res) => {
   const { date, from, to, patientId, status } = req.query;
 
@@ -74,7 +78,7 @@ router.get('/', async (req, res) => {
       ...doctorScope(req),
       ...(dateFilter && { date: dateFilter }),
       ...(patientId && { patientId }),
-      ...(status && { status })
+      status: status || NOT_CANCELLED
     };
 
     const [appointments, total] = await Promise.all([
@@ -102,16 +106,19 @@ router.get('/', async (req, res) => {
 
 // Headline numbers for the dashboard, computed in the database so they don't
 // depend on loading every appointment. Same visibility rules as the list.
-// "positive" = confirmed or completed.
+// total/patients leave out cancelled appointments (those are counted apart, as
+// `cancelled`); "positive" = confirmed or completed.
 router.get('/stats', async (req, res) => {
   try {
-    const where = { ...doctorScope(req) };
-    const [total, positive, patients] = await Promise.all([
-      prisma.appointment.count({ where }),
-      prisma.appointment.count({ where: { ...where, status: { in: ['confirmed', 'completed'] } } }),
-      prisma.appointment.groupBy({ by: ['patientId'], where })
+    const scope = doctorScope(req);
+    const active = { ...scope, status: NOT_CANCELLED };
+    const [total, positive, cancelled, patients] = await Promise.all([
+      prisma.appointment.count({ where: active }),
+      prisma.appointment.count({ where: { ...scope, status: { in: ['confirmed', 'completed'] } } }),
+      prisma.appointment.count({ where: { ...scope, status: 'cancelled' } }),
+      prisma.appointment.groupBy({ by: ['patientId'], where: active })
     ]);
-    res.json({ total, positive, patients: patients.length });
+    res.json({ total, positive, cancelled, patients: patients.length });
   } catch (err) {
     console.error('Appointment stats error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
@@ -280,21 +287,27 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Delete appointment
+// Cancel an appointment. It is kept with status "cancelled" instead of being
+// deleted, so the patient's history and the statistics survive; the slot is
+// free again because the booking conflict check and /slots ignore cancelled
+// appointments, and the reminder task never picks them up. Cancelling one that
+// is already cancelled is fine (same result).
 router.delete('/:id', async (req, res) => {
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
 
   try {
-    await prisma.appointment.delete({
+    const appointment = await prisma.appointment.update({
       where: {
         id: req.params.id,
         ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-      }
+      },
+      data: { status: 'cancelled' },
+      include: { patient: { select: PATIENT_SELECT } }
     });
-    res.json({ message: 'Appointment cancelled successfully' });
+    res.json({ message: 'Appointment cancelled successfully', appointment: { ...appointment, Patient: appointment.patient } });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
-    console.error('Delete appointment error:', err);
+    console.error('Cancel appointment error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

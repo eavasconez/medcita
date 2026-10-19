@@ -27,8 +27,9 @@ router.get('/medicos', async (req, res) => {
         email: true,
         role: true,
         createdAt: true,
+        // cancelled appointments stay in the database but are not counted
         _count: {
-          select: { appointments: true }
+          select: { appointments: { where: { status: { not: 'cancelled' } } } }
         }
       }
     });
@@ -169,7 +170,7 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
       select: {
         name: true,
         _count: {
-          select: { appointments: true }
+          select: { appointments: { where: { status: { not: 'cancelled' } } } }
         }
       }
     });

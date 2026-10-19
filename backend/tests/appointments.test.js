@@ -3,7 +3,8 @@ const app = require('../src/server');
 const { prisma, resetDb } = require('./helpers/db');
 const { createUser, createPatient, createAppointment, bearer } = require('./helpers/factories');
 const { stubNotifications } = require('./helpers/notifications');
-const { MONDAY, TUESDAY } = require('./helpers/time');
+const { MONDAY, TUESDAY, clinicParts } = require('./helpers/time');
+const { sendReminders } = require('../src/tasks/reminderTask');
 
 const notifications = stubNotifications();
 
@@ -251,6 +252,20 @@ describe('GET /api/appointments', () => {
     expect(byPatient.body.appointments[0].patientId).toBe(p2.id);
   });
 
+  it('leaves cancelled appointments out unless they are asked for with ?status=cancelled', async () => {
+    const { user, token } = await createUser();
+    const patient = await createPatient();
+    await createAppointment({ doctor: user, patient, date: TUESDAY, time: '09:00', status: 'confirmed' });
+    await createAppointment({ doctor: user, patient, date: TUESDAY, time: '10:00', status: 'cancelled' });
+
+    const byDefault = await list(token);
+    const cancelled = await list(token, { status: 'cancelled' });
+
+    expect(byDefault.body.appointments.map((x) => x.time)).toEqual(['09:00']);
+    expect(byDefault.body.total).toBe(1);
+    expect(cancelled.body.appointments.map((x) => x.time)).toEqual(['10:00']);
+  });
+
   it.each(['admin', 'secretary'])('lets %s see every doctor and filter by doctorId', async (role) => {
     const a = await createUser();
     const b = await createUser();
@@ -414,7 +429,20 @@ describe('GET /api/appointments/stats', () => {
     const res = await stats(token);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 4, positive: 2, patients: 2 });
+    expect(res.body).toEqual({ total: 4, positive: 2, cancelled: 0, patients: 2 });
+  });
+
+  it('keeps cancelled appointments out of the totals and counts them apart', async () => {
+    const { user, token } = await createUser();
+    const p1 = await createPatient();
+    const p2 = await createPatient();
+    await createAppointment({ doctor: user, patient: p1, date: MONDAY, time: '09:00', status: 'confirmed' });
+    await createAppointment({ doctor: user, patient: p2, date: TUESDAY, time: '09:00', status: 'cancelled' });
+    await createAppointment({ doctor: user, patient: p2, date: TUESDAY, time: '10:00', status: 'cancelled' });
+
+    const res = await stats(token);
+
+    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 2, patients: 1 });
   });
 
   it('is all zeros for a doctor without appointments', async () => {
@@ -422,7 +450,7 @@ describe('GET /api/appointments/stats', () => {
 
     const res = await stats(token);
 
-    expect(res.body).toEqual({ total: 0, positive: 0, patients: 0 });
+    expect(res.body).toEqual({ total: 0, positive: 0, cancelled: 0, patients: 0 });
   });
 
   it('only counts the caller\'s own appointments, but lets admin and secretary pick a doctor', async () => {
@@ -520,43 +548,66 @@ describe('PUT /api/appointments/:id', () => {
   });
 });
 
-describe('DELETE /api/appointments/:id', () => {
+describe('DELETE /api/appointments/:id (cancels the appointment)', () => {
   const setup = async () => {
     const owner = await createUser();
     const patient = await createPatient();
     const appointment = await createAppointment({ doctor: owner.user, patient, date: TUESDAY, time: '10:00' });
-    return { owner, appointment };
+    return { owner, patient, appointment };
   };
   const del = (token, id) => request(app).delete(`/api/appointments/${id}`).set(bearer(token));
+  const statusOf = async (appointment) => (await prisma.appointment.findUnique({ where: { id: appointment.id } })).status;
 
-  it('lets a doctor delete their own appointment', async () => {
+  it('lets a doctor cancel their own appointment, and keeps it', async () => {
     const { owner, appointment } = await setup();
 
     const res = await del(owner.token, appointment.id);
 
     expect(res.status).toBe(200);
     expect(res.body.message).toBe('Appointment cancelled successfully');
-    expect(await prisma.appointment.count()).toBe(0);
+    expect(res.body.appointment).toMatchObject({ id: appointment.id, status: 'cancelled' });
+    expect(res.body.appointment.Patient).toBeDefined();
+    expect(await prisma.appointment.count()).toBe(1);
+    expect(await statusOf(appointment)).toBe('cancelled');
   });
 
-  it("does not let a doctor delete another doctor's appointment", async () => {
+  it('can be repeated: cancelling a cancelled appointment gives the same answer', async () => {
+    const { owner, appointment } = await setup();
+
+    await del(owner.token, appointment.id);
+    const again = await del(owner.token, appointment.id);
+
+    expect(again.status).toBe(200);
+    expect(await statusOf(appointment)).toBe('cancelled');
+  });
+
+  it('frees the slot so it can be booked again', async () => {
+    const { owner, appointment } = await setup();
+    await del(owner.token, appointment.id);
+
+    const res = await post(owner.token, booking({ time: '10:00', patientPhone: '+593990000077' }));
+
+    expect(res.status).toBe(201);
+  });
+
+  it("does not let a doctor cancel another doctor's appointment", async () => {
     const { appointment } = await setup();
     const intruder = await createUser();
 
     const res = await del(intruder.token, appointment.id);
 
     expect(res.status).toBe(404);
-    expect(await prisma.appointment.count()).toBe(1);
+    expect(await statusOf(appointment)).toBe('pending_approval');
   });
 
-  it.each(['admin', 'secretary'])('lets %s delete any appointment', async (role) => {
+  it.each(['admin', 'secretary'])('lets %s cancel any appointment', async (role) => {
     const { appointment } = await setup();
     const staff = await createUser({ role });
 
     const res = await del(staff.token, appointment.id);
 
     expect(res.status).toBe(200);
-    expect(await prisma.appointment.count()).toBe(0);
+    expect(await statusOf(appointment)).toBe('cancelled');
   });
 
   it('returns 404 for an unknown appointment id', async () => {
@@ -565,5 +616,30 @@ describe('DELETE /api/appointments/:id', () => {
     const res = await del(token, '00000000-0000-4000-8000-000000000000');
 
     expect(res.status).toBe(404);
+  });
+
+  it('is not counted in the appointment totals of the patient or the doctor', async () => {
+    const { owner, patient, appointment } = await setup();
+    await createAppointment({ doctor: owner.user, patient, date: TUESDAY, time: '11:00' });
+    const staff = await createUser({ role: 'admin' });
+
+    await del(owner.token, appointment.id);
+    const patients = await request(app).get('/api/patients').set(bearer(owner.token));
+    const doctors = await request(app).get('/api/admin/medicos').query({ role: 'doctor' }).set(bearer(staff.token));
+    const report = await request(app).get('/api/admin/reports/appointments-by-doctor').set(bearer(staff.token));
+
+    expect(patients.body.patients[0]._count.appointments).toBe(1);
+    expect(doctors.body.find((d) => d.id === owner.user.id)._count.appointments).toBe(1);
+    expect(report.body.find((r) => r.doctor === owner.user.name).appointments).toBe(1);
+  });
+
+  it('does not get reminded', async () => {
+    const { owner, patient } = await setup();
+    const soon = await createAppointment({ doctor: owner.user, patient, ...clinicParts(3), status: 'confirmed' });
+
+    await del(owner.token, soon.id);
+    await sendReminders();
+
+    expect(notifications.sent).toHaveLength(0);
   });
 });

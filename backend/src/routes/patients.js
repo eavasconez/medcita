@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
         where,
         include: {
           _count: {
-            select: { appointments: true }
+            select: { appointments: { where: { status: { not: 'cancelled' } } } }
           }
         },
         orderBy: { createdAt: 'desc' },
