@@ -12,9 +12,9 @@ function stubNotifications() {
     sendEmail: notificationService.sendEmail
   };
 
-  notificationService.sendWhatsApp = async (to, message) => {
+  notificationService.sendWhatsApp = async (to, message, template) => {
     if (failPhones.has(to)) return false;
-    sent.push({ channel: 'whatsapp', to, message });
+    sent.push({ channel: 'whatsapp', to, message, template });
     return true;
   };
   notificationService.sendEmail = async (to, subject, text, html) => {

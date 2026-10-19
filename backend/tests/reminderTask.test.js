@@ -57,6 +57,17 @@ describe('sendReminders', () => {
     expect(message.message).toContain(`${appointment.date} a las ${appointment.time}`);
   });
 
+  // Meta only accepts a business-started message as an approved template.
+  it('hands the WhatsApp provider the reminder template with its values', async () => {
+    const { patient, appointment } = await setup({ hoursFromNow: 3 });
+
+    await sendReminders();
+
+    const [message] = sentTo(patient.phone);
+    expect(message.template).toMatchObject({ name: 'recordatorio_cita', language: 'es' });
+    expect(message.template.params).toEqual([patient.name, expect.stringMatching(/^(hoy|mañana)$/), appointment.date, appointment.time, 'Dr. Santiago Pérez']);
+  });
+
   it.each(['cancelled', 'completed'])('does not remind a %s appointment', async (status) => {
     const { patient, appointment } = await setup({ hoursFromNow: 3, status });
 

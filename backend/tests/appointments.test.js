@@ -68,6 +68,8 @@ describe('POST /api/appointments', () => {
     expect(whatsapp[0].to).toBe('+593990000042');
     expect(whatsapp[0].message).toContain(`${TUESDAY} a las 10:00`);
     expect(whatsapp[0].message).toContain(user.name);
+    expect(whatsapp[0].template).toMatchObject({ name: 'cita_confirmada', language: 'es' });
+    expect(whatsapp[0].template.params).toEqual(['María Andrade', user.name, TUESDAY, '10:00']);
 
     const emails = notifications.sent.filter((m) => m.channel === 'email');
     expect(emails.map((m) => m.to).sort()).toEqual(['house@example.test', 'maria@example.test']);
