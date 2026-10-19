@@ -1,6 +1,7 @@
 const { rateLimit, MemoryStore } = require('express-rate-limit');
 
 const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
 
 // Counters live in memory: right for the single instance the app runs on today
 // (they reset on restart). A second instance would need a shared store (Redis,
@@ -10,7 +11,13 @@ const LIMITS = {
   // defence because it doesn't depend on detecting the client IP; the per-IP one
   // is more generous and catches one machine trying many different accounts.
   loginPerEmail: { windowMs: 15 * MINUTE, limit: 5 },
-  loginPerIp: { windowMs: 15 * MINUTE, limit: 20 }
+  loginPerIp: { windowMs: 15 * MINUTE, limit: 20 },
+  // Every request counts: each one can send an email, so this also stops the
+  // endpoint from being used to flood someone's inbox or burn the email quota.
+  forgotPasswordPerEmail: { windowMs: HOUR, limit: 3 },
+  forgotPasswordPerIp: { windowMs: HOUR, limit: 10 },
+  // Only failed attempts (400) count.
+  resetPasswordPerIp: { windowMs: 15 * MINUTE, limit: 10 }
 };
 
 const stores = [];
@@ -65,9 +72,41 @@ const loginEmailLimiter = createLimiter({
   skip: (req) => !normalizedEmail(req)
 });
 
+const forgotPasswordMessage = 'Too many password reset requests.';
+
+const forgotPasswordIpLimiter = createLimiter({ ...LIMITS.forgotPasswordPerIp, message: forgotPasswordMessage });
+
+const forgotPasswordEmailLimiter = createLimiter({
+  ...LIMITS.forgotPasswordPerEmail,
+  message: forgotPasswordMessage,
+  keyGenerator: normalizedEmail,
+  skip: (req) => !normalizedEmail(req)
+});
+
+const resetPasswordIpLimiter = createLimiter({
+  ...LIMITS.resetPasswordPerIp,
+  message: 'Too many attempts to reset the password.',
+  countOnlyStatus: 400
+});
+
+// Someone who just proved they own the account's email by resetting the password
+// should not stay locked out by the failed logins that made them reset it.
+async function clearLoginAttempts(email) {
+  await loginEmailLimiter.resetKey(String(email).trim().toLowerCase());
+}
+
 // For tests: forget every counter so one test can't affect the next.
 async function resetRateLimits() {
   await Promise.all(stores.map((store) => store.resetAll()));
 }
 
-module.exports = { LIMITS, loginIpLimiter, loginEmailLimiter, resetRateLimits };
+module.exports = {
+  LIMITS,
+  loginIpLimiter,
+  loginEmailLimiter,
+  forgotPasswordIpLimiter,
+  forgotPasswordEmailLimiter,
+  resetPasswordIpLimiter,
+  clearLoginAttempts,
+  resetRateLimits
+};

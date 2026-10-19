@@ -9,7 +9,9 @@ module.exports = async () => {
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
   try {
-    execFileSync(npx, ['prisma', 'db', 'push', '--skip-generate'], {
+    // Not --skip-generate: this also regenerates the Prisma client, so a freshly
+    // pulled schema change works without a separate `prisma generate`.
+    execFileSync(npx, ['prisma', 'db', 'push'], {
       cwd: path.join(__dirname, '..'),
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe'

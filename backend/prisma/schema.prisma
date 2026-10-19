@@ -19,6 +19,7 @@ model Doctor {
   address        String?
   appointments   Appointment[]
   availabilities Availability[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Patient {
@@ -55,4 +56,17 @@ model Appointment {
   reminderSentAt DateTime?
   doctor    Doctor   @relation(fields: [doctorId], references: [id])
   patient   Patient  @relation(fields: [patientId], references: [id])
+}
+
+// One-time password reset links. Only the SHA-256 hash of the token is stored, so
+// a database leak does not expose usable links. A link is deleted when it is used.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId])
 }

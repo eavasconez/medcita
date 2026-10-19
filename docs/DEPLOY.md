@@ -65,6 +65,8 @@ El plan original (Sprint 5) contemplaba DigitalOcean + dominio comprado + Nginx/
    > ```
    > `ip` debe ser **tu IP pública** (compárala con `curl ifconfig.me`). Si muestra una IP de Cloudflare o privada, sube `TRUST_PROXY` en 1; si muestra una IP que no es tuya, bájalo en 1. El límite por correo funciona igual aunque este valor esté mal; solo el límite por IP depende de él.
 
+   > **Recuperación de contraseña**: necesita un proveedor de email real (`BREVO_API_KEY` y `BREVO_FROM_EMAIL`, o `SENDGRID_API_KEY`) y que `FRONTEND_URL` sea la URL real del frontend, porque el enlace del correo se arma con ella. Al desplegar este cambio hay que correr `npx prisma db push` contra Neon (crea la tabla `PasswordResetToken`; es aditivo, no toca datos).
+
 4. **"Create Web Service"**. Al terminar el build, Render asigna una URL tipo `https://medcita-backend.onrender.com` — confirmarla con:
    ```bash
    curl https://medcita-backend.onrender.com/api/health

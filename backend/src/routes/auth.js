@@ -4,9 +4,23 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
-const { loginIpLimiter, loginEmailLimiter } = require('../middleware/rateLimiters');
+const {
+  loginIpLimiter,
+  loginEmailLimiter,
+  forgotPasswordIpLimiter,
+  forgotPasswordEmailLimiter,
+  resetPasswordIpLimiter,
+  clearLoginAttempts
+} = require('../middleware/rateLimiters');
+const passwordReset = require('../services/passwordResetService');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 6;
+const PASSWORD_TOO_SHORT = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+const FORGOT_PASSWORD_MESSAGE = 'If an account exists for that email, we have sent a link to reset the password.';
+// Machine-readable, so the UI can tell this apart from a validation error without matching text.
+const INVALID_RESET_LINK_CODE = 'INVALID_RESET_LINK';
+const INVALID_RESET_LINK_MESSAGE = 'This password reset link is invalid or has expired. Please request a new one.';
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
 
 // Fields safe to expose about the authenticated user (never the password hash)
@@ -30,7 +44,7 @@ router.post('/register', async (req, res) => {
 
   if (!normalizedName) return res.status(400).json({ error: 'Name is required' });
   if (!EMAIL_REGEX.test(normalizedEmail)) return res.status(400).json({ error: 'A valid email is required' });
-  if (typeof password !== 'string' || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_TOO_SHORT });
 
   try {
     const existingDoctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
@@ -68,6 +82,38 @@ router.post('/login', loginIpLimiter, loginEmailLimiter, async (req, res) => {
     res.json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
   } catch (err) {
     console.error('Login error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Ask for a password reset link. The answer is always the same and is sent BEFORE
+// the account is even looked up (that happens in the background), so neither its
+// content nor its response time reveals whether an email has an account.
+router.post('/forgot-password', forgotPasswordIpLimiter, forgotPasswordEmailLimiter, (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!EMAIL_REGEX.test(email)) return res.status(400).json({ error: 'A valid email is required' });
+
+  res.json({ message: FORGOT_PASSWORD_MESSAGE });
+  passwordReset.requestPasswordResetInBackground(email);
+});
+
+// Set a new password with the single-use token from the emailed link.
+router.post('/reset-password', resetPasswordIpLimiter, async (req, res) => {
+  const { token, password } = req.body || {};
+
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: PASSWORD_TOO_SHORT });
+  }
+
+  try {
+    const doctor = await passwordReset.resetPassword(token, password);
+    await clearLoginAttempts(doctor.email);
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    if (err instanceof passwordReset.InvalidResetTokenError) {
+      return res.status(400).json({ error: INVALID_RESET_LINK_MESSAGE, code: INVALID_RESET_LINK_CODE });
+    }
+    console.error('Reset password error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

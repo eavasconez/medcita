@@ -134,6 +134,20 @@ function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana
   `);
 }
 
+function passwordResetHtml({ name, resetUrl, expiresInMinutes }) {
+  const url = escapeHtml(resetUrl);
+  return baseLayout('Restablece tu contraseña', `
+    <p>Hola <strong>${escapeHtml(name)}</strong>,</p>
+    <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta de MedCita. Usa el botón para elegir una nueva:</p>
+    <p style="text-align: center; margin: 28px 0;">
+      <a href="${url}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Restablecer contraseña</a>
+    </p>
+    <p style="font-size: 13px; color: #64748b;">El enlace vale por ${escapeHtml(expiresInMinutes)} minutos y solo se puede usar una vez. Si el botón no funciona, copia y pega esta dirección en tu navegador:</p>
+    <p style="font-size: 12px; color: #64748b; word-break: break-all;">${url}</p>
+    <p style="font-size: 13px; color: #64748b;">Si no pediste este cambio, ignora este correo: tu contraseña no se modificará.</p>
+  `);
+}
+
 function doctorNewAppointmentHtml({ doctorName, patientName, patientPhone, date, time }) {
   const phoneItem = patientPhone
     ? `<li><strong>Teléfono:</strong> ${escapeHtml(patientPhone)}</li>`
@@ -179,6 +193,7 @@ const emailService = {
   templates: {
     appointmentConfirmationHtml,
     reminderHtml,
+    passwordResetHtml,
     doctorNewAppointmentHtml
   }
 };
