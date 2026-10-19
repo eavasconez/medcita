@@ -213,6 +213,8 @@ describe('POST /api/appointments', () => {
 });
 
 describe('GET /api/appointments', () => {
+  const list = (token, query = {}) => request(app).get('/api/appointments').query(query).set(bearer(token));
+
   it('lists only the appointments of the authenticated doctor, ordered by date and time', async () => {
     const a = await createUser();
     const b = await createUser();
@@ -222,12 +224,13 @@ describe('GET /api/appointments', () => {
     await createAppointment({ doctor: a.user, patient, date: TUESDAY, time: '09:00' });
     await createAppointment({ doctor: b.user, patient, date: TUESDAY, time: '10:00' });
 
-    const res = await request(app).get('/api/appointments').set(bearer(a.token));
+    const res = await list(a.token);
 
     expect(res.status).toBe(200);
-    expect(res.body.map((x) => `${x.date} ${x.time}`)).toEqual([`${MONDAY} 15:00`, `${TUESDAY} 09:00`, `${TUESDAY} 11:00`]);
-    expect(res.body[0].Patient.name).toBe('Paciente Uno');
-    expect(res.body[0].doctor.name).toBe(a.user.name);
+    expect(res.body.appointments.map((x) => `${x.date} ${x.time}`)).toEqual([`${MONDAY} 15:00`, `${TUESDAY} 09:00`, `${TUESDAY} 11:00`]);
+    expect(res.body.appointments[0].Patient.name).toBe('Paciente Uno');
+    expect(res.body.appointments[0].doctor.name).toBe(a.user.name);
+    expect(res.body).toMatchObject({ total: 3, page: 1, pageSize: 100, totalPages: 1 });
   });
 
   it('filters by date, status and patient', async () => {
@@ -238,14 +241,14 @@ describe('GET /api/appointments', () => {
     await createAppointment({ doctor: user, patient: p1, date: TUESDAY, time: '09:00', status: 'pending_approval' });
     await createAppointment({ doctor: user, patient: p2, date: TUESDAY, time: '10:00', status: 'confirmed' });
 
-    const byDate = await request(app).get('/api/appointments').query({ date: TUESDAY }).set(bearer(token));
-    const byStatus = await request(app).get('/api/appointments').query({ status: 'confirmed' }).set(bearer(token));
-    const byPatient = await request(app).get('/api/appointments').query({ patientId: p2.id }).set(bearer(token));
+    const byDate = await list(token, { date: TUESDAY });
+    const byStatus = await list(token, { status: 'confirmed' });
+    const byPatient = await list(token, { patientId: p2.id });
 
-    expect(byDate.body).toHaveLength(2);
-    expect(byStatus.body).toHaveLength(2);
-    expect(byPatient.body).toHaveLength(1);
-    expect(byPatient.body[0].patientId).toBe(p2.id);
+    expect(byDate.body.appointments).toHaveLength(2);
+    expect(byStatus.body.appointments).toHaveLength(2);
+    expect(byPatient.body.appointments).toHaveLength(1);
+    expect(byPatient.body.appointments[0].patientId).toBe(p2.id);
   });
 
   it.each(['admin', 'secretary'])('lets %s see every doctor and filter by doctorId', async (role) => {
@@ -256,12 +259,194 @@ describe('GET /api/appointments', () => {
     await createAppointment({ doctor: a.user, patient, date: TUESDAY, time: '09:00' });
     await createAppointment({ doctor: b.user, patient, date: TUESDAY, time: '10:00' });
 
-    const all = await request(app).get('/api/appointments').set(bearer(staff.token));
-    const onlyB = await request(app).get('/api/appointments').query({ doctorId: b.user.id }).set(bearer(staff.token));
+    const all = await list(staff.token);
+    const onlyB = await list(staff.token, { doctorId: b.user.id });
 
-    expect(all.body).toHaveLength(2);
-    expect(onlyB.body).toHaveLength(1);
-    expect(onlyB.body[0].doctorId).toBe(b.user.id);
+    expect(all.body.appointments).toHaveLength(2);
+    expect(onlyB.body.appointments).toHaveLength(1);
+    expect(onlyB.body.appointments[0].doctorId).toBe(b.user.id);
+  });
+
+  it('does not let a regular doctor read another doctor with ?doctorId', async () => {
+    const a = await createUser();
+    const b = await createUser();
+    const patient = await createPatient();
+    await createAppointment({ doctor: b.user, patient, date: TUESDAY, time: '10:00' });
+
+    const res = await list(a.token, { doctorId: b.user.id });
+
+    expect(res.body.appointments).toEqual([]);
+  });
+
+  describe('paging', () => {
+    const seed = async (count) => {
+      const { user, token } = await createUser();
+      const patient = await createPatient();
+      for (let i = 0; i < count; i++) {
+        const time = `${String(8 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+        await createAppointment({ doctor: user, patient, date: TUESDAY, time });
+      }
+      return { user, token };
+    };
+
+    it('returns one page at a time with the paging info', async () => {
+      const { token } = await seed(5);
+
+      const first = await list(token, { pageSize: 2 });
+      const second = await list(token, { pageSize: 2, page: 2 });
+      const last = await list(token, { pageSize: 2, page: 3 });
+
+      expect(first.body).toMatchObject({ total: 5, page: 1, pageSize: 2, totalPages: 3 });
+      expect(first.body.appointments.map((x) => x.time)).toEqual(['08:00', '08:30']);
+      expect(second.body.appointments.map((x) => x.time)).toEqual(['09:00', '09:30']);
+      expect(last.body.appointments.map((x) => x.time)).toEqual(['10:00']);
+    });
+
+    it('never repeats or skips an appointment between pages, even with equal date and time', async () => {
+      const staff = await createUser({ role: 'admin' });
+      const patient = await createPatient();
+      for (let i = 0; i < 6; i++) {
+        const doctor = (await createUser()).user;
+        await createAppointment({ doctor, patient, date: TUESDAY, time: '09:00' });
+      }
+
+      const ids = [];
+      for (const page of [1, 2, 3]) {
+        const res = await list(staff.token, { pageSize: 2, page });
+        ids.push(...res.body.appointments.map((x) => x.id));
+      }
+
+      expect(new Set(ids).size).toBe(6);
+    });
+
+    it('defaults to 100 per page and caps pageSize at 500', async () => {
+      const { token } = await createUser();
+
+      const byDefault = await list(token);
+      const huge = await list(token, { pageSize: 10000 });
+
+      expect(byDefault.body.pageSize).toBe(100);
+      expect(huge.body.pageSize).toBe(500);
+      expect(byDefault.body).toMatchObject({ appointments: [], total: 0, totalPages: 1 });
+    });
+
+    it.each([
+      [{ page: '0' }, /page must be a positive integer/],
+      [{ page: 'abc' }, /page must be a positive integer/],
+      [{ pageSize: '0' }, /pageSize must be a positive integer/],
+      [{ pageSize: '2.5' }, /pageSize must be a positive integer/],
+      [{ page: '5000000', pageSize: '500' }, /page is out of range/]
+    ])('returns 400 for %j', async (query, message) => {
+      const { token } = await createUser();
+
+      const res = await list(token, query);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(message);
+    });
+  });
+
+  describe('date range', () => {
+    const setup = async () => {
+      const { user, token } = await createUser();
+      const patient = await createPatient();
+      for (const date of ['2030-01-10', '2030-01-14', '2030-01-15', '2030-01-20']) {
+        await createAppointment({ doctor: user, patient, date, time: '09:00' });
+      }
+      return { token };
+    };
+
+    it('includes both ends of ?from and ?to', async () => {
+      const { token } = await setup();
+
+      const res = await list(token, { from: '2030-01-14', to: '2030-01-15' });
+
+      expect(res.body.appointments.map((x) => x.date)).toEqual(['2030-01-14', '2030-01-15']);
+      expect(res.body.total).toBe(2);
+    });
+
+    it('accepts just one end', async () => {
+      const { token } = await setup();
+
+      const from = await list(token, { from: '2030-01-15' });
+      const to = await list(token, { to: '2030-01-14' });
+
+      expect(from.body.appointments.map((x) => x.date)).toEqual(['2030-01-15', '2030-01-20']);
+      expect(to.body.appointments.map((x) => x.date)).toEqual(['2030-01-10', '2030-01-14']);
+    });
+
+    it('lets an exact ?date win over a range', async () => {
+      const { token } = await setup();
+
+      const res = await list(token, { date: '2030-01-20', from: '2030-01-01', to: '2030-01-14' });
+
+      expect(res.body.appointments.map((x) => x.date)).toEqual(['2030-01-20']);
+    });
+
+    it.each([
+      [{ from: '2030/01/14' }, /from must be a valid date/],
+      [{ from: '2030-02-31' }, /from must be a valid date/],
+      [{ to: 'tomorrow' }, /to must be a valid date/],
+      [{ from: '2030-01-15', to: '2030-01-14' }, /from must not be after to/]
+    ])('returns 400 for %j', async (query, message) => {
+      const { token } = await createUser();
+
+      const res = await list(token, query);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(message);
+    });
+  });
+});
+
+describe('GET /api/appointments/stats', () => {
+  const stats = (token, query = {}) => request(app).get('/api/appointments/stats').query(query).set(bearer(token));
+
+  it('counts the appointments, the confirmed or completed ones and the distinct patients', async () => {
+    const { user, token } = await createUser();
+    const p1 = await createPatient();
+    const p2 = await createPatient();
+    await createAppointment({ doctor: user, patient: p1, date: MONDAY, time: '09:00', status: 'confirmed' });
+    await createAppointment({ doctor: user, patient: p1, date: TUESDAY, time: '09:00', status: 'completed' });
+    await createAppointment({ doctor: user, patient: p2, date: TUESDAY, time: '10:00', status: 'pending_approval' });
+    await createAppointment({ doctor: user, patient: p2, date: TUESDAY, time: '11:00', status: 'scheduled' });
+
+    const res = await stats(token);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ total: 4, positive: 2, patients: 2 });
+  });
+
+  it('is all zeros for a doctor without appointments', async () => {
+    const { token } = await createUser();
+
+    const res = await stats(token);
+
+    expect(res.body).toEqual({ total: 0, positive: 0, patients: 0 });
+  });
+
+  it('only counts the caller\'s own appointments, but lets admin and secretary pick a doctor', async () => {
+    const a = await createUser();
+    const b = await createUser();
+    const staff = await createUser({ role: 'secretary' });
+    const patient = await createPatient();
+    await createAppointment({ doctor: a.user, patient, date: TUESDAY, time: '09:00', status: 'confirmed' });
+    await createAppointment({ doctor: b.user, patient, date: TUESDAY, time: '10:00' });
+    await createAppointment({ doctor: b.user, patient, date: TUESDAY, time: '11:00' });
+
+    const own = await stats(a.token, { doctorId: b.user.id });
+    const picked = await stats(staff.token, { doctorId: b.user.id });
+    const clinic = await stats(staff.token);
+
+    expect(own.body.total).toBe(1);
+    expect(picked.body.total).toBe(2);
+    expect(clinic.body.total).toBe(3);
+  });
+
+  it('requires authentication', async () => {
+    const res = await request(app).get('/api/appointments/stats');
+
+    expect(res.status).toBe(401);
   });
 });
 

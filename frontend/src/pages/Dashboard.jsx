@@ -7,6 +7,10 @@ import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
 import startOfWeek from 'date-fns/startOfWeek';
+import endOfWeek from 'date-fns/endOfWeek';
+import startOfMonth from 'date-fns/startOfMonth';
+import endOfMonth from 'date-fns/endOfMonth';
+import addDays from 'date-fns/addDays';
 import getDay from 'date-fns/getDay';
 import esES from 'date-fns/locale/es';
 import enUS from 'date-fns/locale/en-US';
@@ -48,6 +52,29 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales,
 });
+
+// The calendar only needs the appointments it is showing, so ask the API for
+// that range instead of the doctor's whole history. Month view also draws the
+// leading/trailing days of the neighbouring months. Agenda lists 30 days.
+const CALENDAR_CULTURE = 'en-US';
+const WEEK_OPTIONS = { locale: locales[CALENDAR_CULTURE] };
+const visibleRange = (date, view) => {
+  let start = date;
+  let end = date;
+  if (view === 'week') {
+    start = startOfWeek(date, WEEK_OPTIONS);
+    end = endOfWeek(date, WEEK_OPTIONS);
+  } else if (view === 'month') {
+    start = startOfWeek(startOfMonth(date), WEEK_OPTIONS);
+    end = endOfWeek(endOfMonth(date), WEEK_OPTIONS);
+  } else if (view === 'agenda') {
+    end = addDays(date, 29);
+  }
+  return { from: format(start, 'yyyy-MM-dd'), to: format(end, 'yyyy-MM-dd') };
+};
+// A calendar range is fetched in pages of up to 500; this is only a safety net.
+const APPOINTMENT_PAGE_SIZE = 500;
+const MAX_APPOINTMENT_PAGES = 20;
 const Dashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -264,51 +291,48 @@ const Dashboard = () => {
     fetchAvailability();
   }, [isSpecialRole, showModal, token, formData.doctorId]);
 
-  const computeStats = (data) => {
-    const positive = data.filter(a => a.status === 'confirmed' || a.status === 'completed').length;
-    const effectiveness = data.length > 0
-      ? `${Math.round((positive / data.length) * 100)}%`
-      : '—';
-    return {
-      totalAppointments: data.length,
-      newPatients: new Set(data.map(a => a.patientId)).size,
-      effectiveness
-    };
-  };
+  // Headline numbers from the API's /stats (computed in the database), so they
+  // don't depend on which appointments the calendar happens to have loaded.
+  const statsFromApi = ({ total, positive, patients }) => ({
+    totalAppointments: total,
+    newPatients: patients,
+    effectiveness: total > 0 ? `${Math.round((positive / total) * 100)}%` : '—'
+  });
 
-  // Calendar list: reflects the active status/patient filters.
+  // Calendar list: the visible date range, reflecting the active status/patient
+  // filters. Pages are followed until the range is complete.
+  const range = visibleRange(date, view);
+  const appointmentsRequestRef = useRef(0);
   const fetchAppointments = async () => {
+    const requestId = ++appointmentsRequestRef.current;
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (formData.doctorId) params.set('doctorId', formData.doctorId);
-      if (statusFilter) params.set('status', statusFilter);
-      if (patientFilterId) params.set('patientId', patientFilterId);
-      const queryString = params.toString();
+      const params = { from: range.from, to: range.to, pageSize: APPOINTMENT_PAGE_SIZE };
+      if (formData.doctorId) params.doctorId = formData.doctorId;
+      if (statusFilter) params.status = statusFilter;
+      if (patientFilterId) params.patientId = patientFilterId;
 
-      const res = await axios.get(`${API_BASE_URL}/api/appointments${queryString ? `?${queryString}` : ''}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setAppointments(res.data);
-
-      // With no calendar filter active, this response already IS the
-      // selected doctor's full appointment set - reuse it for the KPIs
-      // instead of letting fetchStats fire an identical second request.
-      if (formData.doctorId && !statusFilter && !patientFilterId) {
-        setStats(computeStats(res.data));
+      const loaded = [];
+      for (let page = 1; page <= MAX_APPOINTMENT_PAGES; page++) {
+        const res = await axios.get(`${API_BASE_URL}/api/appointments`, {
+          params: { ...params, page },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        loaded.push(...res.data.appointments);
+        if (page >= res.data.totalPages) break;
       }
+      // A newer request (the user navigated or filtered meanwhile) owns the screen.
+      if (requestId === appointmentsRequestRef.current) setAppointments(loaded);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (requestId === appointmentsRequestRef.current) setLoading(false);
     }
   };
 
-  // Headline KPIs: always computed from the selected doctor's full appointment
-  // set, NOT the filtered calendar view — otherwise filtering by e.g.
-  // 'confirmed' would show 100% effectiveness and 'scheduled' would show 0%.
-  // Scoped strictly by doctorId so the numbers stay stable regardless of the
-  // active filters.
+  // Headline KPIs: always the selected doctor's totals, NOT the filtered
+  // calendar view - otherwise filtering by e.g. 'confirmed' would show 100%
+  // effectiveness and 'scheduled' would show 0%.
   const fetchStats = async () => {
     // Without a selected doctor (admin/secretary before picking one) the API
     // would return clinic-wide aggregates; show a neutral placeholder instead
@@ -317,15 +341,12 @@ const Dashboard = () => {
       setStats({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
       return;
     }
-    // No filter active: fetchAppointments' effect runs alongside this one and
-    // already computes stats from the same (unfiltered) response - skip the
-    // duplicate network round-trip.
-    if (!statusFilter && !patientFilterId) return;
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/appointments?doctorId=${formData.doctorId}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/appointments/stats`, {
+        params: { doctorId: formData.doctorId },
         headers: { Authorization: `Bearer ${token}` }
       });
-      setStats(computeStats(res.data));
+      setStats(statsFromApi(res.data));
     } catch (err) {
       console.error(err);
     }
@@ -363,7 +384,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchAppointments();
-  }, [token, formData.doctorId, statusFilter, patientFilterId]);
+  }, [token, formData.doctorId, statusFilter, patientFilterId, range.from, range.to]);
 
   // KPIs only depend on the selected doctor, not the calendar filters.
   useEffect(() => {
@@ -745,7 +766,7 @@ const Dashboard = () => {
               allDay: "All day",
               noEventsInRange: "No appointments in this range"
             }}
-            culture="en-US"
+            culture={CALENDAR_CULTURE}
             components={{ event: EventContent }}
               eventPropGetter={(event) => {
                 const status = event.resource?.status;

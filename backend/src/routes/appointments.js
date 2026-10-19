@@ -3,8 +3,11 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const { sendAppointmentConfirmation } = require('../services/notificationService');
 const { getDay, parseISO } = require('date-fns');
+const { parsePagination, pageInfo } = require('../utils/pagination');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 500;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed', 'cancelled'];
 
@@ -34,30 +37,83 @@ async function runSerializableTransaction(fn, maxAttempts = 3) {
   }
 }
 
-// List appointments for the doctor
-router.get('/', async (req, res) => {
-  const { date, patientId, doctorId, status } = req.query;
-  try {
-    const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        ...(isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId }),
-        ...(date && { date }),
-        ...(patientId && { patientId }),
-        ...(status && { status })
-      },
-      include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
-      orderBy: [{ date: 'asc' }, { time: 'asc' }]
-    });
-    
-    const formatted = appointments.map(apt => ({
-      ...apt,
-      Patient: apt.patient
-    }));
+const isValidDate = (value) => typeof value === 'string' && DATE_REGEX.test(value) && !isNaN(parseISO(value).getTime());
 
-    res.json(formatted);
+// Which doctors' appointments the caller may see: doctors only their own,
+// admin/secretary every doctor or the one named in ?doctorId.
+const doctorScope = (req) => {
+  const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
+  const { doctorId } = req.query;
+  return isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId };
+};
+
+// List appointments for the doctor, one page at a time. Dates are "YYYY-MM-DD"
+// text, so ?from / ?to (inclusive) filter a range, which is what the calendar
+// asks for instead of loading the whole history.
+router.get('/', async (req, res) => {
+  const { date, from, to, patientId, status } = req.query;
+
+  const paging = parsePagination(req.query, { defaultPageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE });
+  if (paging.error) return res.status(400).json({ error: paging.error });
+  const { page, pageSize, skip } = paging;
+
+  if (from !== undefined && !isValidDate(from)) {
+    return res.status(400).json({ error: 'from must be a valid date (YYYY-MM-DD)' });
+  }
+  if (to !== undefined && !isValidDate(to)) {
+    return res.status(400).json({ error: 'to must be a valid date (YYYY-MM-DD)' });
+  }
+  if (from !== undefined && to !== undefined && from > to) {
+    return res.status(400).json({ error: 'from must not be after to' });
+  }
+
+  try {
+    // An exact ?date wins over a ?from/?to range.
+    const dateFilter = date || ((from || to) && { ...(from && { gte: from }), ...(to && { lte: to }) });
+    const where = {
+      ...doctorScope(req),
+      ...(dateFilter && { date: dateFilter }),
+      ...(patientId && { patientId }),
+      ...(status && { status })
+    };
+
+    const [appointments, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
+        // id as the last key keeps the order (and so the pages) stable when two
+        // doctors have an appointment at the same date and time
+        orderBy: [{ date: 'asc' }, { time: 'asc' }, { id: 'asc' }],
+        skip,
+        take: pageSize
+      }),
+      prisma.appointment.count({ where })
+    ]);
+
+    res.json({
+      appointments: appointments.map(apt => ({ ...apt, Patient: apt.patient })),
+      ...pageInfo({ total, page, pageSize })
+    });
   } catch (err) {
     console.error('List appointments error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Headline numbers for the dashboard, computed in the database so they don't
+// depend on loading every appointment. Same visibility rules as the list.
+// "positive" = confirmed or completed.
+router.get('/stats', async (req, res) => {
+  try {
+    const where = { ...doctorScope(req) };
+    const [total, positive, patients] = await Promise.all([
+      prisma.appointment.count({ where }),
+      prisma.appointment.count({ where: { ...where, status: { in: ['confirmed', 'completed'] } } }),
+      prisma.appointment.groupBy({ by: ['patientId'], where })
+    ]);
+    res.json({ total, positive, patients: patients.length });
+  } catch (err) {
+    console.error('Appointment stats error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
