@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
+const { loginIpLimiter, loginEmailLimiter } = require('../middleware/rateLimiters');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
@@ -49,7 +50,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+// Failed attempts are rate limited per IP and per account (see rateLimiters.js).
+router.post('/login', loginIpLimiter, loginEmailLimiter, async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 

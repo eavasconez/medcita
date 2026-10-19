@@ -12,6 +12,7 @@ const patientRoutes = require('./routes/patients');
 const availabilityRoutes = require('./routes/availability');
 const adminRoutes = require('./routes/admin');
 const authMiddleware = require('./middleware/auth');
+const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
 
@@ -33,6 +34,17 @@ if (
 }
 
 const app = express();
+
+// Tell Express how many proxies are in front of the app, so req.ip (used by the
+// per-IP rate limits) is the real client and not a proxy address.
+let trustProxy;
+try {
+  trustProxy = resolveTrustProxy();
+} catch (err) {
+  console.error(`FATAL: ${err.message}`);
+  process.exit(1);
+}
+app.set('trust proxy', trustProxy);
 
 // Restrict CORS to known frontend origin(s) instead of allowing any origin.
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
