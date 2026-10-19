@@ -7,6 +7,8 @@ import { API_BASE_URL } from './config/api';
 // all being bundled into the initial load.
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Patients = lazy(() => import('./pages/Patients'));
 const Availability = lazy(() => import('./pages/Availability'));
@@ -129,6 +131,9 @@ function App() {
             <Routes>
               <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
               <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
+              <Route path="/forgot-password" element={!token ? <ForgotPassword /> : <Navigate to="/dashboard" />} />
+              {/* Open to everyone, even with a session: whoever follows the emailed link must be able to use it */}
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
               <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
               <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
