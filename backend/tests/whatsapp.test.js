@@ -197,3 +197,72 @@ describe('without Meta credentials', () => {
     expect(mockTwilioCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('what gets logged', () => {
+  const logged = () => [...console.log.mock.calls, ...console.error.mock.calls].map((c) => c.join(' ')).join('\n');
+  const metaError = (code, extra = {}) => ({
+    ok: false,
+    status: 400,
+    text: async () => JSON.stringify({ error: { message: `(#${code}) Meta says no`, code, fbtrace_id: 'trace123', ...extra } })
+  });
+
+  it.each([
+    ['Meta, delivered', () => setEnv(META_ENV)],
+    ['Twilio, delivered', () => setEnv(TWILIO_ENV)],
+    ['Meta, refused', () => { setEnv(META_ENV); global.fetch.mockResolvedValue(metaError(132001)); }],
+    ['the console mock', () => {}]
+  ])('never prints the full phone number (%s)', async (_label, configure) => {
+    configure();
+
+    await notificationService.sendReminder(appointment);
+
+    expect(logged()).not.toContain('990000042');
+    expect(logged()).toContain('+593***042');
+  });
+
+  it('does not print the message text in production', async () => {
+    setEnv({ NODE_ENV: 'production' });
+
+    await notificationService.sendReminder(appointment);
+
+    expect(logged()).not.toContain('María Andrade');
+  });
+
+  it.each([
+    [132001, /No approved template with this name and language/],
+    [131030, /Manage phone number list/],
+    [190, /permanent System User token/],
+    [132000, /number of parameters/]
+  ])('explains Meta error %i and says where to fix it', async (code, hint) => {
+    setEnv(META_ENV);
+    global.fetch.mockResolvedValue(metaError(code));
+
+    await notificationService.sendReminder(appointment);
+
+    const line = console.error.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(line).toContain(`code ${code}: (#${code}) Meta says no`);
+    expect(line).toMatch(hint);
+    expect(line).toContain('fbtrace_id: trace123');
+  });
+
+  it('includes the details Meta sends, and copes with an error it has no hint for', async () => {
+    setEnv(META_ENV);
+    global.fetch.mockResolvedValue(metaError(999999, { error_data: { details: 'Something new' } }));
+
+    await notificationService.sendReminder(appointment);
+
+    const line = console.error.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(line).toContain('details: Something new');
+    expect(line).not.toContain('HINT');
+  });
+
+  it('copes with an error body that is not JSON', async () => {
+    setEnv(META_ENV);
+    global.fetch.mockResolvedValue({ ok: false, status: 502, text: async () => '<html>Bad gateway</html>' });
+
+    const delivered = await notificationService.sendReminder(appointment);
+
+    expect(delivered).toBe(false);
+    expect(console.error.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('502 <html>Bad gateway</html>');
+  });
+});
