@@ -11,7 +11,6 @@ const DAYS = [
 
 const Availability = () => {
   const [schedules, setSchedules] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [toast, setToast] = useState(null);
@@ -29,7 +28,6 @@ const Availability = () => {
 
   const fetchAvailability = async (doctorId) => {
     try {
-      setLoading(true);
       const url = `${API_BASE_URL}/api/availability${doctorId ? `?doctorId=${doctorId}` : ''}`;
       const res = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
@@ -37,8 +35,6 @@ const Availability = () => {
       setSchedules(res.data);
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 

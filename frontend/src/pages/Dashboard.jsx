@@ -93,7 +93,6 @@ const Dashboard = () => {
     }, {});
   }, [doctors]);
   const [patients, setPatients] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Appointment list filters (status + patient)
   const [statusFilter, setStatusFilter] = useState('');
@@ -172,7 +171,7 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAvailableSlots(res.data);
-    } catch (err) {
+    } catch {
       showToast('Error loading availability', 'error');
     } finally {
       setLoadingSlots(false);
@@ -408,7 +407,7 @@ const Dashboard = () => {
       setToast({ message: 'Appointment rescheduled successfully', type: 'success' });
       fetchAppointments(); // Refresh to be safe
       fetchStats();
-    } catch (err) {
+    } catch {
       setToast({ message: 'Error rescheduling appointment', type: 'error' });
       fetchAppointments(); // Rollback
     }
@@ -431,7 +430,7 @@ const Dashboard = () => {
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
-    } catch (err) {
+    } catch {
       setToast({ message: 'Error updating appointment', type: 'error' });
       fetchAppointments();
     }
@@ -447,7 +446,7 @@ const Dashboard = () => {
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
-    } catch (err) {
+    } catch {
       setToast({ message: 'Error cancelling appointment', type: 'error' });
     }
   };
