@@ -4,7 +4,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "jest --runInBand"
   },
   "keywords": [],
   "author": "",
@@ -25,10 +26,25 @@
     "twilio": "^5.13.0"
   },
   "devDependencies": {
+    "jest": "^30.5.2",
     "nodemon": "^3.1.14",
-    "prisma": "^5.10.2"
+    "prisma": "^5.10.2",
+    "supertest": "^7.3.1"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/tests/**/*.test.js"
+    ],
+    "globalSetup": "<rootDir>/tests/globalSetup.js",
+    "setupFiles": [
+      "<rootDir>/tests/setupEnv.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setupAfterEnv.js"
+    ]
   }
 }

@@ -1,6 +1,6 @@
 // MedCita Server
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env'), quiet: process.env.NODE_ENV === 'test' });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -40,7 +40,8 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .map((origin) => origin.trim());
 app.use(cors({ origin: allowedOrigins }));
 app.use(helmet());
-app.use(morgan('dev'));
+// Request logging is noise in the test output
+if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.use(express.json());
 
 // Unauthenticated health check - gives uptime monitors (and any future
@@ -57,14 +58,6 @@ app.use('/api/patients', authMiddleware, patientRoutes);
 app.use('/api/availability', authMiddleware, availabilityRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
 
-// Cron Job for ~24h reminders (runs hourly so each appointment is
-// reminded close to the 24h mark, not just "the day before")
-cron.schedule('0 * * * *', () => {
-  sendReminders().catch((error) => {
-    console.error('Scheduled reminder task failed:', error.message);
-  });
-});
-
 // Manual trigger for demo purpose - restricted to admin/secretary so any
 // authenticated doctor can't fire off a system-wide notification batch.
 app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
@@ -79,8 +72,22 @@ app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
+// Only start the cron and open the port when run directly (`node src/server.js`).
+// Importing this file (e.g. from the test suite) just gets the configured app.
+if (require.main === module) {
+  // Cron Job for ~24h reminders (runs hourly so each appointment is
+  // reminded close to the 24h mark, not just "the day before")
+  cron.schedule('0 * * * *', () => {
+    sendReminders().catch((error) => {
+      console.error('Scheduled reminder task failed:', error.message);
+    });
+  });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+  const PORT = process.env.PORT || 5000;
+
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
