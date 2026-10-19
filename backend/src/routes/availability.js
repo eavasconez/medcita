@@ -73,12 +73,18 @@ router.get('/slots', async (req, res) => {
       }
     });
 
-    // Fallback for demo: if no availability and it's Mon-Fri (1-5), allow 8-6
+    // Fallback for demo: a doctor who has NOT configured any schedule works
+    // Mon-Fri (1-5) 8-6, same as GET / and the check in POST /api/appointments.
+    // A doctor with a schedule that simply skips this day does not work it, so
+    // it must not be offered here just because the day is a weekday.
     if (availabilities.length === 0 && dayOfWeek >= 1 && dayOfWeek <= 5) {
-      availabilities = [{
-        startTime: '08:00',
-        endTime: '18:00'
-      }];
+      const configured = await prisma.availability.count({ where: { doctorId: targetDoctorId } });
+      if (configured === 0) {
+        availabilities = [{
+          startTime: '08:00',
+          endTime: '18:00'
+        }];
+      }
     }
 
     if (availabilities.length === 0) {

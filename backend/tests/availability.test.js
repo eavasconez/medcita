@@ -194,19 +194,30 @@ describe('GET /api/availability/slots', () => {
     expect(weekend.body).toEqual([]);
   });
 
-  // KNOWN BUG: the Monday-Friday 08:00-18:00 fallback is applied per day, so a
-  // doctor who configured only Mondays is still offered free slots on Tuesday
-  // (which POST /api/appointments then rejects with "El médico no atiende en el
-  // horario seleccionado"). The fallback should only apply to doctors with no
-  // schedule at all. `it.failing` keeps CI green while documenting it; when the
-  // endpoint is fixed this test will start failing, so change it back to `it`.
-  it.failing('returns no slots on a day the doctor does not work', async () => {
+  // The Monday-Friday fallback is only for doctors with no schedule at all: one
+  // who configured just Mondays must not be offered Tuesday slots, which
+  // POST /api/appointments would reject anyway.
+  it('returns no slots on a day the doctor does not work', async () => {
     const { user, token } = await createUser();
     await prisma.availability.create({ data: slot(user, 1, '09:00', '12:00') });
 
     const res = await getSlots(token, { date: TUESDAY });
 
     expect(res.body).toEqual([]);
+  });
+
+  it('offers the same days that booking accepts: a slot returned by /slots can be booked', async () => {
+    const { user, token } = await createUser();
+    await prisma.availability.create({ data: slot(user, 1, '09:00', '10:00') });
+
+    const free = await getSlots(token, { date: MONDAY });
+    const booked = await request(app)
+      .post('/api/appointments')
+      .set(bearer(token))
+      .send({ patientName: 'María Andrade', patientPhone: '+593990000042', date: MONDAY, time: free.body[0].time });
+
+    expect(free.body.length).toBeGreaterThan(0);
+    expect(booked.status).toBe(201);
   });
 
   it('marks booked slots as booked but frees the ones whose appointment was cancelled', async () => {
