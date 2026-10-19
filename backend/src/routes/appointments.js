@@ -173,7 +173,7 @@ router.post('/', async (req, res) => {
       // Note: For demo simplicity, we might want to skip this if no availability is set
       const totalAvailabilities = await tx.availability.count({ where: { doctorId: targetDoctorId } });
       if (totalAvailabilities > 0 && !availability) {
-        throw new ScheduleConflictError('El médico no atiende en el horario seleccionado');
+        throw new ScheduleConflictError('The doctor does not work at the selected time');
       }
 
       // 2. Conflict Check (Duplicate time for same doctor)
@@ -187,7 +187,7 @@ router.post('/', async (req, res) => {
       });
 
       if (conflict) {
-        throw new ScheduleConflictError('Ya existe una cita en este horario');
+        throw new ScheduleConflictError('An appointment already exists at this time');
       }
 
       // 3. Upsert Patient
@@ -238,11 +238,11 @@ router.post('/', async (req, res) => {
       // clear message, and fall back to a generic one for anything else.
       const target = Array.isArray(err.meta?.target) ? err.meta.target[0] : null;
       const fieldMessages = {
-        cedula: 'Ya existe un paciente con esa cédula',
-        phone: 'Ya existe un paciente con ese teléfono'
+        cedula: 'A patient with this cedula already exists',
+        phone: 'A patient with this phone already exists'
       };
       console.error('Appointment creation unique constraint error:', err.message);
-      return res.status(400).json({ error: fieldMessages[target] || 'Ya existe un paciente con esos datos' });
+      return res.status(400).json({ error: fieldMessages[target] || 'A patient with these details already exists' });
     }
     console.error('Appointment creation error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });

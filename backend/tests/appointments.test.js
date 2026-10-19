@@ -47,6 +47,17 @@ describe('POST /api/appointments', () => {
     expect(await prisma.appointment.count()).toBe(1);
   });
 
+  // Patient-facing messages are in Spanish and name the doctor as saved ("Dr." or
+  // "Dra."), without an article in front that would be wrong for one of them.
+  it.each(['Dr. Santiago Pérez', 'Dra. Camila Torres'])('names %s in the WhatsApp confirmation without an article', async (name) => {
+    const { token } = await createUser({ name });
+
+    await post(token, booking());
+
+    const [message] = notifications.sent.filter((m) => m.channel === 'whatsapp');
+    expect(message.message).toContain(`tu cita con ${name} ha sido agendada`);
+  });
+
   it('sends the confirmation to the patient (WhatsApp + email) and a notice to the doctor', async () => {
     const { user, token } = await createUser({ name: 'Dr. House', email: 'house@example.test' });
 
@@ -116,6 +127,18 @@ describe('POST /api/appointments', () => {
     expect(await prisma.patient.count()).toBe(1);
   });
 
+  describe('patient data that is already taken', () => {
+    it('says which field belongs to another patient (cedula)', async () => {
+      const { token } = await createUser();
+      await createPatient({ phone: '+593991111111', cedula: '1700000001' });
+
+      const res = await post(token, booking({ patientPhone: '+593992222222', patientCedula: '1700000001' }));
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('A patient with this cedula already exists');
+    });
+  });
+
   describe('schedule conflicts', () => {
     it('rejects a second appointment for the same doctor, date and time', async () => {
       const { token } = await createUser();
@@ -124,7 +147,7 @@ describe('POST /api/appointments', () => {
       const res = await post(token, booking({ patientName: 'Otro Paciente', patientPhone: '+593990000099' }));
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Ya existe una cita en este horario');
+      expect(res.body.error).toBe('An appointment already exists at this time');
       expect(await prisma.appointment.count()).toBe(1);
     });
 
@@ -176,9 +199,9 @@ describe('POST /api/appointments', () => {
 
       expect(inside.status).toBe(201);
       expect(afterHours.status).toBe(400);
-      expect(afterHours.body.error).toBe('El médico no atiende en el horario seleccionado');
+      expect(afterHours.body.error).toBe('The doctor does not work at the selected time');
       expect(otherDay.status).toBe(400);
-      expect(otherDay.body.error).toBe('El médico no atiende en el horario seleccionado');
+      expect(otherDay.body.error).toBe('The doctor does not work at the selected time');
     });
 
     it('does not restrict a doctor who has not configured any schedule', async () => {

@@ -95,7 +95,7 @@ const notificationService = {
    */
   sendAppointmentConfirmation: async (appointment) => {
     const { patient, doctor, date, time } = appointment;
-    const msg = `MedCita: Hola ${patient.name}, tu cita con el ${doctor.name} ha sido agendada para el ${date} a las ${time}. ¡Te esperamos!`;
+    const msg = `MedCita: Hola ${patient.name}, tu cita con ${doctor.name} ha sido agendada para el ${date} a las ${time}. ¡Te esperamos!`;
 
     // Each notification is independent: run them concurrently and don't let
     // one recipient's failure suppress the others (allSettled, not all).
@@ -138,7 +138,7 @@ const notificationService = {
    */
   sendReminder: async (appointment, { dayLabel = 'mañana' } = {}) => {
     const { patient, doctor, date, time } = appointment;
-    const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita ${dayLabel} ${date} a las ${time} con el ${doctor.name}.`;
+    const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita ${dayLabel} ${date} a las ${time} con ${doctor.name}.`;
 
     // Each channel is independent: one failing must not suppress the other.
     const tasks = [notificationService.sendWhatsApp(patient.phone, msg)];
