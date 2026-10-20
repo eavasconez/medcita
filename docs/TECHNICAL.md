@@ -194,6 +194,8 @@ Detalles útiles:
 
 El esquema está en `backend/prisma/schema.prisma` y su historial en `backend/prisma/migrations/`: una carpeta `<fecha>_<nombre>/migration.sql` por cada cambio. Desde S7-04 **ya no se usa `prisma db push`**: no deja historial ni se puede reproducir, y con pacientes y citas reales eso es un riesgo.
 
+El cliente de Prisma (`@prisma/client`) se regenera solo en cada `npm install`/`npm ci` gracias al script `postinstall` de `backend/package.json`; no hace falta correr `prisma generate` a mano después de instalar. Orden y motivos de despliegue: `docs/DEPLOY.md`, «Contrato de despliegue del backend».
+
 | Qué quieres hacer | Comando (dentro de `backend/`) |
 |---|---|
 | Crear las tablas en una base nueva (local o Neon) | `npx prisma migrate deploy` |

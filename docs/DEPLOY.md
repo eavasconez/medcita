@@ -66,6 +66,8 @@ Si el paso 1 imprime SQL distinto de esa columna (código de salida 2), a Neon l
 
 Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en Render (sección 3). Hacerlo antes haría fallar el build con `P3005` (la versión anterior seguiría sirviendo, no se pierde nada).
 
+> **Orden al desplegar un cambio de esquema.** Mientras el Build Command de Render **no** incluya `migrate deploy`, las migraciones no se aplican solas: un PR que traiga una migración debe aplicarse a mano en Neon (SQL Editor o `migrate deploy`) **antes** de fusionarlo, porque Render despliega al fusionar. Pasó el 20-oct-2026 con S7-08: el código pedía `Doctor.passwordChangedAt`, la columna no existía en Neon y todas las rutas autenticadas respondieron 500 hasta crearla. Con `migrate deploy` en el Build Command el problema desaparece, porque la migración corre durante el build, antes de que la versión nueva atienda tráfico.
+
 ## 3. Backend (Render Web Service)
 
 1. Dashboard de Render → **"+ New"** → **"Web Service"** → conectar el repo `medcita`.
@@ -258,6 +260,24 @@ El número de prueba sirve para validar, no para clientes reales (solo 5 destina
 - [ ] Revisar la **tarifa vigente**.
 
 **Costo.** Los mensajes *utility* enviados **fuera** de la ventana de 24 h de atención al cliente (el caso de una confirmación o un recordatorio a quien no escribió) se cobran por mensaje; dentro de la ventana son gratis. Ecuador está en la región «Rest of Latin America». Como orden de magnitud, una guía de terceros de julio de 2026 lista unos US$0,0113 por mensaje *utility* en esa región (confirmación + recordatorio ≈ US$0,02 por cita): es una referencia, no un precio. Meta actualiza sus tarifas el primer día de cada trimestre; la vigente está en [developers.facebook.com/docs/whatsapp/pricing](https://developers.facebook.com/docs/whatsapp/pricing).
+
+## Contrato de despliegue del backend (vale para cualquier servicio)
+
+Render es solo donde corre hoy. Lo que el backend necesita es lo mismo en cualquier otro servicio (Railway, Fly.io, un VPS, Docker…). En este orden, dentro de `backend/`:
+
+| Paso | Comando | Para qué |
+|---|---|---|
+| 1. Instalar | `npm install` (o `npm ci`) | Instala las dependencias. El `postinstall` del proyecto ejecuta `prisma generate`, así el cliente de Prisma coincide siempre con `schema.prisma`, incluso si el servicio reutiliza una caché de `node_modules` |
+| 2. Migrar | `npx prisma migrate deploy` | Aplica a `DATABASE_URL` las migraciones pendientes. Debe terminar **antes** de que la versión nueva reciba tráfico |
+| 3. Arrancar | `npm start` (`node src/server.js`) | |
+
+Por qué importa cada parte (aprendido el 20-oct-2026, cuando producción respondió 500):
+
+- **El cliente de Prisma se genera, no se instala.** Si la plataforma reutiliza `node_modules` entre despliegues y nada regenera el cliente, el código nuevo pide campos que el cliente viejo no conoce. Las versiones recientes de npm además no ejecutan por defecto los scripts de instalación de las *dependencias* (entre ellos el de `@prisma/client`), por eso el `generate` vive en el `postinstall` del propio proyecto, que sí corre. Si algún día se omiten los scripts (`--ignore-scripts`), hay que correr `npx prisma generate` aparte.
+- **La base debe estar migrada antes del código.** Desde S7-08 el middleware de autenticación lee una columna en cada petición; con la base sin migrar falla toda ruta protegida.
+- **`prisma` está en `dependencies` a propósito**, para que `generate` y `migrate deploy` existan también en instalaciones de producción (`npm ci --omit=dev`).
+- **Docker:** copia `package.json`, `package-lock.json` **y la carpeta `prisma/`** antes de `npm ci`, porque `postinstall` necesita `prisma/schema.prisma`.
+- Si se cambia de servicio, la base no cambia de manos: hay que llevar la misma `DATABASE_URL` (y, si es una base nueva, correr `migrate deploy` o, para una que venga de `db push`, el registro de historial de la sección 2).
 
 ## Notas para futuros redeploys
 
