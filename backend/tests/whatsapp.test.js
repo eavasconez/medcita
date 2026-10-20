@@ -269,13 +269,13 @@ describe('what gets logged', () => {
   });
 });
 
-describe('docs/DEPLOY.md', () => {
-  const deploy = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'DEPLOY.md'), 'utf8');
+describe.each(['DEPLOY.md', 'WHATSAPP_META_SETUP.md'])('docs/%s', (file) => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', file), 'utf8');
 
   // Whoever registers the templates in Meta copies them from the guide: the text
   // there must be the one the code fills in, or every send fails with error 132001.
   it.each(Object.entries(TEMPLATES))('lists the exact text and default name of the %s template', (_key, template) => {
-    expect(deploy).toContain(template.body);
-    expect(deploy).toContain(`nombre \`${template.defaultName}\``);
+    expect(doc).toContain(template.body);
+    expect(doc).toContain(`\`${template.defaultName}\``);
   });
 });

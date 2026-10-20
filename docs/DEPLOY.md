@@ -153,6 +153,8 @@ Hasta ahora producción enviaba WhatsApp con el **sandbox de Twilio**, que oblig
 
 > **Por qué plantillas.** Meta solo deja que un negocio abra una conversación con una **plantilla aprobada**. El texto libre únicamente se entrega dentro de las 24 h posteriores a que el paciente escribió. La confirmación de cita y el recordatorio los inicia MedCita, así que desde S7-06 se envían como plantillas (`backend/src/services/whatsappTemplates.js`). Sin credenciales de Meta nada cambia: Twilio y el modo mock envían el mismo texto como mensaje normal.
 
+> **Guía completa paso a paso** (crear la cuenta, la app, las plantillas y el token, con los tropiezos de S7-06): [WHATSAPP_META_SETUP.md](WHATSAPP_META_SETUP.md). Esta sección es la referencia corta.
+
 > Meta cambia los nombres de los menús con frecuencia. Si algo no está donde se indica, búscalo por su nombre en el buscador del panel.
 
 ### 7.1 Crear la app y el número de prueba (una sola vez)
