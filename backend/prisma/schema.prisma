@@ -72,3 +72,28 @@ model PasswordResetToken {
 
   @@index([doctorId])
 }
+
+// What an admin or a secretary did with appointments, patients and accounts.
+// Append-only: nothing updates or deletes these rows. There are no foreign keys on
+// purpose, so a record outlives the account or the data it talks about. `changes`
+// lists the fields that changed, with before/after values only for the ones that
+// are safe to keep (never contact data, notes or passwords).
+model AuditLog {
+  id        String   @id @default(uuid())
+  // Insert order. createdAt cannot tell apart the entries of one transaction: the
+  // database stamps all of them with the moment the transaction started.
+  seq       Int      @default(autoincrement())
+  createdAt DateTime @default(now())
+  actorId   String
+  actorName String
+  actorRole String
+  action    String
+  entity    String
+  entityId  String
+  doctorId  String?
+  changes   Json?
+
+  @@index([createdAt, seq])
+  @@index([actorId])
+  @@index([entity, entityId])
+}
