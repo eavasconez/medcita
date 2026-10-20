@@ -169,7 +169,7 @@ Hasta ahora producción enviaba WhatsApp con el **sandbox de Twilio**, que oblig
 
 ### 7.3 Token permanente
 
-El token que muestra *API Setup* es temporal y **vence a las 24 h**. Para uno permanente:
+El token que muestra *API Setup* es temporal y **vence pronto**: el panel habla de 24 h, pero en las pruebas de S7-06 el generado desde *Pruébalo* dejó de funcionar en alrededor de **1 hora** (error 190, «Session has expired»). Sirve para probar de inmediato; para producción hace falta uno permanente:
 
 1. [business.facebook.com/settings](https://business.facebook.com/settings) → **Users → System users → Add** (rol *Admin*).
 2. **Add assets**: la **app** (control total) y la **cuenta de WhatsApp** (control total).
