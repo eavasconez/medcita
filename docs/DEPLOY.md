@@ -167,14 +167,16 @@ Hasta ahora producción enviaba WhatsApp con el **sandbox de Twilio**, que oblig
 
 **WhatsApp → API Setup →** campo **To →** **Manage phone number list →** agrega cada número con su código de país (por ejemplo `+593…`). Meta manda un código por WhatsApp a ese número para confirmarlo. Con el número de prueba, **un número que no esté en esta lista no recibe nada** (el error es el 131030).
 
-### 7.3 Token permanente
+### 7.3 Token de usuario del sistema
 
-El token que muestra *API Setup* es temporal y **vence pronto**: el panel habla de 24 h, pero en las pruebas de S7-06 el generado desde *Pruébalo* dejó de funcionar en alrededor de **1 hora** (error 190, «Session has expired»). Sirve para probar de inmediato; para producción hace falta uno permanente:
+El token que muestra *API Setup* es temporal y **vence pronto**: el panel habla de 24 h, pero en las pruebas de S7-06 el generado desde *Pruébalo* dejó de funcionar en alrededor de **1 hora** (error 190, «Session has expired»). Sirve para probar de inmediato; para el backend desplegado hace falta uno de usuario del sistema:
 
 1. [business.facebook.com/settings](https://business.facebook.com/settings) → **Users → System users → Add** (rol *Admin*).
-2. **Add assets**: la **app** (control total) y la **cuenta de WhatsApp** (control total).
-3. **Generate new token** → elige la app → marca los permisos `whatsapp_business_messaging` y `whatsapp_business_management` → vencimiento **Never**.
+2. **Add assets**: la **app** (control total) y la **cuenta de WhatsApp** (control total). La app debe pertenecer al mismo portfolio comercial (**Accounts → Apps**).
+3. **Generate new token** → elige la app → marca los permisos `whatsapp_business_messaging` y `whatsapp_business_management`.
 4. Copia el token (solo se muestra una vez) a `META_WHATSAPP_TOKEN`. Es una credencial: va en las variables de entorno de Render, nunca en el repositorio.
+
+**Vencimiento.** Mientras el negocio no esté verificado, Meta no ofrece la opción *Never* y el token dura **60 días** (en S7-06 se generó uno con vencimiento a 60 días). Es suficiente para pruebas, pero **no es permanente**: anota la fecha, porque al vencer los envíos fallan con el error 190 y no hay respaldo automático a Twilio. Para ver cuándo vence, consulta `GET /debug_token?input_token=<token>` con ese mismo token (`expires_at` en segundos Unix; `0` significa que no vence). Con el negocio verificado (checklist de 7.7) se genera uno sin vencimiento.
 
 ### 7.4 Registrar las dos plantillas
 
@@ -208,7 +210,7 @@ Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar tambi�
 
 | Key | Value |
 |---|---|
-| `META_WHATSAPP_TOKEN` | El token permanente del paso 7.3 |
+| `META_WHATSAPP_TOKEN` | El token de usuario del sistema del paso 7.3 (vence a los 60 días si el negocio no está verificado) |
 | `META_WHATSAPP_PHONE_NUMBER_ID` | El *Phone number ID* del paso 7.1 |
 | `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | Opcionales. Nombres de las plantillas (por defecto `cita_confirmada` y `recordatorio_cita`) |
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | Opcional. Idioma de las plantillas (por defecto `es`) |
@@ -228,7 +230,7 @@ Debe imprimir `Provider: Meta Cloud API`, el nombre de la plantilla y `OK: Meta 
 
 | Código | Qué pasó | Qué hacer |
 |---|---|---|
-| 190 | El token venció o es inválido | Genera el token permanente (7.3) y actualiza `META_WHATSAPP_TOKEN` |
+| 190 | El token venció o es inválido | Genera un token de usuario del sistema (7.3) y actualiza `META_WHATSAPP_TOKEN` |
 | 131030 | El número no está en la lista de destinatarios del número de prueba | Agrégalo en 7.2 |
 | 132001 | No hay una plantilla **aprobada** con ese nombre e idioma | Revisa el estado en WhatsApp Manager y los nombres/idioma de 7.4 y 7.5 |
 | 132000 / 132012 | La cantidad o el formato de las variables no coincide con la plantilla | Registra la plantilla con el texto exacto de 7.4 |
