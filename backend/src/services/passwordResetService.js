@@ -75,7 +75,8 @@ async function resetPassword(token, newPassword) {
 
     const doctor = await tx.doctor.update({
       where: { id: record.doctorId },
-      data: { password: passwordHash },
+      // passwordChangedAt signs out every session opened with the old password
+      data: { password: passwordHash, passwordChangedAt: new Date() },
       select: { id: true, email: true }
     });
     // Any other link still floating around for this account dies with this one.
