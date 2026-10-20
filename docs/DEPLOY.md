@@ -47,8 +47,9 @@ Hasta S7-03 el esquema se subía a Neon con `db push`, que crea las tablas pero 
 cd backend
 set -a; source .env.production.local; set +a
 
-# 1. Solo lectura: comparar Neon con el esquema actual. Lo único que puede aparecer es la
-#    columna de S7-08 (ver abajo); si no aparece nada, responde "-- This is an empty migration."
+# 1. Solo lectura: comparar Neon con el esquema actual. Pueden aparecer las dos diferencias
+#    conocidas de abajo (columna de S7-08, valor por defecto de S7-01); si no aparece nada,
+#    responde "-- This is an empty migration."
 npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script --exit-code
 
 # 2. Registrar la baseline como ya aplicada
@@ -62,11 +63,15 @@ npx prisma migrate status
 
 **La columna de S7-08.** La baseline es el esquema de S7-03. S7-08 agregó `Doctor.passwordChangedAt` en una migración aparte (`20261020150000_add_password_changed_at`), así que en el paso 1 es normal ver únicamente `ALTER TABLE "Doctor" ADD COLUMN "passwordChangedAt" TIMESTAMP(3);`: **no la apliques a mano**, el build de Render la aplica con `migrate deploy` (es una columna nueva y nula, no toca datos). Si ya la creaste con `db push`, registra también esa migración (`npx prisma migrate resolve --applied 20261020150000_add_password_changed_at`) para que `migrate deploy` no falle por «column already exists».
 
-Si el paso 1 imprime SQL distinto de esa columna (código de salida 2), a Neon le falta algo de un PR anterior (por ejemplo la columna `reminderSentAt` de S7-01 o la tabla `PasswordResetToken` de S7-03). Si el SQL solo agrega cosas (`CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD …`), corre `npx prisma db push` y repite el paso 1. Si aparece algún `DROP`, **detente y revísalo antes** de seguir: `db push` pediría `--accept-data-loss`.
+**El valor por defecto de `status` (S7-01).** En una base creada antes de S7-01 también es normal ver `ALTER TABLE "Appointment" ALTER COLUMN "status" SET DEFAULT 'pending_approval';`: S7-01 cambió ese valor por defecto de `'scheduled'` a `'pending_approval'`. Es inofensivo (la app y el seed siempre indican el estado al crear una cita, y cambiar un valor por defecto no toca las filas existentes), pero conviene alinearlo **antes** de registrar la baseline para que el diff quede vacío: ejecuta esa sentencia en el SQL Editor de Neon y repite el paso 1. Así se hizo en producción el 20-oct-2026.
 
-Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en Render (sección 3). Hacerlo antes haría fallar el build con `P3005` (la versión anterior seguiría sirviendo, no se pierde nada).
+**Resultado `P3008` al registrar.** Si `migrate resolve` responde `P3008` («already recorded as applied»), esa migración ya estaba anotada en el historial: no es un error. Lo que cuenta es que `migrate status` termine en `Database schema is up to date!`.
 
-> **Orden al desplegar un cambio de esquema.** Mientras el Build Command de Render **no** incluya `migrate deploy`, las migraciones no se aplican solas: un PR que traiga una migración debe aplicarse a mano en Neon (SQL Editor o `migrate deploy`) **antes** de fusionarlo, porque Render despliega al fusionar. Pasó el 20-oct-2026 con S7-08: el código pedía `Doctor.passwordChangedAt`, la columna no existía en Neon y todas las rutas autenticadas respondieron 500 hasta crearla. Con `migrate deploy` en el Build Command el problema desaparece, porque la migración corre durante el build, antes de que la versión nueva atienda tráfico.
+Si el paso 1 imprime SQL distinto de esas dos diferencias (código de salida 2), a Neon le falta algo de un PR anterior (por ejemplo la columna `reminderSentAt` de S7-01 o la tabla `PasswordResetToken` de S7-03). Si el SQL solo agrega cosas (`CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD …`), corre `npx prisma db push` y repite el paso 1. Si aparece algún `DROP`, **detente y revísalo antes** de seguir: `db push` pediría `--accept-data-loss`.
+
+Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en Render (sección 3). Hacerlo antes haría fallar el build con `P3005` (la versión anterior seguiría sirviendo, no se pierde nada). Guardar el Build Command lanza un despliegue del último commit, que sirve de prueba: en el log debe aparecer `No pending migrations to apply.` y el servicio debe quedar en *Live* (así salió el 20-oct-2026).
+
+> **Orden al desplegar un cambio de esquema.** Mientras el Build Command de Render **no** incluya `migrate deploy`, las migraciones no se aplican solas: un PR que traiga una migración debe aplicarse a mano en Neon (SQL Editor o `migrate deploy`) **antes** de fusionarlo, porque Render despliega al fusionar. Pasó el 20-oct-2026 con S7-08: el código pedía `Doctor.passwordChangedAt`, la columna no existía en Neon y todas las rutas autenticadas respondieron 500 hasta crearla. Con `migrate deploy` en el Build Command el problema desaparece, porque la migración corre durante el build, antes de que la versión nueva atienda tráfico. Desde el 20-oct-2026 el Build Command de producción ya lo incluye; esta advertencia vale si se vuelve a omitir o al cambiar de servicio.
 
 ## 3. Backend (Render Web Service)
 
