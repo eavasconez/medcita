@@ -47,18 +47,22 @@ Hasta S7-03 el esquema se subía a Neon con `db push`, que crea las tablas pero 
 cd backend
 set -a; source .env.production.local; set +a
 
-# 1. Solo lectura: comprobar que Neon es idéntica al esquema actual.
-#    Debe responder "-- This is an empty migration." (código de salida 0)
+# 1. Solo lectura: comparar Neon con el esquema actual. Lo único que puede aparecer es la
+#    columna de S7-08 (ver abajo); si no aparece nada, responde "-- This is an empty migration."
 npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script --exit-code
 
 # 2. Registrar la baseline como ya aplicada
 npx prisma migrate resolve --applied 20261019202135_baseline
 
-# 3. Verificar: debe decir "Database schema is up to date!"
+# 3. Verificar: debe decir que falta aplicar solo 20261020150000_add_password_changed_at (S7-08),
+#    que `migrate deploy` aplicará en el siguiente build. Si no hay nada pendiente dirá
+#    "Database schema is up to date!"
 npx prisma migrate status
 ```
 
-Si el paso 1 imprime SQL (código de salida 2), a Neon le falta algo de un PR anterior (por ejemplo la columna `reminderSentAt` de S7-01 o la tabla `PasswordResetToken` de S7-03). Si el SQL solo agrega cosas (`CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD …`), corre `npx prisma db push` y repite el paso 1. Si aparece algún `DROP`, **detente y revísalo antes** de seguir: `db push` pediría `--accept-data-loss`.
+**La columna de S7-08.** La baseline es el esquema de S7-03. S7-08 agregó `Doctor.passwordChangedAt` en una migración aparte (`20261020150000_add_password_changed_at`), así que en el paso 1 es normal ver únicamente `ALTER TABLE "Doctor" ADD COLUMN "passwordChangedAt" TIMESTAMP(3);`: **no la apliques a mano**, el build de Render la aplica con `migrate deploy` (es una columna nueva y nula, no toca datos). Si ya la creaste con `db push`, registra también esa migración (`npx prisma migrate resolve --applied 20261020150000_add_password_changed_at`) para que `migrate deploy` no falle por «column already exists».
+
+Si el paso 1 imprime SQL distinto de esa columna (código de salida 2), a Neon le falta algo de un PR anterior (por ejemplo la columna `reminderSentAt` de S7-01 o la tabla `PasswordResetToken` de S7-03). Si el SQL solo agrega cosas (`CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD …`), corre `npx prisma db push` y repite el paso 1. Si aparece algún `DROP`, **detente y revísalo antes** de seguir: `db push` pediría `--accept-data-loss`.
 
 Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en Render (sección 3). Hacerlo antes haría fallar el build con `P3005` (la versión anterior seguiría sirviendo, no se pierde nada).
 
