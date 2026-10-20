@@ -51,6 +51,17 @@ describe('main', () => {
     expect(lines.join('\n')).toMatch(/Provider: Meta Cloud API[\s\S]*Template: recordatorio_cita \(es\)[\s\S]*OK: Meta Cloud API accepted/);
   });
 
+  it('fills every variable of the reminder (a missing one would reach the phone as "-")', async () => {
+    Object.assign(process.env, META);
+
+    await main(['+593999999999', 'reminder'], process.env, out);
+
+    const sent = JSON.parse(global.fetch.mock.calls[0][1].body).template.components[0].parameters.map((p) => p.text);
+    expect(sent).toHaveLength(4);
+    expect(sent).not.toContain('-');
+    expect(sent[1]).toMatch(/^mañana \d{4}-\d{2}-\d{2}$/);
+  });
+
   it('exits 1 and says so when Meta refuses the message', async () => {
     Object.assign(process.env, META);
     global.fetch.mockResolvedValue({ ok: false, status: 400, text: async () => '{"error":{"code":131030,"message":"not allowed"}}' });
