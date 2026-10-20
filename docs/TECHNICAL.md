@@ -108,9 +108,41 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | PUT | `/doctors/:id` | admin | Actualiza médico |
 | DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
+| GET | `/audit-log` | admin | Registro de auditoría: lo que hicieron admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
 | GET | `/client-ip` | admin | Diagnóstico de `TRUST_PROXY`: devuelve `{ ip, forwardedFor, trustProxy }`; `ip` debe ser tu IP pública |
 
 `/api/admin/medicos` es el **nombre anterior** de `/api/admin/doctors`. Sigue respondiendo igual (mismos métodos y permisos) como alias temporal para clientes que no se hayan actualizado, por ejemplo un frontend viejo en caché mientras el backend ya está desplegado, y sus respuestas llevan el header `Deprecation: true`. Está pensado para eliminarse más adelante.
+
+### Registro de auditoría
+
+Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario. Un médico que trabaja con su propia agenda no genera registro.
+
+**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel` o `delete`; `entity`: `appointment`, `patient` o `user`, y `entityId`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
+
+| Acción | Se registra |
+|---|---|
+| Agendar, mover o editar una cita (`POST`/`PUT /api/appointments`) | `create` o `update`, con la fecha, la hora y el estado antes y después. Pasar a `cancelled` por `PUT` cuenta como `cancel` |
+| Cancelar una cita (`DELETE /api/appointments/:id`) | `cancel`, con el estado antes y después. Repetirlo no deja una segunda entrada |
+| Crear, editar o borrar un paciente (`/api/patients`) | `create`, `update` (solo los **nombres** de los campos que cambiaron) o `delete`. Una reserva hecha por personal que crea o modifica al paciente deja también su entrada de paciente |
+| Crear, editar o eliminar una cuenta (`/api/admin/doctors`) | `create`, `update` o `delete`. Nombre y rol con antes y después; del correo y de la contraseña solo que cambiaron. Al eliminar queda el nombre y el rol, que es lo único que sobrevive de la cuenta |
+
+**Qué nunca se guarda.** Datos de contacto de pacientes (nombre, teléfono, correo, cédula), el texto de las notas de una cita (pueden contener datos médicos), correos ni contraseñas (ni su hash): de esos campos solo consta que cambiaron, como `{ "notes": { "changed": true } }`. Los campos visibles aparecen como `{ "time": { "from": "10:00", "to": "11:30" } }`. Una petición que no cambia nada, o que se rechaza (horario ocupado, validación, no existe), no deja entrada.
+
+**Garantías.** La entrada se escribe en la **misma transacción** que la acción (`services/auditLog.js`): si no se puede registrar, la acción no ocurre y se responde `500`; y no queda constancia de algo que no sucedió. Las entradas son solo de lectura (no hay ruta para modificarlas o borrarlas) y no tienen claves foráneas, así que sobreviven a la cuenta o al dato al que se refieren. `seq` (serie) fija el orden de inserción: la base le pone la misma hora a todo lo escrito en una transacción, y así se sabe qué ocurrió primero.
+
+**Consulta.** `GET /api/admin/audit-log` (solo admin; secretaria y médico reciben `403`). Más reciente primero, de 50 en 50 por defecto (máx. 200: `page`, `pageSize`). Filtros opcionales: `from` y `to` (fechas `YYYY-MM-DD` de la clínica, ambos extremos incluidos), `actorId` (quién), `entity`, `entityId`, `action` y `doctorId`. Un valor inválido responde `400`. Responde `{ entries, total, page, pageSize, totalPages }`:
+
+```json
+{
+  "id": "…", "createdAt": "2026-10-20T19:50:12.000Z",
+  "actor": { "id": "…", "name": "Ana Secretaria", "role": "secretary" },
+  "action": "update", "entity": "appointment", "entityId": "…",
+  "doctor": { "id": "…", "name": "Dra. Camila Torres" },
+  "changes": { "time": { "from": "10:00", "to": "11:30" } }
+}
+```
+
+**Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`) ni hay pantalla para ver el registro en la aplicación (solo el endpoint). La tabla `AuditLog` no se purga: crece con el uso.
 
 ### Salud (`/api/health`)
 

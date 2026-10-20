@@ -15,7 +15,6 @@
 | Ticket | Qué falta |
 |---|---|
 | S7-06 (#75) WhatsApp con plantillas de Meta | Código y documentación fusionados (PR #81). Falta la prueba real, ver el segundo punto de Alta prioridad |
-| S7-09 (#84) Auditoría de acciones de admin y secretaria | Sin empezar. Ver Baja prioridad |
 | S7-10 (#85) Backlog y documentación | Este documento |
 
 ## Alta prioridad
@@ -37,7 +36,7 @@
 
 ## Baja prioridad / limpieza
 
-- [ ] **Sin auditoría de acciones de admin/secretaria (S7-09, #84)**: no queda registro de qué secretaria/admin modificó qué cita/paciente de qué médico — relevante si se maneja más de un médico por cuenta de secretaria.
+- [ ] **El registro de auditoría (S7-09) tiene huecos y no se ve en la app**: no registra los cambios de horarios de atención que hace un admin o una secretaria sobre un médico (`/api/availability`), solo existe el endpoint `GET /api/admin/audit-log` (sin pantalla en la interfaz) y la tabla `AuditLog` no se purga. Revisarlo si el volumen crece o si hace falta que lo consulte alguien sin acceso a la API.
 - [ ] **Retirar el alias `/api/admin/medicos`** (responde con `Deprecation: true`) cuando ningún cliente lo use; el nombre vigente es `/api/admin/doctors`.
 - [ ] **Revisar el material de demo contra la app actual** (`S6-01` guion, `S6-02` video, `S6-03` deck): desde julio cambiaron la paginación, la recuperación y el cambio de contraseña, los textos y los errores de carga. Las demos con médicos reales (S6-04 a S6-08) siguen bloqueadas por no tener candidatos.
 - [ ] **`README.md` y `docs/gema_conocimiento.md` describen el setup anterior** (`prisma db push`); ahora el esquema se crea con `npx prisma migrate deploy` (`docs/TECHNICAL.md`, secciones 2 y 7).
@@ -63,6 +62,7 @@ Sprint 7:
 | `eslint.config.js` roto | **S7-02** (#71, PR #77); desde S7-11, 0 errores y 0 advertencias |
 | No se podía cambiar la contraseña y las sesiones viejas valían 24 h | **S7-08** (#83, PR #87): cambio desde Settings y tokens anteriores al cambio rechazados |
 | `PUT` de citas podía dejar dos citas en el mismo horario | **S7-07** (#82, PR #86): mismas reglas que al agendar, `409` si está ocupado |
+| No quedaba registro de lo que hacían admin y secretaria | **S7-09** (#84): tabla `AuditLog`, registro en la misma transacción de la acción y `GET /api/admin/audit-log` solo para administradores |
 | WhatsApp solo llegaba dentro de la ventana de 24 h | **S7-06** (#75, PR #81): plantillas de Meta (falta la prueba real, ver Alta prioridad) |
 | Una base atrasada no avisaba y las pantallas lo mostraban como «sin datos» | **S7-11** (#89, PR #90): comprobación de esquema, `/api/health` con `503` y errores de carga con reintento |
 
