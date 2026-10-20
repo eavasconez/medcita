@@ -428,8 +428,8 @@ const Dashboard = () => {
       setToast({ message: 'Appointment rescheduled successfully', type: 'success' });
       fetchAppointments(); // Refresh to be safe
       fetchStats();
-    } catch {
-      setToast({ message: 'Error rescheduling appointment', type: 'error' });
+    } catch (err) {
+      setToast({ message: err.response?.data?.error || 'Error rescheduling appointment', type: 'error' });
       fetchAppointments(); // Rollback
     }
   };
@@ -451,8 +451,8 @@ const Dashboard = () => {
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
-    } catch {
-      setToast({ message: 'Error updating appointment', type: 'error' });
+    } catch (err) {
+      setToast({ message: err.response?.data?.error || 'Error updating appointment', type: 'error' });
       fetchAppointments();
     }
   };
