@@ -17,7 +17,10 @@ const LIMITS = {
   forgotPasswordPerEmail: { windowMs: HOUR, limit: 3 },
   forgotPasswordPerIp: { windowMs: HOUR, limit: 10 },
   // Only failed attempts (400) count.
-  resetPasswordPerIp: { windowMs: 15 * MINUTE, limit: 10 }
+  resetPasswordPerIp: { windowMs: 15 * MINUTE, limit: 10 },
+  // Only a wrong current password counts (403). Whoever is guessing it already holds a
+  // session, so the limit is per account, not per IP.
+  changePasswordPerAccount: { windowMs: 15 * MINUTE, limit: 5 }
 };
 
 const stores = [];
@@ -89,6 +92,14 @@ const resetPasswordIpLimiter = createLimiter({
   countOnlyStatus: 400
 });
 
+// Must run after the auth middleware: it is keyed by the authenticated account.
+const changePasswordLimiter = createLimiter({
+  ...LIMITS.changePasswordPerAccount,
+  message: 'Too many incorrect attempts to change the password.',
+  countOnlyStatus: 403,
+  keyGenerator: (req) => req.doctorId
+});
+
 // Someone who just proved they own the account's email by resetting the password
 // should not stay locked out by the failed logins that made them reset it.
 async function clearLoginAttempts(email) {
@@ -107,6 +118,7 @@ module.exports = {
   forgotPasswordIpLimiter,
   forgotPasswordEmailLimiter,
   resetPasswordIpLimiter,
+  changePasswordLimiter,
   clearLoginAttempts,
   resetRateLimits
 };

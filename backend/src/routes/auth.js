@@ -10,6 +10,7 @@ const {
   forgotPasswordIpLimiter,
   forgotPasswordEmailLimiter,
   resetPasswordIpLimiter,
+  changePasswordLimiter,
   clearLoginAttempts
 } = require('../middleware/rateLimiters');
 const passwordReset = require('../services/passwordResetService');
@@ -114,6 +115,47 @@ router.post('/reset-password', resetPasswordIpLimiter, async (req, res) => {
       return res.status(400).json({ error: INVALID_RESET_LINK_MESSAGE, code: INVALID_RESET_LINK_CODE });
     }
     console.error('Reset password error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Change the password of the signed-in account. Every other session (any token
+// issued before now) stops working; the answer carries a fresh token so this one
+// keeps going. A wrong current password is a 403, not a 401: the frontend treats
+// any 401 as "session expired" and would sign the user out for a typo.
+router.post('/change-password', auth, changePasswordLimiter, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (typeof currentPassword !== 'string' || !currentPassword) {
+    return res.status(400).json({ error: 'Current password is required' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: PASSWORD_TOO_SHORT });
+  }
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ error: 'The new password must be different from the current one' });
+  }
+
+  try {
+    const doctor = await prisma.doctor.findUnique({ where: { id: req.doctorId } });
+    if (!doctor) return res.status(404).json({ error: 'User not found' });
+
+    const isMatch = await bcrypt.compare(currentPassword, doctor.password);
+    if (!isMatch) return res.status(403).json({ error: 'Current password is incorrect' });
+
+    await prisma.doctor.update({
+      where: { id: doctor.id },
+      data: { password: await bcrypt.hash(newPassword, 10), passwordChangedAt: new Date() }
+    });
+
+    const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    res.json({
+      message: 'Password updated successfully',
+      token,
+      user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role }
+    });
+  } catch (err) {
+    console.error('Change password error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
