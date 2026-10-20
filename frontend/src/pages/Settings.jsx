@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import {
   User,
   Mail,

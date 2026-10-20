@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import { Stethoscope, User, Mail, Lock, ArrowRight } from 'lucide-react';
 
 const Register = () => {

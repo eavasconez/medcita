@@ -79,6 +79,7 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    - **Build Command**: `npm install && npx prisma migrate deploy`
    - **Start Command**: `node src/server.js`
    - **Instance Type**: Free
+   - **Health Check Path** (Settings → Health Check Path): `/api/health`. Render espera una respuesta `200` de esa ruta antes de pasar el tráfico a un despliegue nuevo; como la ruta responde `503` cuando la base de datos está atrasada respecto al código (una migración sin aplicar), un despliegue así **no sale a producción** y la versión anterior sigue sirviendo. Ver «Contrato de despliegue del backend»
 
    `migrate deploy` aplica en cada deploy las migraciones pendientes contra `DATABASE_URL` (Neon) y no hace nada si no hay ninguna. Si una migración falla, el build falla y Render sigue sirviendo la versión anterior. Para un servicio que **ya existe**, cambiar el Build Command en *Settings → Build & Deploy*, pero solo después de registrar el historial en Neon (sección 2). El CLI `prisma` está en `dependencies` (no en `devDependencies`) para que este comando lo encuentre aunque el build omita las dependencias de desarrollo.
 3. **Environment Variables** (antes de crear el servicio):
@@ -138,6 +139,8 @@ Una vez se tiene la URL real del Static Site, volver al Web Service del backend 
 2. **Monitor Type**: `HTTP(s)`
 3. **URL**: `https://<tu-backend>.onrender.com/api/health` (el endpoint de health check, sin autenticación, pensado exactamente para esto — ver `server.js`)
 4. **Monitoring Interval**: el mínimo disponible en el plan free (normalmente 5 min).
+
+El monitor también sirve de alarma: `/api/health` responde `503` si la base de datos no responde o si le falta una tabla o columna que el código necesita, y UptimeRobot lo marca como caído (te llega el aviso). El resultado sano se recuerda una hora, así que el ping de cada 5 min **no** consulta la base y no la mantiene despierta (Neon apaga el cómputo tras unos minutos sin uso y su plan gratis tiene horas limitadas).
 
 ## 6. Verificación final
 
@@ -269,12 +272,14 @@ Render es solo donde corre hoy. Lo que el backend necesita es lo mismo en cualqu
 |---|---|---|
 | 1. Instalar | `npm install` (o `npm ci`) | Instala las dependencias. El `postinstall` del proyecto ejecuta `prisma generate`, así el cliente de Prisma coincide siempre con `schema.prisma`, incluso si el servicio reutiliza una caché de `node_modules` |
 | 2. Migrar | `npx prisma migrate deploy` | Aplica a `DATABASE_URL` las migraciones pendientes. Debe terminar **antes** de que la versión nueva reciba tráfico |
-| 3. Arrancar | `npm start` (`node src/server.js`) | |
+| 3. Arrancar | `npm start` (`node src/server.js`) | Al arrancar compara el esquema de la base con lo que el código espera y deja el resultado en el log |
+| 4. Esperar la salud | `GET /api/health` → `200` | La plataforma no debe enviar tráfico a la versión nueva hasta que responda `200`. Con `503` la base está inalcanzable o atrasada |
 
 Por qué importa cada parte (aprendido el 20-oct-2026, cuando producción respondió 500):
 
 - **El cliente de Prisma se genera, no se instala.** Si la plataforma reutiliza `node_modules` entre despliegues y nada regenera el cliente, el código nuevo pide campos que el cliente viejo no conoce. Las versiones recientes de npm además no ejecutan por defecto los scripts de instalación de las *dependencias* (entre ellos el de `@prisma/client`), por eso el `generate` vive en el `postinstall` del propio proyecto, que sí corre. Si algún día se omiten los scripts (`--ignore-scripts`), hay que correr `npx prisma generate` aparte.
 - **La base debe estar migrada antes del código.** Desde S7-08 el middleware de autenticación lee una columna en cada petición; con la base sin migrar falla toda ruta protegida.
+- **El servicio avisa si la base va atrasada (S7-11).** Al arrancar y en `/api/health` compara las tablas y columnas que el código espera con las que existen de verdad (`backend/src/services/schemaCheck.js`). Mira las columnas, no el historial de migraciones, así que también sirve para una base que vino de `db push`. Si falta algo, el log dice qué (`DATABASE SCHEMA IS OUT OF DATE: missing Doctor.passwordChangedAt…`) y cómo arreglarlo, y el health responde `503 { status: "error", reason: "schema_outdated" }` sin detallar qué falta (la ruta es pública). Se arregla solo: se vuelve a comprobar a los 10 s mientras falle, así que en cuanto se aplica la migración vuelve a `200` sin reiniciar. Si cambias de servicio, configura su health check apuntando a `/api/health`.
 - **`prisma` está en `dependencies` a propósito**, para que `generate` y `migrate deploy` existan también en instalaciones de producción (`npm ci --omit=dev`).
 - **Docker:** copia `package.json`, `package-lock.json` **y la carpeta `prisma/`** antes de `npm ci`, porque `postinstall` necesita `prisma/schema.prisma`.
 - Si se cambia de servicio, la base no cambia de manos: hay que llevar la misma `DATABASE_URL` (y, si es una base nueva, correr `migrate deploy` o, para una que venga de `db push`, el registro de historial de la sección 2).

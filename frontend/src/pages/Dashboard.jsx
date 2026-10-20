@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
-import { AuthContext } from '../App';
+import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } from 'react';
+import { AuthContext } from '../AuthContext';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -75,10 +76,21 @@ const visibleRange = (date, view) => {
 // A calendar range is fetched in pages of up to 500; this is only a safety net.
 const APPOINTMENT_PAGE_SIZE = 500;
 const MAX_APPOINTMENT_PAGES = 20;
+
+// Headline numbers from the API's /stats (computed in the database), so they
+// don't depend on which appointments the calendar happens to have loaded.
+const statsFromApi = ({ total, positive, patients }) => ({
+  totalAppointments: total,
+  newPatients: patients,
+  effectiveness: total > 0 ? `${Math.round((positive / total) * 100)}%` : '—'
+});
+
 const Dashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The calendar list or the KPIs could not be loaded (as opposed to being empty)
+  const [loadError, setLoadError] = useState(false);
   const [toast, setToast] = useState(null);
   const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -97,8 +109,8 @@ const Dashboard = () => {
   // viewport crosses the breakpoint after mount (e.g. resize or rotation) -
   // force it back to day view rather than leaving an unreadable week/month grid.
   useEffect(() => {
-    if (isMobile && (view === 'week' || view === 'month')) {
-      setView('day');
+    if (isMobile) {
+      setView((current) => (current === 'week' || current === 'month' ? 'day' : current));
     }
   }, [isMobile]);
 
@@ -147,26 +159,26 @@ const Dashboard = () => {
 
   // Ensure doctorId is set once user is available
   useEffect(() => {
-    if (user?.id && !formData.doctorId) {
-      setFormData(prev => ({
-        ...prev,
-        doctorId: isSpecialRole ? '' : user.id
-      }));
-    }
+    if (!user?.id) return;
+    setFormData(prev => {
+      if (prev.doctorId) return prev;
+      const doctorId = isSpecialRole ? '' : user.id;
+      return prev.doctorId === doctorId ? prev : { ...prev, doctorId };
+    });
   }, [user, isSpecialRole]);
 
   const [weeklyAvailability, setWeeklyAvailability] = useState([]);
 
-  const showToast = (message, type = 'success') => {
+  const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   // Uses axios' `params` (not string interpolation) so a query containing
   // &/#/+ doesn't get mangled, and cancels any still-in-flight previous
   // request so a slower older response can't overwrite fresher results.
   const patientPickerAbortRef = useRef(null);
-  const fetchPatients = async (query = '') => {
+  const fetchPatients = useCallback(async (query = '') => {
     patientPickerAbortRef.current?.abort();
     const controller = new AbortController();
     patientPickerAbortRef.current = controller;
@@ -180,7 +192,7 @@ const Dashboard = () => {
     } catch (err) {
       if (err.code !== 'ERR_CANCELED') console.error(err);
     }
-  };
+  }, [token]);
 
   const debouncedSearch = debounce(fetchPatients, 300);
 
@@ -188,9 +200,9 @@ const Dashboard = () => {
     if (showModal && modalStep === 1) {
       fetchPatients();
     }
-  }, [showModal, modalStep]);
+  }, [showModal, modalStep, fetchPatients]);
 
-  const fetchSlots = async (date, doctorId) => {
+  const fetchSlots = useCallback(async (date, doctorId) => {
     if (!doctorId) return;
     try {
       setLoadingSlots(true);
@@ -203,13 +215,13 @@ const Dashboard = () => {
     } finally {
       setLoadingSlots(false);
     }
-  };
+  }, [token, showToast]);
 
   useEffect(() => {
     if (showModal && formData.date && formData.doctorId) {
       fetchSlots(formData.date, formData.doctorId);
     }
-  }, [formData.date, formData.doctorId, showModal]);
+  }, [formData.date, formData.doctorId, showModal, fetchSlots]);
 
   const selectPatient = (p) => {
     setFormData({
@@ -227,7 +239,7 @@ const Dashboard = () => {
     setModalStep(2);
   };
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/admin/doctors?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -236,13 +248,13 @@ const Dashboard = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (isSpecialRole && token) {
       fetchDoctors();
     }
-  }, [isSpecialRole, token]);
+  }, [isSpecialRole, token, fetchDoctors]);
 
   const handleSelectSlot = ({ start }) => {
     if (start < new Date()) {
@@ -272,6 +284,15 @@ const Dashboard = () => {
     setShowModal(true);
   };
 
+  // Admin/secretary: the doctor picker of the modal needs the doctors list.
+  useEffect(() => {
+    if (isSpecialRole && showModal && doctors.length === 0) {
+      fetchDoctors();
+    }
+  }, [isSpecialRole, showModal, doctors.length, fetchDoctors]);
+
+  // The selected doctor's weekly schedule, reloaded each time the modal opens
+  // (showModal is a trigger on purpose, not a value the effect reads).
   useEffect(() => {
     const fetchAvailability = async () => {
       if (!formData.doctorId) return;
@@ -285,25 +306,14 @@ const Dashboard = () => {
       }
     };
 
-    if (isSpecialRole && showModal && doctors.length === 0) {
-      fetchDoctors();
-    }
     fetchAvailability();
-  }, [isSpecialRole, showModal, token, formData.doctorId]);
-
-  // Headline numbers from the API's /stats (computed in the database), so they
-  // don't depend on which appointments the calendar happens to have loaded.
-  const statsFromApi = ({ total, positive, patients }) => ({
-    totalAppointments: total,
-    newPatients: patients,
-    effectiveness: total > 0 ? `${Math.round((positive / total) * 100)}%` : '—'
-  });
+  }, [showModal, token, formData.doctorId]);
 
   // Calendar list: the visible date range, reflecting the active status/patient
   // filters. Pages are followed until the range is complete.
   const range = visibleRange(date, view);
   const appointmentsRequestRef = useRef(0);
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     const requestId = ++appointmentsRequestRef.current;
     try {
       setLoading(true);
@@ -322,18 +332,22 @@ const Dashboard = () => {
         if (page >= res.data.totalPages) break;
       }
       // A newer request (the user navigated or filtered meanwhile) owns the screen.
-      if (requestId === appointmentsRequestRef.current) setAppointments(loaded);
+      if (requestId === appointmentsRequestRef.current) {
+        setAppointments(loaded);
+        setLoadError(false);
+      }
     } catch (err) {
       console.error(err);
+      if (requestId === appointmentsRequestRef.current) setLoadError(true);
     } finally {
       if (requestId === appointmentsRequestRef.current) setLoading(false);
     }
-  };
+  }, [token, formData.doctorId, statusFilter, patientFilterId, range.from, range.to]);
 
   // Headline KPIs: always the selected doctor's totals, NOT the filtered
   // calendar view - otherwise filtering by e.g. 'confirmed' would show 100%
   // effectiveness and 'scheduled' would show 0%.
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     // Without a selected doctor (admin/secretary before picking one) the API
     // would return clinic-wide aggregates; show a neutral placeholder instead
     // until a doctor is chosen, matching the "select a doctor" empty state.
@@ -349,8 +363,9 @@ const Dashboard = () => {
       setStats(statsFromApi(res.data));
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     }
-  };
+  }, [token, formData.doctorId]);
 
   const patientFilterAbortRef = useRef(null);
   const searchFilterPatients = async (query) => {
@@ -384,12 +399,12 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchAppointments();
-  }, [token, formData.doctorId, statusFilter, patientFilterId, range.from, range.to]);
+  }, [fetchAppointments]);
 
   // KPIs only depend on the selected doctor, not the calendar filters.
   useEffect(() => {
     fetchStats();
-  }, [token, formData.doctorId]);
+  }, [fetchStats]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -727,6 +742,18 @@ const Dashboard = () => {
           </button>
         )}
       </div>
+
+        {loadError && (
+          <div className="mb-6">
+            <LoadError
+              message="We couldn't load your agenda."
+              onRetry={() => {
+                fetchAppointments();
+                fetchStats();
+              }}
+            />
+          </div>
+        )}
 
         {/* Calendar Section */}
         <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl relative min-h-[600px]">

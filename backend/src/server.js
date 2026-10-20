@@ -15,6 +15,7 @@ const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
+const { getSchemaStatus, logSchemaStatus } = require('./services/schemaCheck');
 
 // Refuse to start with a missing, known-example, or too-short JWT secret -
 // tokens signed with a guessable/checked-in secret can be forged by anyone
@@ -59,8 +60,15 @@ app.use(express.json());
 // Unauthenticated health check - gives uptime monitors (and any future
 // platform health check) a stable 200 target that doesn't require a token,
 // instead of them having to interpret a 401/404 from a real route as "down".
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+// It answers 503 when the database is unreachable or behind the code (a
+// migration nobody applied), so a platform that waits for it before switching
+// to a new deploy keeps serving the old version instead of a broken one, and an
+// uptime monitor raises the alarm. The status is remembered, so this does not
+// query the database on every ping (see schemaCheck.js).
+app.get('/api/health', async (req, res) => {
+  const schema = await getSchemaStatus();
+  if (schema.ok) return res.json({ status: 'ok' });
+  res.status(503).json({ status: 'error', reason: schema.reason });
 });
 
 // Routes
@@ -94,6 +102,9 @@ if (require.main === module) {
       console.error('Scheduled reminder task failed:', error.message);
     });
   });
+
+  // Say right at boot, in the log, if the database is behind this code.
+  getSchemaStatus({ force: true }).then(logSchemaStatus);
 
   const PORT = process.env.PORT || 5000;
 

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import {
   Users,
   Search,
@@ -26,6 +27,7 @@ const Patients = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPatientId, setCurrentPatientId] = useState(null);
@@ -49,7 +51,7 @@ const Patients = () => {
   // &/#/+ doesn't get mangled, and cancels any still-in-flight previous
   // request so a slower older response can't overwrite fresher results
   // (e.g. typing "Ana" then quickly "An" - the "Ana" response landing last).
-  const fetchPatients = async (query = '', pageNum = 1) => {
+  const fetchPatients = useCallback(async (query = '', pageNum = 1) => {
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
@@ -63,16 +65,20 @@ const Patients = () => {
       setPatients(res.data.patients);
       setTotalPages(res.data.totalPages);
       setPage(res.data.page);
+      setLoadError(false);
     } catch (err) {
-      if (err.code !== 'ERR_CANCELED') console.error(err);
+      if (err.code !== 'ERR_CANCELED') {
+        console.error(err);
+        setLoadError(true);
+      }
     } finally {
       if (fetchAbortRef.current === controller) setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchPatients();
-  }, []);
+  }, [fetchPatients]);
 
   const handleSearch = (e) => {
     setSearch(e.target.value);
@@ -186,6 +192,8 @@ const Patients = () => {
           <div className="flex justify-center items-center py-20 animate-pulse">
             <span className="text-slate-400 font-semibold text-lg">Loading directory...</span>
           </div>
+        ) : loadError ? (
+          <LoadError message="We couldn't load the patients." onRetry={() => fetchPatients(search, page)} />
         ) : (
           <div className="entity-grid">
             {patients.length === 0 ? (

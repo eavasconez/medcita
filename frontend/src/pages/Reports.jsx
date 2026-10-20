@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { 
   BarChart, 
   Bar, 
@@ -20,27 +21,30 @@ import { TrendingUp, Users, Calendar, Award, FileBarChart } from 'lucide-react';
 const Reports = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const { token } = useContext(AuthContext);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-  useEffect(() => {
-    const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
       try {
         setLoading(true);
+        setLoadError(false);
         const res = await axios.get(`${API_BASE_URL}/api/admin/reports/appointments-by-doctor`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setData(res.data);
       } catch (err) {
         console.error('Error fetching report:', err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchReport();
   }, [token]);
+
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
 
   const totalAppointments = data.reduce((acc, curr) => acc + curr.appointments, 0);
   const topDoctor = [...data].sort((a, b) => b.appointments - a.appointments)[0];
@@ -57,6 +61,8 @@ const Reports = () => {
           <div className="h-96 flex items-center justify-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
+        ) : loadError ? (
+          <LoadError message="We couldn't load the report." onRetry={fetchReport} />
         ) : (
           <div className="space-y-8">
             {/* Stats Overview */}

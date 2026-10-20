@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import {
   Calendar,
   Users,

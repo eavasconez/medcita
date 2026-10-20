@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 const DAYS = [
@@ -14,6 +15,7 @@ const Availability = () => {
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [toast, setToast] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const toastTimeoutRef = useRef(null);
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
@@ -26,19 +28,21 @@ const Availability = () => {
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
-  const fetchAvailability = async (doctorId) => {
+  const fetchAvailability = useCallback(async (doctorId) => {
     try {
       const url = `${API_BASE_URL}/api/availability${doctorId ? `?doctorId=${doctorId}` : ''}`;
       const res = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSchedules(res.data);
+      setLoadError(false);
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     }
-  };
+  }, [token]);
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/admin/doctors?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -47,7 +51,7 @@ const Availability = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (isSpecialRole) {
@@ -55,13 +59,13 @@ const Availability = () => {
     } else {
       fetchAvailability();
     }
-  }, [isSpecialRole, token]);
+  }, [isSpecialRole, fetchDoctors, fetchAvailability]);
 
   useEffect(() => {
     if (isSpecialRole && selectedDoctorId) {
       fetchAvailability(selectedDoctorId);
     }
-  }, [selectedDoctorId, isSpecialRole, token]);
+  }, [selectedDoctorId, isSpecialRole, fetchAvailability]);
 
   const addRow = () => {
     setSchedules([...schedules, { dayOfWeek: 1, startTime: '09:00', endTime: '18:00' }]);
@@ -134,15 +138,25 @@ const Availability = () => {
                 </select>
               </div>
             )}
-            <button
-              onClick={saveSchedules}
-              className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-3xl w-full sm:w-auto sm:self-end"
-            >
-              <Save size={20} /> Save Changes
-            </button>
+            {/* Saving replaces every schedule of the doctor, so it must not be possible
+                while the current ones could not be loaded (it would wipe them) */}
+            {!loadError && (
+              <button
+                onClick={saveSchedules}
+                className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-3xl w-full sm:w-auto sm:self-end"
+              >
+                <Save size={20} /> Save Changes
+              </button>
+            )}
           </div>
         </header>
 
+        {loadError ? (
+          <LoadError
+            message="We couldn't load the working hours."
+            onRetry={() => fetchAvailability(isSpecialRole ? selectedDoctorId : undefined)}
+          />
+        ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -210,6 +224,7 @@ const Availability = () => {
             )}
           </div>
         </div>
+        )}
       </div>
     </Layout>
   );

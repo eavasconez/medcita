@@ -112,6 +112,14 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 
 `/api/admin/medicos` es el **nombre anterior** de `/api/admin/doctors`. Sigue respondiendo igual (mismos métodos y permisos) como alias temporal para clientes que no se hayan actualizado, por ejemplo un frontend viejo en caché mientras el backend ya está desplegado, y sus respuestas llevan el header `Deprecation: true`. Está pensado para eliminarse más adelante.
 
+### Salud (`/api/health`)
+
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/api/health` | Público | `200 { status: "ok" }` si la base de datos responde y tiene todas las tablas y columnas que el código espera. `503 { status: "error", reason }` con `reason` = `schema_outdated` (falta una migración) o `database_unreachable`. No dice qué falta: el detalle va al log del servidor |
+
+Al arrancar el servidor hace la misma comprobación y deja el resultado en el log (`backend/src/services/schemaCheck.js`). Compara el esquema de `schema.prisma` (lo que espera el cliente de Prisma) con `information_schema.columns`, no con el historial de migraciones, así que detecta una columna o tabla ausente incluso en una base creada con `db push`. Un resultado sano se recuerda 1 hora (no consulta la base en cada ping, para no mantener despierta a Neon); uno malo se vuelve a comprobar a los 10 s, de modo que el servicio se recupera solo cuando se aplica la migración. Ver `docs/DEPLOY.md`, «Contrato de despliegue del backend».
+
 ### Tareas (`server.js`)
 
 | Método | Ruta | Rol | Descripción |
@@ -165,7 +173,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** médicos, pacientes, dis
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots y el cron de recordatorios (`backend/tests/`). El frontend se valida con `npm run lint`.
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

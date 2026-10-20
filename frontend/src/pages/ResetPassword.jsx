@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import { KeyRound, Lock, ArrowRight, LinkIcon } from 'lucide-react';
 
 const MIN_PASSWORD_LENGTH = 6;
