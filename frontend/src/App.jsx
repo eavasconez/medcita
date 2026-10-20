@@ -121,10 +121,17 @@ function App() {
     });
   };
 
+  // Swap the session token for a fresh one without signing out (after a
+  // password change the old token is no longer accepted).
+  const updateToken = (newToken) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+  };
+
   if (loading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser, updateToken }}>
       <Router>
         <RouteErrorBoundary>
           <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>

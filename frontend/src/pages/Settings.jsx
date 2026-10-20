@@ -16,13 +16,17 @@ import {
   X
 } from 'lucide-react';
 
+const MIN_PASSWORD_LENGTH = 6;
+
 const Settings = () => {
-  const { user, token, updateUser } = useContext(AuthContext);
+  const { user, token, updateUser, updateToken } = useContext(AuthContext);
 
   const [profile, setProfile] = useState(null);
   const [formData, setFormData] = useState({ name: '', specialty: '', bio: '', address: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [changingPassword, setChangingPassword] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -69,6 +73,41 @@ const Settings = () => {
       showToast(err.response?.data?.error || 'Error updating profile', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    const { currentPassword, newPassword, confirmPassword } = passwordForm;
+
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      showToast(`The new password must be at least ${MIN_PASSWORD_LENGTH} characters`, 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('The new passwords do not match', 'error');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      showToast('The new password must be different from the current one', 'error');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/api/auth/change-password`,
+        { currentPassword, newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      // Every other session was signed out; this one continues with the new token.
+      updateToken(res.data.token);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      showToast('Password updated. Other devices have been signed out.');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not update the password', 'error');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -235,19 +274,71 @@ const Settings = () => {
 
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">
-                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 shadow-sm border border-slate-100">
+                <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
                   <Lock size={24} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black uppercase tracking-tight text-slate-400">Security & Privacy</h3>
+                  <h3 className="text-xl font-black text-secondary uppercase tracking-tight">Security & Privacy</h3>
                   <p className="text-slate-400 font-medium text-sm">Manage your password and session security</p>
                 </div>
               </div>
 
-              <div className="p-8 border-2 border-dashed border-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-center">
-                <Lock size={32} className="text-slate-200 mb-4" />
-                <p className="text-slate-400 font-bold max-w-xs">Security settings are temporarily locked for demo accounts.</p>
-              </div>
+              <form className="space-y-6" onSubmit={handleChangePassword}>
+                <div className="space-y-2">
+                  <label htmlFor="current-password" className="form-label">Current Password</label>
+                  <input
+                    id="current-password"
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label htmlFor="new-password" className="form-label">New Password</label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      required
+                      autoComplete="new-password"
+                      minLength={MIN_PASSWORD_LENGTH}
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="confirm-password" className="form-label">Confirm New Password</label>
+                    <input
+                      id="confirm-password"
+                      type="password"
+                      required
+                      autoComplete="new-password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+                <p className="text-slate-400 text-xs font-medium">
+                  At least {MIN_PASSWORD_LENGTH} characters. Changing it signs you out of every other device.
+                </p>
+
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={changingPassword}
+                    className="btn-primary px-10 py-4 uppercase tracking-widest text-xs w-full sm:w-auto flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:scale-100"
+                  >
+                    <Lock size={16} />
+                    {changingPassword ? 'Updating...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
