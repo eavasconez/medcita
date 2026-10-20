@@ -1,4 +1,5 @@
-import React, { useState, useEffect, createContext, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { AuthContext } from './AuthContext';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from './config/api';
@@ -16,7 +17,6 @@ const AdminDoctors = lazy(() => import('./pages/AdminDoctors'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Reports = lazy(() => import('./pages/Reports'));
 
-export const AuthContext = createContext();
 
 // React.lazy() rejects (e.g. a chunk fails to load after a new deploy ships
 // different asset hashes) throw during render, which Suspense does NOT

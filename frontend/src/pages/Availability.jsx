@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { AuthContext } from '../App';
+import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
@@ -28,7 +28,7 @@ const Availability = () => {
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
-  const fetchAvailability = async (doctorId) => {
+  const fetchAvailability = useCallback(async (doctorId) => {
     try {
       const url = `${API_BASE_URL}/api/availability${doctorId ? `?doctorId=${doctorId}` : ''}`;
       const res = await axios.get(url, {
@@ -40,9 +40,9 @@ const Availability = () => {
       console.error(err);
       setLoadError(true);
     }
-  };
+  }, [token]);
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/admin/doctors?role=doctor`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -51,7 +51,7 @@ const Availability = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (isSpecialRole) {
@@ -59,13 +59,13 @@ const Availability = () => {
     } else {
       fetchAvailability();
     }
-  }, [isSpecialRole, token]);
+  }, [isSpecialRole, fetchDoctors, fetchAvailability]);
 
   useEffect(() => {
     if (isSpecialRole && selectedDoctorId) {
       fetchAvailability(selectedDoctorId);
     }
-  }, [selectedDoctorId, isSpecialRole, token]);
+  }, [selectedDoctorId, isSpecialRole, fetchAvailability]);
 
   const addRow = () => {
     setSchedules([...schedules, { dayOfWeek: 1, startTime: '09:00', endTime: '18:00' }]);
