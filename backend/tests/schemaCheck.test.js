@@ -34,7 +34,8 @@ describe('expectedSchema', () => {
   it('lists the columns of every model of schema.prisma, without relations', () => {
     const expected = expectedSchema();
 
-    expect(Object.keys(expected).sort()).toEqual(['Appointment', 'Availability', 'Doctor', 'Patient', 'PasswordResetToken'].sort());
+    expect(Object.keys(expected).sort()).toEqual(['Appointment', 'AuditLog', 'Availability', 'Doctor', 'Patient', 'PasswordResetToken'].sort());
+    expect(expected.AuditLog).toEqual(expect.arrayContaining(['actorId', 'action', 'entity', 'entityId', 'changes']));
     expect(expected.Doctor).toEqual(expect.arrayContaining(['id', 'email', 'password', 'passwordChangedAt']));
     expect(expected.Appointment).toEqual(expect.arrayContaining(['reminderSentAt', 'doctorId', 'patientId']));
     expect(expected.Doctor).not.toContain('appointments');

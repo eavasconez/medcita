@@ -1,4 +1,11 @@
+const { parseISO } = require('date-fns');
+
 const MS_PER_MINUTE = 60 * 1000;
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+// 'YYYY-MM-DD' that is a real calendar date.
+const isValidDate = (value) => typeof value === 'string' && DATE_REGEX.test(value) && !isNaN(parseISO(value).getTime());
 
 // Appointment date/time are stored as clinic-local strings (no timezone), so
 // they are interpreted with a fixed clinic offset instead of the server's
@@ -22,4 +29,4 @@ const appointmentInstant = (date, time) => {
   );
 };
 
-module.exports = { clinicDateString, appointmentInstant };
+module.exports = { DATE_REGEX, isValidDate, clinicDateString, appointmentInstant };

@@ -3,6 +3,8 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { parsePagination, pageInfo } = require('../utils/pagination');
+const { upsertPatient } = require('../services/patientUpsert');
+const { recordAudit, diffFields, auditPatientUpsert } = require('../services/auditLog');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
@@ -75,14 +77,16 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const patient = await prisma.patient.upsert({
-      where: { phone: normalizedPhone },
-      update: {
+    // The record of what staff did is written in the same transaction as the patient
+    const patient = await prisma.$transaction(async (tx) => {
+      const result = await upsertPatient(tx, {
         name: normalizedName,
-        ...(normalizedEmail && { email: normalizedEmail }),
-        ...(normalizedCedula && { cedula: normalizedCedula })
-      },
-      create: { name: normalizedName, phone: normalizedPhone, email: normalizedEmail, cedula: normalizedCedula }
+        phone: normalizedPhone,
+        email: normalizedEmail,
+        cedula: normalizedCedula
+      });
+      await auditPatientUpsert(tx, req, result);
+      return result.patient;
     });
     res.status(201).json(patient);
   } catch (err) {
@@ -120,15 +124,27 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    const patient = await prisma.patient.update({
-      where: { id: req.params.id },
-      data: {
-        ...(normalizedName !== undefined && { name: normalizedName }),
-        ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
-        ...(email !== undefined && { email: normalizedEmail }),
-        ...(cedula !== undefined && { cedula: normalizedCedula })
-      }
+    const patient = await prisma.$transaction(async (tx) => {
+      const previous = await tx.patient.findUnique({ where: { id: req.params.id } });
+      if (!previous) return null;
+
+      const updated = await tx.patient.update({
+        where: { id: previous.id },
+        data: {
+          ...(normalizedName !== undefined && { name: normalizedName }),
+          ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
+          ...(email !== undefined && { email: normalizedEmail }),
+          ...(cedula !== undefined && { cedula: normalizedCedula })
+        }
+      });
+
+      // Only the names of the fields that changed are kept, never their values
+      const changes = diffFields('patient', previous, updated);
+      if (changes) await recordAudit(tx, req, { action: 'update', entity: 'patient', entityId: updated.id, changes });
+      return updated;
     });
+
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
     res.json(patient);
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });
@@ -165,7 +181,10 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    await prisma.patient.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.patient.delete({ where: { id } });
+      await recordAudit(tx, req, { action: 'delete', entity: 'patient', entityId: id });
+    });
     res.json({ message: 'Patient deleted successfully' });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });

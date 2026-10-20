@@ -4,9 +4,10 @@ const prisma = require('../config/prisma');
 const { sendAppointmentConfirmation } = require('../services/notificationService');
 const { getDay, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
-const { appointmentInstant } = require('../utils/clinicTime');
+const { DATE_REGEX, isValidDate, appointmentInstant } = require('../utils/clinicTime');
+const { upsertPatient } = require('../services/patientUpsert');
+const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require('../services/auditLog');
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -84,8 +85,6 @@ async function assertSlotBookable(tx, { doctorId, date, time, excludeId, occupie
     throw new ScheduleConflictError('An appointment already exists at this time', occupiedStatus);
   }
 }
-
-const isValidDate = (value) => typeof value === 'string' && DATE_REGEX.test(value) && !isNaN(parseISO(value).getTime());
 
 // Which doctors' appointments the caller may see: doctors only their own,
 // admin/secretary every doctor or the one named in ?doctorId.
@@ -207,23 +206,18 @@ router.post('/', async (req, res) => {
       // 1. Availability + conflict check (same rules as rescheduling)
       await assertSlotBookable(tx, { doctorId: targetDoctorId, date, time });
 
-      // 2. Upsert Patient
-      // On update, only touch email/cedula when a non-empty value was
-      // actually submitted - an existing patient rebooking with those
-      // fields left blank must keep their previously stored values,
-      // not have them wiped to null.
-      const patient = await tx.patient.upsert({
-        where: { phone: normalizedPatientPhone },
-        update: {
-          name: normalizedPatientName,
-          ...(normalizedPatientEmail && { email: normalizedPatientEmail }),
-          ...(normalizedPatientCedula && { cedula: normalizedPatientCedula })
-        },
-        create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: normalizedPatientEmail, cedula: normalizedPatientCedula }
+      // 2. Find or update the patient (a booking made by staff also leaves a
+      // record of the patient it created or changed)
+      const { patient, previous } = await upsertPatient(tx, {
+        name: normalizedPatientName,
+        phone: normalizedPatientPhone,
+        email: normalizedPatientEmail,
+        cedula: normalizedPatientCedula
       });
+      await auditPatientUpsert(tx, req, { previous, patient });
 
       // 3. Create Appointment
-      return tx.appointment.create({
+      const created = await tx.appointment.create({
         data: {
           date,
           time,
@@ -237,6 +231,14 @@ router.post('/', async (req, res) => {
           doctor: { select: { id: true, name: true, email: true, role: true, address: true } }
         }
       });
+      await recordAudit(tx, req, {
+        action: 'create',
+        entity: 'appointment',
+        entityId: created.id,
+        doctorId: targetDoctorId,
+        changes: describeCreated('appointment', created)
+      });
+      return created;
     });
 
     // 4. Send Notification (WhatsApp + Email) - outside the transaction, after commit
@@ -322,7 +324,7 @@ router.put('/:id', async (req, res) => {
         });
       }
 
-      return tx.appointment.update({
+      const updated = await tx.appointment.update({
         where: { id: current.id },
         data: {
           ...(date && { date }),
@@ -332,6 +334,20 @@ router.put('/:id', async (req, res) => {
         },
         include: { patient: { select: PATIENT_SELECT } }
       });
+
+      // A request that changes nothing leaves no record
+      const changes = diffFields('appointment', current, updated);
+      if (changes) {
+        await recordAudit(tx, req, {
+          // Moving into "cancelled" is a cancellation whichever route it took
+          action: current.status !== 'cancelled' && updated.status === 'cancelled' ? 'cancel' : 'update',
+          entity: 'appointment',
+          entityId: updated.id,
+          doctorId: updated.doctorId,
+          changes
+        });
+      }
+      return updated;
     });
 
     if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
@@ -355,17 +371,42 @@ router.delete('/:id', async (req, res) => {
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
 
   try {
-    const appointment = await prisma.appointment.update({
-      where: {
-        id: req.params.id,
-        ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-      },
-      data: { status: 'cancelled' },
-      include: { patient: { select: PATIENT_SELECT } }
+    // Serializable, like booking and rescheduling, so two simultaneous
+    // cancellations cannot both leave a record of the same cancellation.
+    const appointment = await runSerializableTransaction(async (tx) => {
+      const current = await tx.appointment.findFirst({
+        where: {
+          id: req.params.id,
+          ...(isSpecialRole ? {} : { doctorId: req.doctorId })
+        }
+      });
+      if (!current) return null;
+
+      const cancelled = await tx.appointment.update({
+        where: { id: current.id },
+        data: { status: 'cancelled' },
+        include: { patient: { select: PATIENT_SELECT } }
+      });
+
+      // Cancelling one that is already cancelled changes nothing, so it leaves no record
+      if (current.status !== 'cancelled') {
+        await recordAudit(tx, req, {
+          action: 'cancel',
+          entity: 'appointment',
+          entityId: current.id,
+          doctorId: current.doctorId,
+          changes: diffFields('appointment', current, cancelled)
+        });
+      }
+      return cancelled;
     });
+
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
     res.json({ message: 'Appointment cancelled successfully', appointment: { ...appointment, Patient: appointment.patient } });
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
+    if (err.code === 'P2034') {
+      return res.status(409).json({ error: 'Could not complete the cancellation due to a concurrent update, please try again' });
+    }
     console.error('Cancel appointment error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
