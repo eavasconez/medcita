@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { 
   Stethoscope, 
   Plus, 
@@ -20,6 +21,7 @@ import {
 const AdminDoctors = () => {
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -40,12 +42,14 @@ const AdminDoctors = () => {
   const fetchDoctors = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const res = await axios.get(`${API_BASE_URL}/api/admin/doctors`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDoctors(res.data);
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -136,6 +140,8 @@ const AdminDoctors = () => {
 
         {loading ? (
           <div className="text-center py-20 font-bold text-slate-400">Loading users...</div>
+        ) : loadError ? (
+          <LoadError message="We couldn't load the users." onRetry={fetchDoctors} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {doctors.map((doc) => (

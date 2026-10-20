@@ -3,6 +3,7 @@ import { AuthContext } from '../App';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -79,6 +80,8 @@ const Dashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The calendar list or the KPIs could not be loaded (as opposed to being empty)
+  const [loadError, setLoadError] = useState(false);
   const [toast, setToast] = useState(null);
   const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -322,9 +325,13 @@ const Dashboard = () => {
         if (page >= res.data.totalPages) break;
       }
       // A newer request (the user navigated or filtered meanwhile) owns the screen.
-      if (requestId === appointmentsRequestRef.current) setAppointments(loaded);
+      if (requestId === appointmentsRequestRef.current) {
+        setAppointments(loaded);
+        setLoadError(false);
+      }
     } catch (err) {
       console.error(err);
+      if (requestId === appointmentsRequestRef.current) setLoadError(true);
     } finally {
       if (requestId === appointmentsRequestRef.current) setLoading(false);
     }
@@ -349,6 +356,7 @@ const Dashboard = () => {
       setStats(statsFromApi(res.data));
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     }
   };
 
@@ -727,6 +735,18 @@ const Dashboard = () => {
           </button>
         )}
       </div>
+
+        {loadError && (
+          <div className="mb-6">
+            <LoadError
+              message="We couldn't load your agenda."
+              onRetry={() => {
+                fetchAppointments();
+                fetchStats();
+              }}
+            />
+          </div>
+        )}
 
         {/* Calendar Section */}
         <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl relative min-h-[600px]">

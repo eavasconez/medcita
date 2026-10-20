@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 const DAYS = [
@@ -14,6 +15,7 @@ const Availability = () => {
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [toast, setToast] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const toastTimeoutRef = useRef(null);
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
@@ -33,8 +35,10 @@ const Availability = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSchedules(res.data);
+      setLoadError(false);
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     }
   };
 
@@ -134,15 +138,25 @@ const Availability = () => {
                 </select>
               </div>
             )}
-            <button
-              onClick={saveSchedules}
-              className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-3xl w-full sm:w-auto sm:self-end"
-            >
-              <Save size={20} /> Save Changes
-            </button>
+            {/* Saving replaces every schedule of the doctor, so it must not be possible
+                while the current ones could not be loaded (it would wipe them) */}
+            {!loadError && (
+              <button
+                onClick={saveSchedules}
+                className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-3xl w-full sm:w-auto sm:self-end"
+              >
+                <Save size={20} /> Save Changes
+              </button>
+            )}
           </div>
         </header>
 
+        {loadError ? (
+          <LoadError
+            message="We couldn't load the working hours."
+            onRetry={() => fetchAvailability(isSpecialRole ? selectedDoctorId : undefined)}
+          />
+        ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -210,6 +224,7 @@ const Availability = () => {
             )}
           </div>
         </div>
+        )}
       </div>
     </Layout>
   );

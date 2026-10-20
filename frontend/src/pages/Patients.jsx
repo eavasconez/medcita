@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../App';
 import Layout from '../components/Layout';
+import LoadError from '../components/LoadError';
 import {
   Users,
   Search,
@@ -26,6 +27,7 @@ const Patients = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPatientId, setCurrentPatientId] = useState(null);
@@ -63,8 +65,12 @@ const Patients = () => {
       setPatients(res.data.patients);
       setTotalPages(res.data.totalPages);
       setPage(res.data.page);
+      setLoadError(false);
     } catch (err) {
-      if (err.code !== 'ERR_CANCELED') console.error(err);
+      if (err.code !== 'ERR_CANCELED') {
+        console.error(err);
+        setLoadError(true);
+      }
     } finally {
       if (fetchAbortRef.current === controller) setLoading(false);
     }
@@ -186,6 +192,8 @@ const Patients = () => {
           <div className="flex justify-center items-center py-20 animate-pulse">
             <span className="text-slate-400 font-semibold text-lg">Loading directory...</span>
           </div>
+        ) : loadError ? (
+          <LoadError message="We couldn't load the patients." onRetry={() => fetchPatients(search, page)} />
         ) : (
           <div className="entity-grid">
             {patients.length === 0 ? (
