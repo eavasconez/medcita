@@ -1,20 +1,85 @@
 const twilio = require('twilio');
 const emailService = require('./emailService');
+const { buildTemplate } = require('./whatsappTemplates');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
+// Overridable only so tests and local checks can point at a fake Graph API.
+const GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com';
 
 const hasMetaCreds = () =>
   !!(process.env.META_WHATSAPP_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
 const hasTwilioCreds = () =>
   !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
 
+// Logs end up in the hosting provider's dashboard: keep patients' phone numbers
+// out of them ("+593***042").
+const maskPhone = (phone) => {
+  const digits = String(phone).replace(/\D/g, '');
+  return digits.length > 6 ? `+${digits.slice(0, 3)}***${digits.slice(-3)}` : '***';
+};
+
+// What to do about the Meta errors an operator is most likely to hit. Meta's own
+// message is logged too; these say where to fix it in this project.
+const META_ERROR_HINTS = {
+  190: 'The access token expired or is invalid. Create a permanent System User token and update META_WHATSAPP_TOKEN (docs/DEPLOY.md).',
+  131030: 'The recipient is not in the allowed list of the test number. Add it under WhatsApp > API Setup > Manage phone number list.',
+  131026: 'The message could not be delivered: the number may not use WhatsApp or is on an old version.',
+  131047: 'More than 24 hours since the patient last wrote and this was not a template message. Send an approved template.',
+  131056: 'Too many messages to the same number in a short time. It will work again shortly.',
+  130429: 'Rate limit reached. It will work again shortly.',
+  132000: 'The number of parameters does not match the approved template. Register it with the exact text in docs/DEPLOY.md.',
+  132001: 'No approved template with this name and language. Check META_WHATSAPP_TEMPLATE_CONFIRMATION / _REMINDER and META_WHATSAPP_TEMPLATE_LANGUAGE, and that the template is APPROVED in WhatsApp Manager.',
+  132012: 'A template parameter has the wrong format. Check the template text against docs/DEPLOY.md.',
+  132015: 'The template is paused for low quality. Edit it in WhatsApp Manager.',
+  132016: 'The template was disabled after being paused too often. Create a new one.'
+};
+
+// One line for the error log: status, Meta's code and message, our hint, and the
+// trace id Meta support asks for. `raw` is the response body (JSON most times).
+function describeMetaError(status, raw) {
+  let error;
+  try {
+    error = JSON.parse(raw).error;
+  } catch {
+    // not JSON: log it as it came
+  }
+  if (!error) return `${status} ${String(raw).slice(0, 300)}`;
+
+  const parts = [`${status} code ${error.code}: ${error.message}`];
+  if (error.error_data?.details) parts.push(`details: ${error.error_data.details}`);
+  if (META_ERROR_HINTS[error.code]) parts.push(`HINT: ${META_ERROR_HINTS[error.code]}`);
+  if (error.fbtrace_id) parts.push(`fbtrace_id: ${error.fbtrace_id}`);
+  return parts.join(' | ');
+}
+
+// Body of the Cloud API request. A business can only open a conversation with an
+// approved template (type "template"); free-form text (type "text") is accepted
+// only within 24 hours of the patient's last message, so it is kept just for
+// callers that have no template.
+function metaPayload(recipient, message, template) {
+  if (!template) {
+    return { messaging_product: 'whatsapp', to: recipient, type: 'text', text: { preview_url: false, body: message } };
+  }
+  return {
+    messaging_product: 'whatsapp',
+    to: recipient,
+    type: 'template',
+    template: {
+      name: template.name,
+      language: { code: template.language },
+      components: [{ type: 'body', parameters: template.params.map((text) => ({ type: 'text', text })) }]
+    }
+  };
+}
+
 /**
  * Send a WhatsApp message through Meta's WhatsApp Cloud API.
  * Cloud API expects the recipient as digits only (no '+' / 'whatsapp:' prefix).
+ * With a `template` (see whatsappTemplates.js) it sends that approved template.
  */
-async function sendWhatsAppViaMeta(to, message) {
+async function sendWhatsAppViaMeta(to, message, template) {
   const recipient = to.replace(/[^\d]/g, '');
-  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${process.env.META_WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const url = `${GRAPH_BASE_URL}/${META_GRAPH_VERSION}/${process.env.META_WHATSAPP_PHONE_NUMBER_ID}/messages`;
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -22,20 +87,14 @@ async function sendWhatsAppViaMeta(to, message) {
         Authorization: `Bearer ${process.env.META_WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: recipient,
-        type: 'text',
-        text: { preview_url: false, body: message }
-      })
+      body: JSON.stringify(metaPayload(recipient, message, template))
     });
 
     if (!res.ok) {
-      const body = await res.text();
-      console.error(`[META WHATSAPP ERROR] ${res.status} sending to ${recipient}:`, body);
+      console.error(`[META WHATSAPP ERROR] sending to ${maskPhone(recipient)}: ${describeMetaError(res.status, await res.text())}`);
       return false;
     }
-    console.log(`[META WHATSAPP] Message sent successfully to ${recipient}`);
+    console.log(`[META WHATSAPP] ${template ? `Template ${template.name}` : 'Message'} sent successfully to ${maskPhone(recipient)}`);
     return true;
   } catch (error) {
     console.error('[META WHATSAPP ERROR]:', error.message);
@@ -55,7 +114,7 @@ async function sendWhatsAppViaTwilio(to, message) {
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${formattedTo}`
     });
-    console.log(`[TWILIO] WhatsApp sent successfully to ${formattedTo}`);
+    console.log(`[TWILIO] WhatsApp sent successfully to ${maskPhone(formattedTo)}`);
     return true;
   } catch (error) {
     console.error('[TWILIO ERROR]:', error.message);
@@ -70,16 +129,19 @@ const notificationService = {
   /**
    * Send a WhatsApp message. Provider precedence: Meta Cloud API (official) ->
    * Twilio -> mock (console only) when no provider is configured.
+   * `message` is the finished text; `template` (from whatsappTemplates.buildTemplate)
+   * is what Meta needs to start a conversation, and is ignored by the other providers.
    */
-  sendWhatsApp: async (to, message) => {
-    console.log(`[WHATSAPP MOCK] To: ${to}, Message: ${message}`);
-
+  sendWhatsApp: async (to, message, template) => {
     if (hasMetaCreds()) {
-      return sendWhatsAppViaMeta(to, message);
+      return sendWhatsAppViaMeta(to, message, template);
     }
     if (hasTwilioCreds()) {
       return sendWhatsAppViaTwilio(to, message);
     }
+    // Mock: show the text while developing, but never a patient's name in production logs.
+    const shown = process.env.NODE_ENV === 'production' ? '' : `, Message: ${message}`;
+    console.log(`[WHATSAPP MOCK] To: ${maskPhone(to)}${shown}`);
     console.log('No WhatsApp provider configured, mocked output only.');
     return true;
   },
@@ -95,11 +157,17 @@ const notificationService = {
    */
   sendAppointmentConfirmation: async (appointment) => {
     const { patient, doctor, date, time } = appointment;
-    const msg = `MedCita: Hola ${patient.name}, tu cita con ${doctor.name} ha sido agendada para el ${date} a las ${time}. ¡Te esperamos!`;
+    const whatsapp = buildTemplate('appointmentConfirmation', {
+      patientName: patient.name,
+      doctorName: doctor.name,
+      date,
+      time
+    });
+    const msg = whatsapp.text;
 
     // Each notification is independent: run them concurrently and don't let
     // one recipient's failure suppress the others (allSettled, not all).
-    const tasks = [notificationService.sendWhatsApp(patient.phone, msg)];
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp)];
 
     // Patient confirmation email
     if (patient.email) {
@@ -138,10 +206,16 @@ const notificationService = {
    */
   sendReminder: async (appointment, { dayLabel = 'mañana' } = {}) => {
     const { patient, doctor, date, time } = appointment;
-    const msg = `Recordatorio MedCita: Hola ${patient.name}, tienes una cita ${dayLabel} ${date} a las ${time} con ${doctor.name}.`;
+    const whatsapp = buildTemplate('appointmentReminder', {
+      patientName: patient.name,
+      whenText: `${dayLabel} ${date}`,
+      time,
+      doctorName: doctor.name
+    });
+    const msg = whatsapp.text;
 
     // Each channel is independent: one failing must not suppress the other.
-    const tasks = [notificationService.sendWhatsApp(patient.phone, msg)];
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp)];
 
     if (patient.email && patient.email.includes('@')) {
       const html = emailService.templates.reminderHtml({

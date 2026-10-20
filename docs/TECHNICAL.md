@@ -41,11 +41,16 @@ El frontend asume que el backend corre en `http://localhost:5000` (la URL está 
 | `LOG_PASSWORD_RESET_LINKS` | No (solo desarrollo) | Con `true`, imprime en consola el enlace de recuperación de contraseña (útil sin proveedor de email). **Nunca activarlo en producción**: un enlace en los logs es una credencial válida por 1 hora |
 | `CLINIC_UTC_OFFSET_MINUTES` | No (default `-300`, Ecuador continental UTC-5) | Desfase horario de la clínica en minutos. Las citas guardan `date`/`time` como texto local sin zona horaria; el cron de recordatorios los interpreta con este desfase en lugar de la zona del servidor (Render corre en UTC) |
 | `TEST_DATABASE_URL` | Solo para `npm test` | Base de datos **exclusiva para pruebas**. Su nombre debe terminar en `_test` o la suite se niega a correr (borra todas las tablas entre pruebas). Nunca se usa `DATABASE_URL`. Ver sección 6 |
-| `META_WHATSAPP_TOKEN` / `META_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp vía Meta Cloud API (proveedor preferido si están presentes) |
+| `META_WHATSAPP_TOKEN` / `META_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp vía Meta Cloud API (proveedor preferido si están presentes). La confirmación y el recordatorio se envían como **plantillas aprobadas** (guía completa en `docs/DEPLOY.md`, sección 7) |
+| `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | No (defaults `cita_confirmada` / `recordatorio_cita`) | Nombres de las plantillas registradas en Meta |
+| `META_WHATSAPP_TEMPLATE_LANGUAGE` | No (default `es`) | Código de idioma de las plantillas |
 | `META_GRAPH_VERSION` | No (default `v21.0`) | Versión de la Graph API de Meta |
+| `META_GRAPH_BASE_URL` | No (default `https://graph.facebook.com`) | Solo para pruebas locales contra una Graph API falsa |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_NUMBER` | No | WhatsApp vía Twilio (fallback si no hay credenciales de Meta) |
 | `BREVO_API_KEY` / `BREVO_FROM_EMAIL` | No | Email vía Brevo (proveedor preferido) |
 | `SENDGRID_API_KEY` / `SENDGRID_FROM_EMAIL` | No | Email vía SendGrid (fallback si Brevo falla o no está configurado) |
+
+Con Twilio o en modo mock, el WhatsApp es el mismo texto de la plantilla, ya completado (`backend/src/services/whatsappTemplates.js` es la única fuente de esos textos). `npm run whatsapp:test -- +593…` envía un mensaje de muestra con el proveedor configurado para comprobar la instalación.
 
 Si ninguna credencial de WhatsApp/Email está presente, ambos servicios caen a modo **mock** (loguean el envío en consola en vez de enviarlo realmente) — útil para desarrollo local sin gastar créditos/cuotas.
 
