@@ -62,7 +62,7 @@ Sprint 7:
 | `eslint.config.js` roto | **S7-02** (#71, PR #77); desde S7-11, 0 errores y 0 advertencias |
 | No se podía cambiar la contraseña y las sesiones viejas valían 24 h | **S7-08** (#83, PR #87): cambio desde Settings y tokens anteriores al cambio rechazados |
 | `PUT` de citas podía dejar dos citas en el mismo horario | **S7-07** (#82, PR #86): mismas reglas que al agendar, `409` si está ocupado |
-| No quedaba registro de lo que hacían admin y secretaria | **S7-09** (#84): tabla `AuditLog`, registro en la misma transacción de la acción y `GET /api/admin/audit-log` solo para administradores |
+| No quedaba registro de lo que hacían admin y secretaria | **S7-09** (#84, PR #92): tabla `AuditLog`, registro en la misma transacción de la acción y `GET /api/admin/audit-log` solo para administradores |
 | WhatsApp solo llegaba dentro de la ventana de 24 h | **S7-06** (#75, PR #81): plantillas de Meta (falta la prueba real, ver Alta prioridad) |
 | Una base atrasada no avisaba y las pantallas lo mostraban como «sin datos» | **S7-11** (#89, PR #90): comprobación de esquema, `/api/health` con `503` y errores de carga con reintento |
 

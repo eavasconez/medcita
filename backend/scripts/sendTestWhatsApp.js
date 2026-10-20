@@ -46,7 +46,14 @@ async function main(argv, env = process.env, out = console.log) {
   const provider = providerOf(env);
   const template = buildTemplate(
     KINDS[args.kind],
-    { patientName: 'Paciente de prueba', doctorName: 'Dr. Prueba', dayLabel: 'mañana', date: tomorrow(), time: '10:00' },
+    {
+      patientName: 'Paciente de prueba',
+      doctorName: 'Dr. Prueba',
+      date: tomorrow(),
+      // the reminder takes the day and the date as one value, like notificationService.sendReminder builds it
+      whenText: `mañana ${tomorrow()}`,
+      time: '10:00'
+    },
     env
   );
 
