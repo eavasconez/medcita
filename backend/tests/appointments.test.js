@@ -571,6 +571,222 @@ describe('PUT /api/appointments/:id', () => {
 
     expect(res.status).toBe(404);
   });
+
+  describe('schedule rules when the appointment is moved', () => {
+    const OCCUPIED = 'An appointment already exists at this time';
+    const NOT_WORKING = 'The doctor does not work at the selected time';
+
+    // The appointment from setup() (Tuesday 10:00) plus a second one of the
+    // same doctor on Tuesday 11:00.
+    const setupWithNeighbour = async () => {
+      const base = await setup();
+      const neighbour = await createAppointment({
+        doctor: base.owner.user, patient: base.patient, date: TUESDAY, time: '11:00'
+      });
+      return { ...base, neighbour };
+    };
+    const reload = (id) => prisma.appointment.findUnique({ where: { id } });
+
+    it('rejects a move onto a slot the same doctor already holds, and leaves the appointment where it was', async () => {
+      const { owner, appointment } = await setupWithNeighbour();
+
+      const res = await put(owner.token, appointment.id, { date: TUESDAY, time: '11:00' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe(OCCUPIED);
+      expect(await reload(appointment.id)).toMatchObject({ date: TUESDAY, time: '10:00' });
+    });
+
+    it('rejects changing only the time, or only the date, into a held slot', async () => {
+      const { owner, appointment, patient } = await setupWithNeighbour();
+      await createAppointment({ doctor: owner.user, patient, date: MONDAY, time: '10:00' });
+
+      const onlyTime = await put(owner.token, appointment.id, { time: '11:00' });
+      const onlyDate = await put(owner.token, appointment.id, { date: MONDAY });
+
+      expect(onlyTime.status).toBe(409);
+      expect(onlyDate.status).toBe(409);
+    });
+
+    it('allows a move into a slot freed by a cancelled appointment', async () => {
+      const { owner, appointment, neighbour } = await setupWithNeighbour();
+      await prisma.appointment.update({ where: { id: neighbour.id }, data: { status: 'cancelled' } });
+
+      const res = await put(owner.token, appointment.id, { time: '11:00' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ date: TUESDAY, time: '11:00' });
+    });
+
+    it('does not clash with the appointment itself when it is sent back to its own slot', async () => {
+      const { owner, appointment } = await setupWithNeighbour();
+
+      const res = await put(owner.token, appointment.id, { date: TUESDAY, time: '10:00', notes: 'Sin cambios de horario' });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('allows the slot another doctor holds', async () => {
+      const { owner, appointment, patient } = await setup();
+      const other = await createUser();
+      await createAppointment({ doctor: other.user, patient, date: TUESDAY, time: '11:00' });
+
+      const res = await put(owner.token, appointment.id, { time: '11:00' });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("checks an admin's or secretary's move against the appointment's doctor, not the caller", async () => {
+      const { appointment } = await setupWithNeighbour();
+      const staff = await createUser({ role: 'admin' });
+
+      const taken = await put(staff.token, appointment.id, { time: '11:00' });
+      const free = await put(staff.token, appointment.id, { time: '12:00' });
+
+      expect(taken.status).toBe(409);
+      expect(free.status).toBe(200);
+    });
+
+    it('rejects a move outside the days and hours the doctor works', async () => {
+      const { owner, appointment } = await setup();
+      await prisma.availability.create({ data: { doctorId: owner.user.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
+      await prisma.appointment.update({ where: { id: appointment.id }, data: { date: MONDAY, time: '10:00' } });
+
+      const afterHours = await put(owner.token, appointment.id, { time: '15:00' });
+      const otherDay = await put(owner.token, appointment.id, { date: TUESDAY });
+      const inside = await put(owner.token, appointment.id, { time: '11:30' });
+
+      expect(afterHours.status).toBe(400);
+      expect(afterHours.body.error).toBe(NOT_WORKING);
+      expect(otherDay.status).toBe(400);
+      expect(otherDay.body.error).toBe(NOT_WORKING);
+      expect(inside.status).toBe(200);
+      expect(await reload(appointment.id)).toMatchObject({ date: MONDAY, time: '11:30' });
+    });
+
+    it('does not restrict a doctor who has not configured any schedule', async () => {
+      const { owner, appointment } = await setup();
+
+      const res = await put(owner.token, appointment.id, { date: MONDAY, time: '23:30' });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects a move to a time that has already passed, but accepts one still ahead', async () => {
+      const { owner, appointment } = await setup();
+      const past = clinicParts(-2);
+      const ahead = clinicParts(2);
+
+      const toThePast = await put(owner.token, appointment.id, past);
+      const toTheFuture = await put(owner.token, appointment.id, ahead);
+
+      expect(toThePast.status).toBe(400);
+      expect(toThePast.body.error).toBe('The appointment cannot be moved to a time that has already passed');
+      expect(toTheFuture.status).toBe(200);
+      expect(await reload(appointment.id)).toMatchObject(ahead);
+    });
+
+    it('still lets a past appointment be updated without moving it', async () => {
+      const owner = await createUser();
+      const patient = await createPatient();
+      const past = clinicParts(-48);
+      const appointment = await createAppointment({ doctor: owner.user, patient, ...past });
+
+      const res = await put(owner.token, appointment.id, { status: 'completed', notes: 'Atendido' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('completed');
+    });
+
+    it('lets the date of an appointment already marked as completed be corrected into the past', async () => {
+      const { owner, appointment } = await setup();
+      const past = clinicParts(-72);
+
+      const res = await put(owner.token, appointment.id, { status: 'completed', ...past });
+
+      expect(res.status).toBe(200);
+      expect(await reload(appointment.id)).toMatchObject(past);
+    });
+
+    it('does not re-check the schedule when only the status or notes change', async () => {
+      const { owner, appointment } = await setup();
+      // The doctor's schedule changed after this appointment was booked.
+      await prisma.availability.create({ data: { doctorId: owner.user.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
+
+      const res = await put(owner.token, appointment.id, { status: 'confirmed', notes: 'Confirmada por teléfono' });
+
+      expect(res.status).toBe(200);
+    });
+
+    describe('bringing a cancelled appointment back', () => {
+      it('is rejected, with 409, while someone else holds its slot', async () => {
+        const { owner, appointment, patient } = await setup();
+        await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+        await createAppointment({ doctor: owner.user, patient, date: TUESDAY, time: '10:00' });
+
+        const res = await put(owner.token, appointment.id, { status: 'confirmed' });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe(OCCUPIED);
+        expect((await reload(appointment.id)).status).toBe('cancelled');
+      });
+
+      it('works when the slot is still free', async () => {
+        const { owner, appointment } = await setup();
+        await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+
+        const res = await put(owner.token, appointment.id, { status: 'scheduled' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('scheduled');
+      });
+
+      it('is checked together with a move to a new slot', async () => {
+        const { owner, appointment, neighbour } = await setupWithNeighbour();
+        await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+
+        const taken = await put(owner.token, appointment.id, { status: 'confirmed', time: '11:00' });
+        const free = await put(owner.token, appointment.id, { status: 'confirmed', time: '12:00' });
+
+        expect(neighbour.time).toBe('11:00');
+        expect(taken.status).toBe(409);
+        expect(free.status).toBe(200);
+      });
+
+      it('does not require the slot to be free when the appointment stays cancelled', async () => {
+        const { owner, appointment } = await setupWithNeighbour();
+        await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+
+        const res = await put(owner.token, appointment.id, { time: '11:00' });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ status: 'cancelled', time: '11:00' });
+      });
+    });
+
+    it('cancelling while moving does not run the slot checks', async () => {
+      const { owner, appointment } = await setupWithNeighbour();
+
+      const res = await put(owner.token, appointment.id, { status: 'cancelled', time: '11:00' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('cancelled');
+    });
+
+    it('lets exactly one of two appointments take the same free slot at the same time', async () => {
+      const { owner, appointment, neighbour } = await setupWithNeighbour();
+
+      const responses = await Promise.all([
+        put(owner.token, appointment.id, { time: '14:00' }),
+        put(owner.token, neighbour.id, { date: TUESDAY, time: '14:00' })
+      ]);
+
+      const statuses = responses.map((r) => r.status);
+      expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+      expect(statuses.filter((s) => s !== 200).every((s) => s === 409)).toBe(true);
+      expect(await prisma.appointment.count({ where: { date: TUESDAY, time: '14:00' } })).toBe(1);
+    });
+  });
 });
 
 describe('DELETE /api/appointments/:id (cancels the appointment)', () => {

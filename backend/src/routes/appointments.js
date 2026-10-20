@@ -4,6 +4,7 @@ const prisma = require('../config/prisma');
 const { sendAppointmentConfirmation } = require('../services/notificationService');
 const { getDay, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
+const { appointmentInstant } = require('../utils/clinicTime');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_PAGE_SIZE = 100;
@@ -17,8 +18,14 @@ const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed
 const PATIENT_SELECT = { id: true, name: true, phone: true, email: true, cedula: true };
 
 // Thrown for expected scheduling conflicts inside the appointment transaction,
-// so the catch block can tell them apart from unexpected DB/runtime errors
-class ScheduleConflictError extends Error {}
+// so the catch block can tell them apart from unexpected DB/runtime errors.
+// `status` is the HTTP status to answer with.
+class ScheduleConflictError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
 
 // P2034 (serialization failure) can come from any write conflict in the
 // transaction, not just a slot clash, so retry a bounded number of times
@@ -39,6 +46,44 @@ async function runSerializableTransaction(fn, maxAttempts = 3) {
 
 // What "cancelled" leaves out of lists and counts (see DELETE /:id).
 const NOT_CANCELLED = { not: 'cancelled' };
+
+// The rules a doctor's slot has to meet, shared by booking and rescheduling.
+// Runs inside the caller's transaction. `excludeId` leaves an appointment out
+// of the clash check (the one being moved must not clash with itself).
+// `checkAvailability: false` skips the schedule check, for an appointment that
+// keeps its slot and only needs to know the slot is still free.
+async function assertSlotBookable(tx, { doctorId, date, time, excludeId, occupiedStatus = 400, checkAvailability = true }) {
+  if (checkAvailability) {
+    const availability = await tx.availability.findFirst({
+      where: {
+        doctorId,
+        dayOfWeek: getDay(parseISO(date)),
+        startTime: { lte: time },
+        endTime: { gte: time }
+      }
+    });
+
+    // A doctor who has not configured any schedule can be booked at any time
+    // (demo simplicity), so only enforce it once there is one.
+    const totalAvailabilities = await tx.availability.count({ where: { doctorId } });
+    if (totalAvailabilities > 0 && !availability) {
+      throw new ScheduleConflictError('The doctor does not work at the selected time');
+    }
+  }
+
+  const conflict = await tx.appointment.findFirst({
+    where: {
+      doctorId,
+      date,
+      time,
+      status: NOT_CANCELLED,
+      ...(excludeId && { id: { not: excludeId } })
+    }
+  });
+  if (conflict) {
+    throw new ScheduleConflictError('An appointment already exists at this time', occupiedStatus);
+  }
+}
 
 const isValidDate = (value) => typeof value === 'string' && DATE_REGEX.test(value) && !isNaN(parseISO(value).getTime());
 
@@ -159,38 +204,10 @@ router.post('/', async (req, res) => {
     // doctor/date/time can never both pass the conflict check and double-book
     // the slot (Postgres detects the write conflict and Prisma retries/aborts).
     const appointment = await runSerializableTransaction(async (tx) => {
-      // 1. Availability Check (Day of week)
-      const dayOfWeek = getDay(parseISO(date));
-      const availability = await tx.availability.findFirst({
-        where: {
-          doctorId: targetDoctorId,
-          dayOfWeek: dayOfWeek,
-          startTime: { lte: time },
-          endTime: { gte: time }
-        }
-      });
+      // 1. Availability + conflict check (same rules as rescheduling)
+      await assertSlotBookable(tx, { doctorId: targetDoctorId, date, time });
 
-      // Note: For demo simplicity, we might want to skip this if no availability is set
-      const totalAvailabilities = await tx.availability.count({ where: { doctorId: targetDoctorId } });
-      if (totalAvailabilities > 0 && !availability) {
-        throw new ScheduleConflictError('The doctor does not work at the selected time');
-      }
-
-      // 2. Conflict Check (Duplicate time for same doctor)
-      const conflict = await tx.appointment.findFirst({
-        where: {
-          doctorId: targetDoctorId,
-          date,
-          time,
-          status: { not: 'cancelled' }
-        }
-      });
-
-      if (conflict) {
-        throw new ScheduleConflictError('An appointment already exists at this time');
-      }
-
-      // 3. Upsert Patient
+      // 2. Upsert Patient
       // On update, only touch email/cedula when a non-empty value was
       // actually submitted - an existing patient rebooking with those
       // fields left blank must keep their previously stored values,
@@ -205,7 +222,7 @@ router.post('/', async (req, res) => {
         create: { name: normalizedPatientName, phone: normalizedPatientPhone, email: normalizedPatientEmail, cedula: normalizedPatientCedula }
       });
 
-      // 4. Create Appointment
+      // 3. Create Appointment
       return tx.appointment.create({
         data: {
           date,
@@ -222,13 +239,13 @@ router.post('/', async (req, res) => {
       });
     });
 
-    // 5. Send Notification (WhatsApp + Email) - outside the transaction, after commit
+    // 4. Send Notification (WhatsApp + Email) - outside the transaction, after commit
     console.log('Sending confirmation for appointment:', appointment.id);
     await sendAppointmentConfirmation(appointment);
 
     res.status(201).json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
-    if (err instanceof ScheduleConflictError) return res.status(400).json({ error: err.message });
+    if (err instanceof ScheduleConflictError) return res.status(err.status).json({ error: err.message });
     if (err.code === 'P2034') {
       return res.status(409).json({ error: 'Could not complete the booking due to a concurrent update, please try again' });
     }
@@ -249,7 +266,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Update appointment (Status, Date/Time, Notes)
+// Update appointment (Status, Date/Time, Notes). Moving it to another slot, or
+// bringing a cancelled one back, goes through the same checks as booking, so
+// an appointment can never end up on a taken slot or outside the doctor's
+// schedule: 400 for a time the doctor does not work or one already gone, 409
+// for a slot someone else holds.
 router.put('/:id', async (req, res) => {
   const { date, time, status, notes } = req.body;
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
@@ -265,23 +286,61 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    const appointment = await prisma.appointment.update({
-      where: {
-        id: req.params.id,
-        ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-      },
-      data: {
-        ...(date && { date }),
-        ...(time && { time }),
-        ...(status && { status }),
-        ...(notes && { notes })
-      },
-      include: { patient: { select: PATIENT_SELECT } }
+    // Read, check and write in one Serializable transaction, like booking, so
+    // two moves into the same slot cannot both get through.
+    const appointment = await runSerializableTransaction(async (tx) => {
+      const current = await tx.appointment.findFirst({
+        where: {
+          id: req.params.id,
+          ...(isSpecialRole ? {} : { doctorId: req.doctorId })
+        }
+      });
+      if (!current) return null;
+
+      const nextDate = date ?? current.date;
+      const nextTime = time ?? current.time;
+      const nextStatus = status ?? current.status;
+      const moved = nextDate !== current.date || nextTime !== current.time;
+      const reactivated = current.status === 'cancelled' && nextStatus !== 'cancelled';
+
+      // A cancelled appointment holds no slot, so there is nothing to check.
+      if (nextStatus !== 'cancelled' && (moved || reactivated)) {
+        // Rescheduling to a time that has passed makes no sense, except for
+        // an appointment already marked as done (correcting its record).
+        if (moved && nextStatus !== 'completed' && appointmentInstant(nextDate, nextTime) < new Date()) {
+          throw new ScheduleConflictError('The appointment cannot be moved to a time that has already passed');
+        }
+        await assertSlotBookable(tx, {
+          doctorId: current.doctorId,
+          date: nextDate,
+          time: nextTime,
+          excludeId: current.id,
+          occupiedStatus: 409,
+          // The schedule only matters when the slot changes; a reactivated
+          // appointment keeps the slot it was booked in.
+          checkAvailability: moved
+        });
+      }
+
+      return tx.appointment.update({
+        where: { id: current.id },
+        data: {
+          ...(date && { date }),
+          ...(time && { time }),
+          ...(status && { status }),
+          ...(notes && { notes })
+        },
+        include: { patient: { select: PATIENT_SELECT } }
+      });
     });
 
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
     res.json({ ...appointment, Patient: appointment.patient });
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Appointment not found' });
+    if (err instanceof ScheduleConflictError) return res.status(err.status).json({ error: err.message });
+    if (err.code === 'P2034') {
+      return res.status(409).json({ error: 'Could not complete the update due to a concurrent update, please try again' });
+    }
     console.error('Update appointment error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
