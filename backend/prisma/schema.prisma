@@ -17,6 +17,8 @@ model Doctor {
   specialty      String?
   bio            String?
   address        String?
+  // When the password last changed; tokens issued before it stop working
+  passwordChangedAt DateTime?
   appointments   Appointment[]
   availabilities Availability[]
   passwordResetTokens PasswordResetToken[]

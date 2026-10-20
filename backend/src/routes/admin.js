@@ -125,6 +125,8 @@ router.put(DOCTOR, async (req, res) => {
     };
     if (password) {
       data.password = await bcrypt.hash(password, 10);
+      // Sessions opened with the old password stop working
+      data.passwordChangedAt = new Date();
     }
 
     const doctor = await prisma.doctor.update({

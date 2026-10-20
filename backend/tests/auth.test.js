@@ -177,13 +177,14 @@ describe('GET /api/auth/profile', () => {
     expect(res.body).not.toHaveProperty('password');
   });
 
-  it('returns 404 when the user in the token no longer exists', async () => {
+  it('rejects the token of a user that no longer exists', async () => {
     const { user, token } = await createUser();
     await prisma.doctor.delete({ where: { id: user.id } });
 
     const res = await request(app).get('/api/auth/profile').set(bearer(token));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Invalid token');
   });
 });
 
