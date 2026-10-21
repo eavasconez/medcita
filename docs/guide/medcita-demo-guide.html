@@ -55,6 +55,7 @@
   .cover p { color:rgba(255,255,255,.78); font-size:11pt; max-width:140mm; }
   .cover .meta { font-size:8.6pt; color:rgba(255,255,255,.6); }
   .toc td { border:0; padding:3px 8px; }
+  .tight td { padding:4px 8px; } .tight li { margin:2px 0; } .tight .note { margin:6px 0; }
   .part { font-size:8pt; letter-spacing:.14em; text-transform:uppercase; color:var(--sky); font-weight:700; }
 </style>
 </head>
@@ -65,10 +66,10 @@
   <div class="cover">
     <div class="brand">● MEDCITA</div>
     <div>
-      <h1>Guía completa de MedCita.<br>Probarla y configurar WhatsApp con Meta.</h1>
-      <p>Credenciales de prueba, qué explorar según tu rol, el flujo de una cita con lo que recibe el paciente por WhatsApp y correo, y la guía para que el equipo o el cliente configure el envío de WhatsApp con Meta (o decida usar Twilio).</p>
+      <h1>Guía completa de MedCita.<br>Para admin, médicos y secretaría.</h1>
+      <p>Todo lo necesario para probar MedCita por tu cuenta: credenciales de prueba para cada rol, qué explorar según quién eres, y el flujo paso a paso de la funcionalidad principal — con capturas reales de la app en producción. Incluye la guía para configurar el envío de WhatsApp con Meta (o decidir usar Twilio).</p>
     </div>
-    <div class="meta">medcita-frontend.onrender.com · Versión 1.0 (cierre del Sprint 7) · 2026-10-21</div>
+    <div class="meta">medcita-frontend.onrender.com · Versión de piloto 1.0 (cierre del Sprint 7) · 2026-10-21</div>
   </div>
 </section>
 
@@ -125,7 +126,7 @@
 <section class="page">
   <p class="part">Parte 1 · Probar MedCita</p>
   <h1>1.2 Credenciales de prueba</h1>
-  <p>Estas cuentas existen en el entorno de demostración: puedes entrar directamente.</p>
+  <p>Todas las cuentas de abajo ya existen en el entorno de producción — puedes entrar directamente con cualquiera de ellas.</p>
   <table>
     <tr><th>Rol</th><th>Email</th><th>Contraseña</th><th>Quién es</th></tr>
     <tr><td><span class="tag admin">ADMIN</span></td><td class="mono">admin@medcita.ec</td><td class="mono">admin1234</td><td>Administrador de la clínica</td></tr>
@@ -137,28 +138,36 @@
     <strong>Solo para demostraciones.</strong> Estas contraseñas son públicas. Antes de cargar pacientes reales, el equipo debe cambiarlas (<em>Settings → Update Password</em>) o eliminar esas cuentas desde <em>Manage Doctors</em>.
   </div>
   <div class="note">
-    <strong>Rol Secretaria.</strong> No hay una cuenta de secretaria de fábrica. Para probar ese rol, entra como admin → <em>Manage Doctors</em> → crea un usuario con rol «Secretary». Puede agendar, editar y cancelar citas de cualquier médico y ver el calendario combinado, pero no gestiona usuarios ni ve las analíticas.
+    <strong>Nota sobre el rol Secretaria:</strong> todavía no hay una cuenta de secretaria sembrada de fábrica. Para probar ese rol, entra como <span class="mono">admin@medcita.ec</span> → <em>Manage Doctors</em> → crear un usuario nuevo con rol «Secretary». Sus permisos son casi idénticos a los de un admin para agendar/gestionar citas de cualquier médico, pero no puede crear/editar médicos ni ver reportes (<em>Analytics</em>).
   </div>
 
-  <h1 style="margin-top:22px">1.3 Qué probar según tu rol</h1>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.3 Qué probar según tu rol</h1>
   <h3>Si entras como Doctor</h3>
   <ul>
-    <li>Ver tu calendario en <em>My Schedule</em> (semana, mes, día o agenda) y la leyenda de colores: confirmada, agendada, pendiente.</li>
-    <li>Agendar una cita nueva (sección 1.4) y, desde el detalle de la cita, <em>Confirm Appointment</em> o <em>Cancel</em>.</li>
-    <li>Ajustar tu semana laboral en <em>Availability</em>.</li>
-    <li>Buscar, crear y editar pacientes en <em>Patients</em>. El basurero solo funciona con pacientes que no tienen ninguna cita.</li>
-    <li>Actualizar tu perfil y cambiar tu contraseña en <em>Settings</em>.</li>
+    <li>Ver tu calendario semanal («My Schedule») —también en vista de mes, día o agenda— y entender la leyenda de colores (confirmada / agendada / pendiente).</li>
+    <li>Agendar una cita nueva (ver el paso a paso en la sección 1.4).</li>
+    <li>Confirmar o cancelar una cita pendiente desde el detalle (clic sobre el evento en el calendario).</li>
+    <li>Ajustar tu disponibilidad semanal en «Availability».</li>
+    <li>Buscar un paciente en «Patients», crearlo y editar sus datos. El basurero solo funciona con pacientes que no tienen ninguna cita.</li>
+    <li>Actualizar tu perfil (especialidad, bio, dirección) y cambiar tu contraseña en «Settings».</li>
   </ul>
   <h3>Si entras como Admin</h3>
   <ul>
-    <li>Ver el calendario combinado de todos los médicos, o elegir uno en el desplegable para ver solo su agenda.</li>
-    <li>Crear, editar o eliminar médicos, secretarias y administradores en <em>Manage Doctors</em>.</li>
-    <li>Ver las citas por médico y la distribución de carga en <em>Analytics</em>.</li>
+    <li>Ver el calendario combinado de todos los médicos a la vez (sin seleccionar ninguno en el desplegable) — cada médico tiene un color identificador en la leyenda.</li>
+    <li>Seleccionar un médico específico en el desplegable para ver/gestionar solo su agenda.</li>
+    <li>Crear un médico o secretaria nuevo (y editarlos o eliminarlos) en «Manage Doctors».</li>
+    <li>Ver el reporte de citas por médico y la distribución de carga en «Analytics» (la pantalla que antes se llamaba «Reports»).</li>
     <li>Todo lo que hacen administradores y secretarias con citas, pacientes y cuentas queda guardado en un <strong>registro de auditoría</strong>. Hoy lo consulta un administrador por la API (<span class="mono">GET /api/admin/audit-log</span>); todavía no tiene pantalla.</li>
   </ul>
   <h3>Si entras como Secretaria</h3>
   <ul>
-    <li>Los mismos permisos de agenda que un admin. No tiene <em>Manage Doctors</em> ni <em>Analytics</em>.</li>
+    <li>Los mismos permisos de agenda que un admin (agendar/editar/cancelar citas de cualquier médico, ver el calendario combinado).</li>
+    <li>No tiene acceso a «Manage Doctors» ni a «Analytics» — esas pantallas son exclusivas de admin.</li>
   </ul>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
@@ -172,7 +181,7 @@
     <li>En <em>My Schedule</em>, pulsa <em>New Appointment</em> (arriba a la derecha).</li>
     <li><strong>Paso 1 de 3:</strong> busca un paciente existente o pulsa <em>Create New Patient</em>.</li>
     <li><strong>Paso 2 de 3:</strong> elige la fecha y un horario marcado <em>FREE</em>.</li>
-    <li><strong>Paso 3 de 3:</strong> revisa la cédula (opcional), el correo (opcional) y las notas internas, y pulsa <em>Confirm Appointment</em>.</li>
+    <li><strong>Paso 3 de 3:</strong> completa o revisa nombre, WhatsApp y email (opcional) del paciente —y, si quieres, la cédula y las notas internas— y pulsa <em>Confirm Appointment</em>.</li>
     <li>Sale el aviso «Appointment scheduled! Notifications are being sent.» La cita queda <em>Pending</em>; desde su detalle puedes pasarla a <em>Confirmed</em> o cancelarla (el navegador pide confirmar).</li>
   </ol>
   <div class="grid2">
@@ -219,7 +228,8 @@
     <li><strong>Seguridad:</strong> tras 5 intentos fallidos con un mismo correo, el acceso se bloquea 15 minutos.</li>
   </ul>
   <h2>Qué hacer con lo que encuentres</h2>
-  <p>Cualquier cosa confusa, lenta o que no funcione es información valiosa. Cuéntalo al equipo con el detalle de la pantalla y el paso en que pasó.</p>
+  <p>Esto es una versión piloto — cualquier cosa que te parezca confusa, lenta, o que simplemente no funcione, es información valiosa. Cuéntanoslo directamente al equipo (WhatsApp o email de contacto), con el detalle de en qué pantalla y qué paso exacto pasó.</p>
+  <div class="note">¿Probando esto como parte de una sesión de demo en vivo con el equipo de MedCita? Al final se comparte un formulario corto de feedback (NPS + usabilidad) — no hace falta que lo busques, se comparte contigo directamente.</div>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
 
@@ -249,7 +259,7 @@
   <div class="foot">MedCita — Guía completa · Parte 2</div>
 </section>
 
-<section class="page">
+<section class="page tight">
   <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
   <h1>2.2 Qué necesitas y cuánto tarda</h1>
   <p>El orden importa: las plantillas tardan en aprobarse, así que se crean <strong>lo antes posible</strong> y mientras tanto se configura el resto.</p>
