@@ -54,13 +54,14 @@ const Login = () => {
           <div>
             <h2 className="text-2xl font-black tracking-tight mb-2">Guía completa de demo</h2>
             <p className="text-white/60 font-medium text-sm leading-relaxed">
-              Todo lo necesario para probar MedCita por tu cuenta, sin importar tu rol: credenciales de prueba, qué explorar como admin, médico o secretaria, y el flujo paso a paso de la funcionalidad principal — con capturas reales de la app.
+              Todo lo necesario para probar MedCita por tu cuenta, sin importar tu rol: credenciales de prueba, qué explorar como admin, médico o secretaria, el flujo de una cita con el WhatsApp y el correo que recibe el paciente, y cómo configurar WhatsApp con Meta — con capturas reales de la app.
             </p>
           </div>
           <ul className="space-y-2 text-sm text-white/70 font-medium">
             <li className="flex items-start gap-2"><span className="text-primary mt-0.5">→</span> Credenciales listas para admin, doctor y secretaria</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-0.5">→</span> Qué probar según tu rol</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-0.5">→</span> Cómo agendar una cita, paso a paso con capturas</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-0.5">→</span> Configuración de WhatsApp con Meta (o Twilio), para el equipo</li>
           </ul>
           <a
             href="/medcita-demo-guide.pdf"

@@ -1,0 +1,453 @@
+<!doctype html>
+<!--
+  Fuente de frontend/public/medcita-demo-guide.pdf (la guía que se descarga desde la pantalla de login).
+  Para regenerar el PDF, desde la carpeta docs/guide/ (Chrome o Chromium instalado):
+
+    google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
+      --print-to-pdf=../../frontend/public/medcita-demo-guide.pdf \
+      "file://$PWD/medcita-demo-guide.html"
+
+  Las capturas están en img/ (copias JPEG de docs/qa/screenshots/s7-12/). Esta guía es pública:
+  no pongas aquí tokens, IDs de la cuenta de Meta ni nada que no deba verse.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MedCita — Guía completa</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm 15mm; }
+  @page :first { margin: 0; }
+  :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --blue:#0369a1; --sky:#0ea5e9; --soft:#f1f5f9; --warn:#b45309; --warnbg:#fffbeb; --ok:#047857; --okbg:#ecfdf5; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin:0; font-family: "Helvetica Neue", Arial, "Liberation Sans", sans-serif; color:var(--ink); font-size:10.2pt; line-height:1.5; }
+  .page { break-after: page; }
+  .page:last-child { break-after: auto; }
+  .kicker { font-size:7.6pt; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:700; margin:0 0 6px; }
+  h1 { font-size:19pt; color:var(--blue); margin:0 0 10px; font-weight:600; }
+  h2 { font-size:13pt; color:var(--ink); margin:18px 0 6px; }
+  h3 { font-size:10.6pt; margin:14px 0 4px; }
+  p { margin:6px 0; }
+  ul, ol { margin:6px 0; padding-left:20px; }
+  li { margin:3px 0; }
+  code, .mono { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size:8.8pt; background:var(--soft); padding:1px 4px; border-radius:3px; }
+  pre { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size:8.2pt; background:var(--soft); border:1px solid var(--line); border-radius:6px; padding:8px 10px; white-space:pre-wrap; margin:8px 0; }
+  table { width:100%; border-collapse:collapse; margin:8px 0; font-size:9.2pt; }
+  th { text-align:left; font-size:7.6pt; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); padding:6px 8px; border-bottom:2px solid var(--line); }
+  td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .note { border-left:3px solid var(--sky); background:#f0f9ff; padding:8px 12px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .warn { border-left:3px solid #f59e0b; background:var(--warnbg); padding:8px 12px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .ok { border-left:3px solid #10b981; background:var(--okbg); padding:8px 12px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .steps { list-style:none; padding:0; counter-reset:s; }
+  .steps li { counter-increment:s; position:relative; padding-left:30px; margin:7px 0; }
+  .steps li::before { content:counter(s); position:absolute; left:0; top:0; width:20px; height:20px; border-radius:50%; background:var(--sky); color:#fff; font-weight:700; font-size:8.6pt; text-align:center; line-height:20px; }
+  .tag { display:inline-block; font-size:7.4pt; font-weight:700; letter-spacing:.06em; padding:2px 7px; border-radius:4px; }
+  .tag.admin { background:#ffedd5; color:#c2410c; } .tag.doctor { background:#dbeafe; color:#1d4ed8; }
+  .foot { margin-top:14px; padding-top:6px; border-top:1px solid var(--line); font-size:7.8pt; color:var(--muted); }
+  figure { margin:10px 0; break-inside:avoid; }
+  figure img { width:100%; border:1px solid var(--line); border-radius:8px; display:block; }
+  figcaption { font-size:8.2pt; color:var(--muted); margin-top:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid2 figure { margin:6px 0; }
+  .cover { height:296mm; margin:0; padding:30mm 22mm; background:linear-gradient(160deg,#0b1f3a 0%,#0b3a63 55%,#0369a1 100%); color:#fff; display:flex; flex-direction:column; justify-content:space-between; }
+  .cover .brand { font-size:9pt; letter-spacing:.2em; font-weight:700; }
+  .cover h1 { color:#fff; font-size:27pt; line-height:1.18; font-weight:500; margin:0 0 14px; }
+  .cover p { color:rgba(255,255,255,.78); font-size:11pt; max-width:140mm; }
+  .cover .meta { font-size:8.6pt; color:rgba(255,255,255,.6); }
+  .toc td { border:0; padding:3px 8px; }
+  .tight td { padding:4px 8px; } .tight li { margin:2px 0; } .tight .note { margin:6px 0; }
+  .part { font-size:8pt; letter-spacing:.14em; text-transform:uppercase; color:var(--sky); font-weight:700; }
+</style>
+</head>
+<body>
+
+<!-- ============ PORTADA ============ -->
+<section class="page">
+  <div class="cover">
+    <div class="brand">● MEDCITA</div>
+    <div>
+      <h1>Guía completa de MedCita.<br>Para admin, médicos y secretaría.</h1>
+      <p>Todo lo necesario para probar MedCita por tu cuenta: credenciales de prueba para cada rol, qué explorar según quién eres, y el flujo paso a paso de la funcionalidad principal — con capturas reales de la app en producción. Incluye la guía para configurar el envío de WhatsApp con Meta (o decidir usar Twilio).</p>
+    </div>
+    <div class="meta">medcita-frontend.onrender.com · Versión de piloto 1.0 (cierre del Sprint 7) · 2026-10-21</div>
+  </div>
+</section>
+
+<!-- ============ CONTENIDO ============ -->
+<section class="page">
+  <p class="kicker">Contenido</p>
+  <h1>Cómo está organizada esta guía</h1>
+  <p><strong>Parte 1 — Probar MedCita</strong> (para quien prueba la app: admin, médico o secretaría).</p>
+  <table class="toc">
+    <tr><td>1.1</td><td>Antes de empezar: el WhatsApp de prueba</td></tr>
+    <tr><td>1.2</td><td>Credenciales de prueba</td></tr>
+    <tr><td>1.3</td><td>Qué probar según tu rol</td></tr>
+    <tr><td>1.4</td><td>Cómo agendar una cita, paso a paso</td></tr>
+    <tr><td>1.5</td><td>Lo que recibe el paciente: WhatsApp y correo</td></tr>
+    <tr><td>1.6</td><td>Otras pantallas: pacientes, disponibilidad, administración</td></tr>
+    <tr><td>1.7</td><td>Contraseña: cambiarla o recuperarla</td></tr>
+  </table>
+  <p style="margin-top:14px"><strong>Parte 2 — Configurar WhatsApp con Meta</strong> (para el equipo técnico o el cliente que pone MedCita en marcha).</p>
+  <table class="toc">
+    <tr><td>2.1</td><td>Meta o Twilio: cuál elegir y cómo cambiar</td></tr>
+    <tr><td>2.2</td><td>Qué necesitas y cuánto tarda</td></tr>
+    <tr><td>2.3</td><td>Cuenta, app, número de prueba y destinatarios</td></tr>
+    <tr><td>2.4</td><td>Las dos plantillas de mensaje</td></tr>
+    <tr><td>2.5</td><td>El token que va en el servidor</td></tr>
+    <tr><td>2.6</td><td>Variables de entorno en Render</td></tr>
+    <tr><td>2.7</td><td>Comprobar que funciona</td></tr>
+    <tr><td>2.8</td><td>Problemas frecuentes</td></tr>
+    <tr><td>2.9</td><td>Pasar a un número real y mantenimiento</td></tr>
+  </table>
+  <div class="note" style="margin-top:18px">Los textos de los menús y botones de la aplicación están en inglés (<em>My Schedule</em>, <em>Patients</em>, <em>Availability</em>, <em>Settings</em>…); los mensajes que reciben los pacientes por WhatsApp y correo están en español.</div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.1 Antes de empezar: el WhatsApp de prueba</h1>
+  <p>MedCita envía la confirmación y el recordatorio de cada cita por WhatsApp con la <strong>API de WhatsApp Cloud de Meta</strong>, usando dos plantillas aprobadas. Gracias a eso el mensaje llega aunque el paciente nunca le haya escrito al número, y ya no hace falta «unirse» a ningún sandbox.</p>
+  <div class="warn">
+    <strong>Solo reciben WhatsApp los números registrados.</strong> Mientras la app use el <em>número de prueba gratuito</em> de Meta, solo llegan mensajes a un máximo de <strong>5 teléfonos</strong> que el equipo haya agregado y verificado en el panel de Meta. A cualquier otro número el sistema lo intenta, pero Meta lo rechaza (error 131030) y no llega nada.
+  </div>
+  <h2>Para probar con tu teléfono</h2>
+  <ol class="steps">
+    <li>Pide al equipo que agregue tu número (con código de país, por ejemplo <span class="mono">+593 98…</span>) a la lista de destinatarios de prueba. Cómo se hace está en la sección 2.3.</li>
+    <li>Meta te envía por WhatsApp un <strong>código de verificación</strong>; compártelo con quien te está agregando.</li>
+    <li>Cuando aparezca como verificado, agenda una cita con tu número como paciente. Debe llegarte el mensaje en unos segundos.</li>
+  </ol>
+  <div class="note">
+    <strong>Un paciente de ejemplo ya tiene un número real de prueba.</strong> En los datos de demo, <em>Ricardo Andrade</em> tiene el WhatsApp del equipo. Si usas tu propio número para probar, no lo pongas en el teléfono de un paciente de ejemplo (Juan Carlos Cevallos, María Elena Lasso, Ricardo Andrade…): el sistema identifica a los pacientes por teléfono y podrías sobrescribir su nombre.
+  </div>
+  <p>Cuando el negocio use un número propio verificado, esta limitación desaparece (sección 2.9).</p>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.2 Credenciales de prueba</h1>
+  <p>Todas las cuentas de abajo ya existen en el entorno de producción — puedes entrar directamente con cualquiera de ellas.</p>
+  <table>
+    <tr><th>Rol</th><th>Email</th><th>Contraseña</th><th>Quién es</th></tr>
+    <tr><td><span class="tag admin">ADMIN</span></td><td class="mono">admin@medcita.ec</td><td class="mono">admin1234</td><td>Administrador de la clínica</td></tr>
+    <tr><td><span class="tag doctor">DOCTOR</span></td><td class="mono">demo@medcita.ec</td><td class="mono">demo1234</td><td>Dr. Santiago Pérez — Medicina General</td></tr>
+    <tr><td><span class="tag doctor">DOCTOR</span></td><td class="mono">dra.torres@medcita.ec</td><td class="mono">demo1234</td><td>Dra. Camila Torres — Pediatría</td></tr>
+    <tr><td><span class="tag doctor">DOCTOR</span></td><td class="mono">dr.mendoza@medcita.ec</td><td class="mono">demo1234</td><td>Dr. Andrés Mendoza — Medicina Familiar</td></tr>
+  </table>
+  <div class="warn">
+    <strong>Solo para demostraciones.</strong> Estas contraseñas son públicas. Antes de cargar pacientes reales, el equipo debe cambiarlas (<em>Settings → Update Password</em>) o eliminar esas cuentas desde <em>Manage Doctors</em>.
+  </div>
+  <div class="note">
+    <strong>Nota sobre el rol Secretaria:</strong> todavía no hay una cuenta de secretaria sembrada de fábrica. Para probar ese rol, entra como <span class="mono">admin@medcita.ec</span> → <em>Manage Doctors</em> → crear un usuario nuevo con rol «Secretary». Sus permisos son casi idénticos a los de un admin para agendar/gestionar citas de cualquier médico, pero no puede crear/editar médicos ni ver reportes (<em>Analytics</em>).
+  </div>
+
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.3 Qué probar según tu rol</h1>
+  <h3>Si entras como Doctor</h3>
+  <ul>
+    <li>Ver tu calendario semanal («My Schedule») —también en vista de mes, día o agenda— y entender la leyenda de colores (confirmada / agendada / pendiente).</li>
+    <li>Agendar una cita nueva (ver el paso a paso en la sección 1.4).</li>
+    <li>Confirmar o cancelar una cita pendiente desde el detalle (clic sobre el evento en el calendario).</li>
+    <li>Ajustar tu disponibilidad semanal en «Availability».</li>
+    <li>Buscar un paciente en «Patients», crearlo y editar sus datos. El basurero solo funciona con pacientes que no tienen ninguna cita.</li>
+    <li>Actualizar tu perfil (especialidad, bio, dirección) y cambiar tu contraseña en «Settings».</li>
+  </ul>
+  <h3>Si entras como Admin</h3>
+  <ul>
+    <li>Ver el calendario combinado de todos los médicos a la vez (sin seleccionar ninguno en el desplegable) — cada médico tiene un color identificador en la leyenda.</li>
+    <li>Seleccionar un médico específico en el desplegable para ver/gestionar solo su agenda.</li>
+    <li>Crear un médico o secretaria nuevo (y editarlos o eliminarlos) en «Manage Doctors».</li>
+    <li>Ver el reporte de citas por médico y la distribución de carga en «Analytics» (la pantalla que antes se llamaba «Reports»).</li>
+    <li>Todo lo que hacen administradores y secretarias con citas, pacientes y cuentas queda guardado en un <strong>registro de auditoría</strong>. Hoy lo consulta un administrador por la API (<span class="mono">GET /api/admin/audit-log</span>); todavía no tiene pantalla.</li>
+  </ul>
+  <h3>Si entras como Secretaria</h3>
+  <ul>
+    <li>Los mismos permisos de agenda que un admin (agendar/editar/cancelar citas de cualquier médico, ver el calendario combinado).</li>
+    <li>No tiene acceso a «Manage Doctors» ni a «Analytics» — esas pantallas son exclusivas de admin.</li>
+  </ul>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.4 Cómo agendar una cita, paso a paso</h1>
+  <p>El flujo es el mismo para todos los roles: un admin o una secretaria eligen primero el médico en el desplegable de arriba; un doctor lo hace sobre su propio calendario.</p>
+  <ol class="steps">
+    <li>Inicia sesión con cualquiera de las cuentas de la página anterior.</li>
+    <li>En <em>My Schedule</em>, pulsa <em>New Appointment</em> (arriba a la derecha).</li>
+    <li><strong>Paso 1 de 3:</strong> busca un paciente existente o pulsa <em>Create New Patient</em>.</li>
+    <li><strong>Paso 2 de 3:</strong> elige la fecha y un horario marcado <em>FREE</em>.</li>
+    <li><strong>Paso 3 de 3:</strong> completa o revisa nombre, WhatsApp y email (opcional) del paciente —y, si quieres, la cédula y las notas internas— y pulsa <em>Confirm Appointment</em>.</li>
+    <li>Sale el aviso «Appointment scheduled! Notifications are being sent.» La cita queda <em>Pending</em>; desde su detalle puedes pasarla a <em>Confirmed</em> o cancelarla (el navegador pide confirmar).</li>
+  </ol>
+  <div class="grid2">
+    <figure><img src="img/new-appt-1.jpg"><figcaption>Paso 1: elegir el paciente.</figcaption></figure>
+    <figure><img src="img/new-appt-2.jpg"><figcaption>Paso 2: fecha y horarios libres.</figcaption></figure>
+    <figure><img src="img/new-appt-3.jpg"><figcaption>Paso 3: notas y confirmar.</figcaption></figure>
+    <figure><img src="img/appt-created.jpg"><figcaption>Cita creada: aviso de éxito y contador actualizado.</figcaption></figure>
+  </div>
+  <p>El sistema impide dos citas en el mismo horario, también al mover una cita, y bloquea las horas pasadas y las fuera de la jornada del médico. El <strong>recordatorio</strong> sale solo, una vez, cuando faltan menos de 24 horas para la cita.</p>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.5 Lo que recibe el paciente</h1>
+  <p>Al agendar, el sistema envía en segundo plano la confirmación por <strong>WhatsApp</strong> (plantilla aprobada de Meta) y, si el paciente tiene correo, por <strong>email</strong>. Estas son capturas reales de una cita agendada en el sitio desplegado el 21-oct-2026:</p>
+  <div class="grid2">
+    <figure><img src="img/whatsapp.jpg" style="max-height:150mm;width:auto;margin:0 auto"><figcaption>WhatsApp en el teléfono. Los dos mensajes de abajo son las confirmaciones de la cita; los de arriba son pruebas de envío del equipo.</figcaption></figure>
+    <figure><img src="img/email.jpg"><figcaption>Correo «Confirmación de Cita — MedCita» en la bandeja de entrada.</figcaption>
+      <div class="note" style="margin-top:10px">Si el correo no aparece, revisa <em>spam</em> o <em>promociones</em>: el remitente es nuevo para muchos proveedores.</div>
+    </figure>
+  </div>
+  <p>Texto del WhatsApp de confirmación: <em>«MedCita: Hola Ricardo Andrade, tu cita con Dr. Santiago Pérez ha sido agendada para el 2026-10-23 a las 10:00. ¡Te esperamos!»</em></p>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.6 Otras pantallas</h1>
+  <div class="grid2">
+    <figure><img src="img/dashboard.jpg"><figcaption><em>My Schedule</em>: indicadores y calendario (semana, mes, día, agenda).</figcaption></figure>
+    <figure><img src="img/patients.jpg"><figcaption><em>Patients</em>: directorio con búsqueda, edición y contador de citas.</figcaption></figure>
+    <figure><img src="img/availability.jpg"><figcaption><em>Availability</em>: la jornada semanal de cada médico.</figcaption></figure>
+    <figure><img src="img/settings.jpg"><figcaption><em>Settings</em>: perfil y cambio de contraseña.</figcaption></figure>
+    <figure><img src="img/admin-users.jpg"><figcaption><em>Manage Doctors</em> (solo admin): crear, editar y eliminar usuarios.</figcaption></figure>
+    <figure><img src="img/admin-analytics.jpg"><figcaption><em>Analytics</em> (solo admin): citas por médico y distribución.</figcaption></figure>
+  </div>
+  <p>Si una pantalla no puede cargar sus datos, la app lo dice con un mensaje de error y un botón de reintento; no muestra «0 citas» en silencio.</p>
+
+  <h1 style="margin-top:18px">1.7 Contraseña: cambiarla o recuperarla</h1>
+  <ul>
+    <li><strong>Cambiarla:</strong> <em>Settings → Update Password</em>. Pide la contraseña actual y la nueva; al cambiarla, las sesiones abiertas antes dejan de valer.</li>
+    <li><strong>Recuperarla:</strong> en el login, <em>Forgot password?</em> envía un correo con un enlace de un solo uso que vale 60 minutos.</li>
+    <li><strong>Seguridad:</strong> tras 5 intentos fallidos con un mismo correo, el acceso se bloquea 15 minutos.</li>
+  </ul>
+  <h2>Qué hacer con lo que encuentres</h2>
+  <p>Esto es una versión piloto — cualquier cosa que te parezca confusa, lenta, o que simplemente no funcione, es información valiosa. Cuéntanoslo directamente al equipo (WhatsApp o email de contacto), con el detalle de en qué pantalla y qué paso exacto pasó.</p>
+  <div class="note">¿Probando esto como parte de una sesión de demo en vivo con el equipo de MedCita? Al final se comparte un formulario corto de feedback (NPS + usabilidad) — no hace falta que lo busques, se comparte contigo directamente.</div>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.1 Meta o Twilio: cuál elegir</h1>
+  <p>MedCita envía WhatsApp con <strong>un solo proveedor a la vez</strong>, elegido por las variables de entorno del servidor. El cliente decide; el código soporta los dos.</p>
+  <table>
+    <tr><th></th><th>Meta Cloud API (recomendado)</th><th>Twilio</th></tr>
+    <tr><td><strong>Se activa con</strong></td><td><span class="mono">META_WHATSAPP_TOKEN</span> y <span class="mono">META_WHATSAPP_PHONE_NUMBER_ID</span></td><td><span class="mono">TWILIO_ACCOUNT_SID</span>, <span class="mono">TWILIO_AUTH_TOKEN</span> y <span class="mono">TWILIO_WHATSAPP_NUMBER</span>, y que no estén las de Meta</td></tr>
+    <tr><td><strong>Qué envía</strong></td><td>Plantillas aprobadas en español</td><td>El mismo texto como mensaje normal (sin plantillas)</td></tr>
+    <tr><td><strong>Llega a un paciente que nunca escribió</strong></td><td>Sí (número de prueba: hasta 5 destinatarios registrados; número propio: cualquiera)</td><td>No con el sandbox: cada destinatario debe enviar <span class="mono">join &lt;código&gt;</span> y la sesión expira a las ~72 h</td></tr>
+    <tr><td><strong>Pacientes reales</strong></td><td>Número propio, negocio verificado y método de pago</td><td>Remitente de WhatsApp aprobado en Twilio. Fuera de la ventana de 24 h WhatsApp exige plantillas y el código aún no las envía por Twilio</td></tr>
+    <tr><td><strong>Mantenimiento</strong></td><td>Token de 60 días sin negocio verificado (el actual vence el <strong>19-dic-2026</strong>)</td><td>Credenciales sin vencimiento</td></tr>
+    <tr><td><strong>Si falla un envío</strong></td><td>Queda el error en el log; <strong>no se reintenta por Twilio</strong></td><td>Queda el error en el log</td></tr>
+  </table>
+  <p><strong>Orden en el código:</strong> Meta si tiene sus dos variables; si no, Twilio si tiene sus credenciales; si no, un <em>modo simulado</em> que solo escribe en el registro y no envía nada.</p>
+  <h3>Cómo cambiar de proveedor (sin tocar el código)</h3>
+  <ul>
+    <li><strong>A Meta:</strong> definir las dos variables de Meta. Tienen prioridad aunque las de Twilio sigan puestas.</li>
+    <li><strong>A Twilio:</strong> borrar las dos variables de Meta y dejar las de Twilio.</li>
+    <li><strong>A ninguno:</strong> borrar las de ambos.</li>
+    <li>Render redespliega al guardar. Después, prueba (sección 2.7).</li>
+  </ul>
+  <div class="ok"><strong>Recomendación:</strong> en producción usar solo Meta y no cargar las variables <span class="mono">TWILIO_*</span> en Render: una sola ruta de envío y menos secretos guardados. Twilio queda para desarrollo local.</div>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page tight">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.2 Qué necesitas y cuánto tarda</h1>
+  <p>El orden importa: las plantillas tardan en aprobarse, así que se crean <strong>lo antes posible</strong> y mientras tanto se configura el resto.</p>
+  <table>
+    <tr><th>#</th><th>Qué se hace</th><th>Dónde</th><th>Tiempo</th></tr>
+    <tr><td>1</td><td>Cuenta de Facebook y registro de desarrollador</td><td>developers.facebook.com</td><td>10 min</td></tr>
+    <tr><td>2</td><td>Crear la app y el portfolio comercial</td><td>developers.facebook.com</td><td>10 min</td></tr>
+    <tr><td>3</td><td>Anotar el Phone Number ID y el WABA</td><td>Configuración de la API</td><td>2 min</td></tr>
+    <tr><td>4</td><td>Agregar los destinatarios de prueba</td><td>Configuración de la API</td><td>5 min</td></tr>
+    <tr><td>5</td><td>Crear y enviar a revisión las 2 plantillas</td><td>WhatsApp Manager</td><td>15 min + <strong>espera de Meta (minutos a 24 h)</strong></td></tr>
+    <tr><td>6</td><td>Generar el token de usuario del sistema</td><td>Configuración del negocio</td><td>10 min</td></tr>
+    <tr><td>7</td><td>Variables de entorno</td><td>Render</td><td>5 min</td></tr>
+    <tr><td>8</td><td>Probar</td><td>Terminal y la app</td><td>5 min</td></tr>
+  </table>
+  <h3>Antes de empezar</h3>
+  <ul>
+    <li>Una <strong>cuenta de Facebook personal</strong>, de alguien que seguirá en el equipo: será dueña de la app y del portfolio comercial.</li>
+    <li>Un <strong>teléfono con WhatsApp</strong> por cada tester (máximo 5 con el número de prueba).</li>
+    <li>Acceso a las <strong>variables de entorno de Render</strong>.</li>
+    <li>Una terminal con el repositorio clonado y <span class="mono">npm install</span> hecho en <span class="mono">backend/</span> (para la prueba de envío).</li>
+  </ul>
+  <h3>Hoja de datos para ir anotando</h3>
+  <table>
+    <tr><th>Dato</th><th>Dónde se obtiene</th><th>Para qué sirve</th></tr>
+    <tr><td>ID de la app</td><td>Panel de developers</td><td>Asignar el token</td></tr>
+    <tr><td>WhatsApp Business Account ID (<strong>WABA</strong>)</td><td>Configuración de la API</td><td>Consultar plantillas</td></tr>
+    <tr><td><strong>Phone Number ID</strong> (no es el teléfono)</td><td>Configuración de la API</td><td><span class="mono">META_WHATSAPP_PHONE_NUMBER_ID</span></td></tr>
+    <tr><td><strong>Token</strong></td><td>Sección 2.5</td><td><span class="mono">META_WHATSAPP_TOKEN</span> — <strong>secreto</strong>, nunca en el repositorio ni en capturas</td></tr>
+  </table>
+  <div class="note">Meta cambia los nombres de los menús con frecuencia y los traduce según el idioma de la cuenta. Aquí van en español con el nombre en inglés entre paréntesis; si no encuentras uno, búscalo por su nombre en el buscador del panel.</div>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.3 Cuenta, app, número de prueba y destinatarios</h1>
+  <h2>Paso 1 — Cuenta de desarrollador</h2>
+  <ol class="steps">
+    <li>Entra a <strong>developers.facebook.com</strong> con la cuenta de Facebook del equipo y pulsa <em>Comenzar</em> (<em>Get started</em>).</li>
+    <li>Acepta las condiciones y verifica tu teléfono o correo. Al terminar verás el panel con tu lista de apps, vacía.</li>
+  </ol>
+  <h2>Paso 2 — Crear la app</h2>
+  <ol class="steps">
+    <li><em>Mis apps → Crear app</em> (<em>My Apps → Create app</em>). Nombre, por ejemplo, <span class="mono">MedCita</span>, y un correo de contacto.</li>
+    <li>En los <strong>casos de uso</strong> elige el de WhatsApp: «Conectarse con clientes a través de WhatsApp» (<em>Connect with customers through WhatsApp</em>).</li>
+    <li>En <strong>¿Qué portfolio comercial quieres conectar?</strong> elige uno o crea uno nuevo. <strong>La app debe quedar conectada a un portfolio</strong>: sin eso no aparecen después los permisos del token.</li>
+    <li>Revisa el resumen y pulsa <em>Crear app</em>. En el panel de la app, <em>Casos de uso → Personalizar</em> en el de WhatsApp; si pide aceptar permisos (<span class="mono">whatsapp_business_messaging</span>, <span class="mono">whatsapp_business_management</span>), acéptalos.</li>
+  </ol>
+  <h2>Paso 3 — Número de prueba y datos de la API</h2>
+  <ol class="steps">
+    <li>Dentro del caso de uso de WhatsApp, abre <em>Configuración de la API</em> (<em>API Setup</em>). Meta ya creó una cuenta de prueba con un <strong>número de prueba gratuito</strong>.</li>
+    <li>En <em>Paso 1. Pruébalo</em> anota el <strong>Phone Number ID</strong> y el <strong>WhatsApp Business Account ID (WABA)</strong>. Son números largos; el Phone Number ID no es el teléfono.</li>
+    <li>Si Facebook te pide elegir cuentas, selecciona <em>Test WhatsApp Business Account</em> y su número, y confirma.</li>
+  </ol>
+  <h2>Paso 4 — Agregar los destinatarios de prueba (máximo 5)</h2>
+  <p>Con el número de prueba <strong>solo reciben mensajes los números de esta lista</strong>; para cualquier otro Meta responde con el error 131030.</p>
+  <ol class="steps">
+    <li>En <em>Configuración de la API</em>, en el campo <em>Para</em> (<em>To</em>), abre el desplegable y pulsa <em>Administrar lista de números de teléfono</em>.</li>
+    <li><em>Agregar número</em>, con código de país (<span class="mono">+593 98…</span>).</li>
+    <li>Meta manda un <strong>código por WhatsApp</strong> a ese número; escríbelo en el diálogo. Repite por cada tester: deben quedar como <strong>verificados</strong>.</li>
+    <li>Para comprobarlo, en el mismo <em>Paso 1. Pruébalo</em> pulsa <em>Enviar mensaje</em>: llega la plantilla <span class="mono">hello_world</span> al tester.</li>
+  </ol>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.4 Las dos plantillas de mensaje</h1>
+  <p>Meta solo permite que un negocio inicie una conversación con una <strong>plantilla aprobada</strong>; el texto libre únicamente se entrega dentro de las 24 h posteriores a que el paciente escribió. Como la confirmación y el recordatorio los inicia MedCita, se envían como plantillas. <strong>Se crean primero porque la revisión es lo más lento.</strong></p>
+  <h3>Dónde se crean</h3>
+  <p>Desde el panel de la app: caso de uso de WhatsApp → <em>Plantillas de mensajes</em> (<em>Message templates</em>) → <em>Crear plantilla</em>; o desde <strong>WhatsApp Manager</strong> en business.facebook.com. Si pide elegir la cuenta, la de prueba.</p>
+  <h3>Datos comunes a las dos</h3>
+  <table>
+    <tr><td><strong>Categoría</strong></td><td><strong>Utilidad</strong> (<em>Utility</em>)</td></tr>
+    <tr><td><strong>Idioma</strong></td><td><strong>Español</strong> (código <span class="mono">es</span>). No «Español (México)» ni «Inglés»</td></tr>
+    <tr><td><strong>Encabezado, pie y botones</strong></td><td>Ninguno</td></tr>
+    <tr><td><strong>Tipo de variable</strong></td><td>Número (<span class="mono">{{1}}</span>, <span class="mono">{{2}}</span>…), no nombre</td></tr>
+  </table>
+  <h3>Plantilla 1 — nombre <span class="mono">cita_confirmada</span></h3>
+  <pre>MedCita: Hola {{1}}, tu cita con {{2}} ha sido agendada para el {{3}} a las {{4}}. ¡Te esperamos!</pre>
+  <p>Ejemplos que Meta pide: <span class="mono">{{1}}</span> María Andrade · <span class="mono">{{2}}</span> Dr. Santiago Pérez · <span class="mono">{{3}}</span> 2026-10-21 · <span class="mono">{{4}}</span> 10:00</p>
+  <h3>Plantilla 2 — nombre <span class="mono">recordatorio_cita</span></h3>
+  <pre>Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!</pre>
+  <p>Ejemplos: <span class="mono">{{1}}</span> María Andrade · <span class="mono">{{2}}</span> mañana 2026-10-21 · <span class="mono">{{3}}</span> 10:00 · <span class="mono">{{4}}</span> Dr. Santiago Pérez</p>
+  <p>Pega el texto <strong>exactamente</strong> y completa los ejemplos. Pulsa <em>Enviar</em> (<em>Submit</em>): el estado pasa a <em>En revisión</em>.</p>
+  <h3>Lo que nos costó tiempo</h3>
+  <ul>
+    <li><strong>El idioma por defecto puede ser inglés.</strong> Una plantilla en <span class="mono">en</span> no sirve: el código pide <span class="mono">es</span> y el envío falla (error 132001). El idioma no se puede cambiar; se crea otra en español (el mismo nombre admite varios idiomas).</li>
+    <li><strong>Demasiadas variables para el largo del texto</strong> o una variable al principio o al final: Meta rechaza la plantilla. Por eso el recordatorio junta día y fecha en <span class="mono">{{2}}</span> y cierra con una frase. No simplifiques los textos sin revisar el código (<span class="mono">backend/src/services/whatsappTemplates.js</span>): si cambias el texto, cambia también la plantilla y se vuelve a revisar.</li>
+    <li><strong>Si Meta la pasa a Marketing</strong>, el texto suena promocional: edítalo para que sea solo informativo.</li>
+    <li><strong>No pulses «Editar plantilla» mientras está en revisión</strong>: cada edición reinicia la revisión.</li>
+    <li>La revisión tarda de minutos a 24 h. «<strong>Activa: calidad pendiente</strong>» es el estado de una plantilla aprobada que aún no tiene envíos; no requiere acción.</li>
+  </ul>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.5 El token que va en el servidor</h1>
+  <p>El <em>token temporal</em> del panel dura cerca de 1 hora y sirve solo para probar de inmediato; <strong>no se deja en Render</strong>. El que va en producción es el de un <strong>usuario del sistema</strong>, que se crea en business.facebook.com → <em>Configuración del negocio</em> (<em>Business settings</em>) con el mismo portfolio de la app.</p>
+  <ol class="steps">
+    <li><strong>La app debe pertenecer al portfolio.</strong> <em>Cuentas → Apps</em>: debe aparecer. Si no, <em>Agregar → Conectar un ID de app</em>.</li>
+    <li><strong>Crear el usuario del sistema.</strong> <em>Usuarios → Usuarios del sistema → Agregar</em>; nombre <span class="mono">medcita-backend</span>, rol <em>Administrador</em>.</li>
+    <li><strong>Asignarle activos.</strong> Selecciona el usuario → <em>Asignar activos</em>. En <em>Apps</em>, marca la app con <em>Acceso total → Todo</em>; en <em>Cuentas de WhatsApp</em>, marca la cuenta con <em>Acceso total → Todo</em>. Debe decir «2 activos seleccionados». La lista a veces aparece vacía justo después: recarga con F5.</li>
+    <li><strong>Generar el token.</strong> <em>Generar token</em> → elige la app → si aparece <em>Vencimiento</em>, elige <em>Nunca</em> → marca <span class="mono">whatsapp_business_messaging</span> y <span class="mono">whatsapp_business_management</span> → <em>Generar</em>. <strong>Cópialo en ese momento: Meta lo muestra una sola vez.</strong></li>
+  </ol>
+  <div class="warn">
+    <strong>El token vence.</strong> Mientras el negocio no esté verificado, Meta no ofrece «Nunca» y el token dura <strong>60 días</strong>. El actual vence el <strong>19-dic-2026</strong>: anótalo en el calendario del equipo. Al vencer, los envíos fallan con el error 190 y no hay respaldo automático a Twilio. Con el negocio verificado se genera uno sin vencimiento.
+  </div>
+  <h3>Si sale «No hay permisos disponibles»</h3>
+  <p>El asistente menciona método de pago, verificación y modo Live: son requisitos de producción con número real, no de las pruebas. Lo que lo resolvió fue comprobar que (1) la app pertenece al portfolio y (2) al usuario del sistema se le asignaron <strong>la app y la cuenta de WhatsApp</strong>, ambas con acceso total. Si sigue igual, revisa en el panel de la app <em>Casos de uso → Personalizar → Permisos y funciones</em>.</p>
+
+  <h1 style="margin-top:20px">2.6 Variables de entorno en Render</h1>
+  <p>Servicio del backend → <em>Environment</em> → agrega las variables → guarda (Render redespliega solo).</p>
+  <table>
+    <tr><th>Variable</th><th>Valor</th></tr>
+    <tr><td class="mono">META_WHATSAPP_TOKEN</td><td>El token de la sección 2.5, sin comillas ni espacios</td></tr>
+    <tr><td class="mono">META_WHATSAPP_PHONE_NUMBER_ID</td><td>El Phone Number ID del paso 3</td></tr>
+    <tr><td class="mono">META_WHATSAPP_TEMPLATE_CONFIRMATION<br>META_WHATSAPP_TEMPLATE_REMINDER<br>META_WHATSAPP_TEMPLATE_LANGUAGE</td><td>Opcionales: solo si usaste otros nombres de plantilla u otro idioma. Por defecto: <span class="mono">cita_confirmada</span>, <span class="mono">recordatorio_cita</span> y <span class="mono">es</span></td></tr>
+  </table>
+  <p>Para probar en local, las mismas variables van en <span class="mono">backend/.env</span> (ese archivo nunca se sube al repositorio).</p>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.7 Comprobar que funciona</h1>
+  <ol class="steps">
+    <li><strong>Con una plantilla de ejemplo de Meta</strong> (ya viene aprobada): confirma el token, la lista de destinatarios y el envío.
+<pre>curl -s -X POST "https://graph.facebook.com/v21.0/$META_WHATSAPP_PHONE_NUMBER_ID/messages" \
+  -H "Authorization: Bearer $META_WHATSAPP_TOKEN" -H "Content-Type: application/json" \
+  -d '{"messaging_product":"whatsapp","to":"593XXXXXXXXX","type":"template",
+       "template":{"name":"hello_world","language":{"code":"en_US"}}}'</pre>
+      La respuesta trae <span class="mono">"message_status": "accepted"</span> y llega «Hello World». El número va sin <span class="mono">+</span>.</li>
+    <li><strong>Con las plantillas de MedCita aprobadas</strong>, desde <span class="mono">backend/</span>:
+<pre>npm run whatsapp:test -- +593XXXXXXXXX             # confirmación
+npm run whatsapp:test -- +593XXXXXXXXX reminder    # recordatorio</pre>
+      Debe imprimir <span class="mono">Provider: Meta Cloud API</span> y <span class="mono">OK: Meta Cloud API accepted the message</span>, y el mensaje llega al teléfono.</li>
+    <li><strong>De punta a punta, en el sitio desplegado:</strong> agenda una cita con tu número como paciente y espera la confirmación. El recordatorio sale cuando faltan menos de 24 h.</li>
+    <li><strong>Estado de las plantillas por línea de comandos</strong> (opcional): consulta <span class="mono">/v21.0/&lt;WABA_ID&gt;/message_templates</span> y busca las dos con <span class="mono">"language":"es"</span> y <span class="mono">"status":"APPROVED"</span>.</li>
+  </ol>
+  <div class="note">«accepted» solo significa que Meta recibió la petición. Que el mensaje llegó se comprueba en el teléfono. En los registros de Render debe aparecer <span class="mono">[META WHATSAPP] Template cita_confirmada sent successfully</span> con el teléfono parcialmente oculto.</div>
+
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.8 Problemas frecuentes</h1>
+  <table>
+    <tr><th>Síntoma</th><th>Causa probable</th><th>Qué hacer</th></tr>
+    <tr><td>Error <strong>190</strong></td><td>Token temporal (1 h) o de 60 días vencido</td><td>Generar uno nuevo (2.5) y actualizar <span class="mono">META_WHATSAPP_TOKEN</span></td></tr>
+    <tr><td>Error <strong>131030</strong></td><td>El número no está en la lista de destinatarios</td><td>Agregarlo y verificarlo (2.3, paso 4)</td></tr>
+    <tr><td>Error <strong>132001</strong></td><td>Plantilla sin aprobar, con otro nombre o en otro idioma</td><td>Revisar estado, nombre e idioma <span class="mono">es</span></td></tr>
+    <tr><td>Error <strong>132000 / 132012</strong></td><td>El texto o las variables no coinciden con el código</td><td>Registrar la plantilla con el texto exacto de 2.4</td></tr>
+    <tr><td>Error <strong>132015 / 132016</strong></td><td>Plantilla pausada o deshabilitada por baja calidad</td><td>Editarla o crear otra</td></tr>
+    <tr><td>Error <strong>131047</strong></td><td>Texto libre fuera de la ventana de 24 h</td><td>No debería pasar con plantillas: avisar al equipo</td></tr>
+    <tr><td>La plantilla sigue «En revisión»</td><td>Revisión de Meta (minutos a 24 h)</td><td>Esperar; pasadas 24 h, revisar «Acciones requeridas» en el panel</td></tr>
+    <tr><td>«Aceptado», pero no llega</td><td>El número no está en la lista o el teléfono no recibió la notificación</td><td>Revisar la lista y el teléfono</td></tr>
+    <tr><td>Fallan los envíos en producción</td><td>Meta respondió con error y el sistema <strong>no</strong> cae a Twilio</td><td>Leer el registro del backend: guarda el código de Meta y una pista, sin el teléfono completo</td></tr>
+  </table>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.9 Pasar a un número real y mantenimiento</h1>
+  <p>El número de prueba sirve para validar, no para pacientes: solo admite 5 destinatarios. Para producción con pacientes reales:</p>
+  <table>
+    <tr><th>Requisito</th><th>Detalle</th></tr>
+    <tr><td><strong>Verificación del negocio</strong></td><td>Business settings → Centro de seguridad. Sube los límites de envío y habilita el token sin vencimiento</td></tr>
+    <tr><td><strong>Número propio</strong></td><td>Que no esté activo en la app normal de WhatsApp, con su nombre visible aprobado</td></tr>
+    <tr><td><strong>Método de pago</strong></td><td>En la cuenta de WhatsApp Business. Sin él Meta no deja enviar plantillas a destinatarios nuevos</td></tr>
+    <tr><td><strong>Plantillas en la cuenta del número real</strong></td><td>Pertenecen a la cuenta de WhatsApp Business: si el número queda en otra cuenta, se registran de nuevo</td></tr>
+    <tr><td><strong>Render</strong></td><td>Actualizar <span class="mono">META_WHATSAPP_PHONE_NUMBER_ID</span> (y el token si es de otra app)</td></tr>
+    <tr><td><strong>Consentimiento del paciente</strong></td><td>La política de WhatsApp pide que haya aceptado recibir mensajes del negocio. Hoy el formulario de la cita no lo pregunta ni lo guarda</td></tr>
+    <tr><td><strong>Tarifa vigente</strong></td><td>Los mensajes de utilidad enviados fuera de la ventana de 24 h se cobran por mensaje; dentro de ella son gratis. Revisa la tarifa vigente de Meta para tu país</td></tr>
+  </table>
+  <h2>Mantenimiento</h2>
+  <ul>
+    <li><strong>Vencimiento del token:</strong> 19-dic-2026 (si el negocio no está verificado). Para consultarlo: <span class="mono">GET /debug_token?input_token=…</span> con el mismo token; <span class="mono">expires_at</span> va en segundos Unix y <span class="mono">0</span> significa que no vence.</li>
+    <li><strong>Rotar el token</strong> si alguna vez se muestra en un chat, un registro o una captura: se genera uno nuevo (2.5) y se actualiza en Render.</li>
+    <li><strong>Retirar las variables <span class="mono">TWILIO_*</span> de Render</strong> si siguen cargadas y se usa Meta.</li>
+    <li><strong>Cambios en los textos</strong> de los mensajes: se cambian a la vez en el código y en la plantilla de Meta, que se vuelve a revisar.</li>
+  </ul>
+  <div class="ok">Documentación completa del proyecto: <span class="mono">docs/WHATSAPP_META_SETUP.md</span> (esta parte con más detalle) y <span class="mono">docs/DEPLOY.md</span>, sección 7, en el repositorio.</div>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+</body>
+</html>
