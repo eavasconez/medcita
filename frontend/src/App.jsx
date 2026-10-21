@@ -18,6 +18,7 @@ const Availability = lazy(() => import('./pages/Availability'));
 const AdminDoctors = lazy(() => import('./pages/AdminDoctors'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Reports = lazy(() => import('./pages/Reports'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
 
 
 // React.lazy() rejects (e.g. a chunk fails to load after a new deploy ships
@@ -172,6 +173,7 @@ function App() {
               <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
               <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
               <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
+              <Route path="/activity" element={token && user?.role === 'admin' ? <AuditLog /> : <Navigate to="/dashboard" />} />
               <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
