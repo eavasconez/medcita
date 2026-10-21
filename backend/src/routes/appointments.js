@@ -4,14 +4,22 @@ const prisma = require('../config/prisma');
 const { sendAppointmentConfirmation } = require('../services/notificationService');
 const { getDay, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
-const { DATE_REGEX, isValidDate, appointmentInstant } = require('../utils/clinicTime');
+const { DATE_REGEX, isValidDate, appointmentInstant, clinicDateString } = require('../utils/clinicTime');
 const { upsertPatient } = require('../services/patientUpsert');
 const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require('../services/auditLog');
+const notificationLog = require('../services/notificationLog');
+const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
-const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'completed', 'cancelled'];
+const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'arrived', 'in_progress', 'completed', 'no_show', 'cancelled'];
+// The patient came (or is being seen) / the visit is over, one way or the other
+const ATTENDED_STATUSES = ['arrived', 'in_progress', 'completed'];
+const CLOSED_STATUSES = ['completed', 'no_show'];
+// Still waiting for the visit to happen; once its time has passed it should have been closed
+const OPEN_STATUSES = ['pending_approval', 'scheduled', 'confirmed', 'arrived', 'in_progress'];
+const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Only the patient fields actually consumed by callers (frontend Dashboard,
 // notificationService) - avoids pulling the full row (e.g. createdAt) on
@@ -86,12 +94,13 @@ async function assertSlotBookable(tx, { doctorId, date, time, excludeId, occupie
   }
 }
 
-// Which doctors' appointments the caller may see: doctors only their own,
-// admin/secretary every doctor or the one named in ?doctorId.
+// Which appointments the caller may see, always inside their own clinic: doctors
+// only their own, admin/secretary every doctor of the clinic or the one named in
+// ?doctorId (a doctor of another clinic matches nothing).
 const doctorScope = (req) => {
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
   const { doctorId } = req.query;
-  return isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId };
+  return inClinic(req, isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId });
 };
 
 // List appointments for the doctor, one page at a time. Dates are "YYYY-MM-DD"
@@ -158,13 +167,108 @@ router.get('/stats', async (req, res) => {
     const active = { ...scope, status: NOT_CANCELLED };
     const [total, positive, cancelled, patients] = await Promise.all([
       prisma.appointment.count({ where: active }),
-      prisma.appointment.count({ where: { ...scope, status: { in: ['confirmed', 'completed'] } } }),
+      prisma.appointment.count({ where: { ...scope, status: { in: ['confirmed', ...ATTENDED_STATUSES] } } }),
       prisma.appointment.count({ where: { ...scope, status: 'cancelled' } }),
       prisma.appointment.groupBy({ by: ['patientId'], where: active })
     ]);
-    res.json({ total, positive, cancelled, patients: patients.length });
+    const noShow = await prisma.appointment.count({ where: { ...scope, status: 'no_show' } });
+    res.json({ total, positive, cancelled, noShow, patients: patients.length });
   } catch (err) {
     console.error('Appointment stats error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Past appointments nobody closed yet (still pending, scheduled, confirmed, arrived or
+// in progress although their time is gone): the doctor marks each as completed or
+// no-show. Same visibility as the list; the oldest first.
+router.get('/unclosed', async (req, res) => {
+  try {
+    const today = clinicDateString(new Date());
+    const candidates = await prisma.appointment.findMany({
+      where: { ...doctorScope(req), status: { in: OPEN_STATUSES }, date: { lte: today } },
+      include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
+      orderBy: [{ date: 'asc' }, { time: 'asc' }, { id: 'asc' }]
+    });
+    const now = new Date();
+    const unclosed = candidates.filter((apt) => appointmentInstant(apt.date, apt.time) < now);
+    res.json({ total: unclosed.length, appointments: unclosed.slice(0, 50).map((apt) => ({ ...apt, Patient: apt.patient })) });
+  } catch (err) {
+    console.error('Unclosed appointments error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// No-show control for one month (?month=YYYY-MM, this month by default): of the visits
+// already closed, how many the patient missed; how many of the month's appointments
+// are confirmed against still waiting for the patient's answer; and who misses the most (all time). Same visibility as the list.
+router.get('/attendance', async (req, res) => {
+  const month = req.query.month ?? clinicDateString(new Date()).slice(0, 7);
+  if (typeof month !== 'string' || !MONTH_REGEX.test(month)) {
+    return res.status(400).json({ error: 'month must be a valid month (YYYY-MM)' });
+  }
+
+  try {
+    const scope = doctorScope(req);
+    const inMonth = { ...scope, date: { gte: `${month}-01`, lte: `${month}-31` } };
+    const [attended, noShow, confirmed, notConfirmed, byPatient] = await Promise.all([
+      prisma.appointment.count({ where: { ...inMonth, status: { in: ATTENDED_STATUSES } } }),
+      prisma.appointment.count({ where: { ...inMonth, status: 'no_show' } }),
+      prisma.appointment.count({ where: { ...inMonth, status: 'confirmed' } }),
+      prisma.appointment.count({ where: { ...inMonth, status: { in: ['pending_approval', 'scheduled'] } } }),
+      prisma.appointment.groupBy({
+        by: ['patientId'],
+        where: { ...scope, status: 'no_show' },
+        _count: { _all: true },
+        orderBy: { _count: { patientId: 'desc' } },
+        take: 10
+      })
+    ]);
+    const patients = await prisma.patient.findMany({
+      where: inClinic(req, { id: { in: byPatient.map((row) => row.patientId) } }),
+      select: { id: true, name: true }
+    });
+    const names = new Map(patients.map((p) => [p.id, p.name]));
+    const closed = attended + noShow;
+
+    res.json({
+      month,
+      attended,
+      noShow,
+      noShowRate: closed > 0 ? Math.round((noShow / closed) * 1000) / 10 : null,
+      confirmed,
+      notConfirmed,
+      noShowByPatient: byPatient.map((row) => ({
+        patientId: row.patientId,
+        name: names.get(row.patientId) || '',
+        noShows: row._count._all
+      }))
+    });
+  } catch (err) {
+    console.error('Attendance error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// What happened to the messages sent about an appointment (confirmation, reminder,
+// the doctor's notice): through which channel and provider, and why a failed one
+// failed. Same visibility as the appointment: a doctor only sees their own.
+router.get('/:id/notifications', async (req, res) => {
+  const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: inClinic(req, { id: req.params.id, ...(isSpecialRole ? {} : { doctorId: req.doctorId }) }),
+      select: { id: true, status: true, date: true, time: true, reminderSentAt: true }
+    });
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
+
+    res.json({
+      notifications: await notificationLog.forAppointment(req.clinicId, appointment.id),
+      // Whether the 24h reminder is still owed (see tasks/reminderTask.js)
+      reminderPending: !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
+    });
+  } catch (err) {
+    console.error('Appointment notifications error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
@@ -198,6 +302,11 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // The agenda being booked must be a doctor of the caller's own clinic
+    if (!(await findDoctorInClinic(prisma, req, targetDoctorId))) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+
     // Availability + conflict check + patient upsert + creation all run inside a
     // single Serializable transaction, so two concurrent requests for the same
     // doctor/date/time can never both pass the conflict check and double-book
@@ -208,7 +317,7 @@ router.post('/', async (req, res) => {
 
       // 2. Find or update the patient (a booking made by staff also leaves a
       // record of the patient it created or changed)
-      const { patient, previous } = await upsertPatient(tx, {
+      const { patient, previous } = await upsertPatient(tx, req.clinicId, {
         name: normalizedPatientName,
         phone: normalizedPatientPhone,
         email: normalizedPatientEmail,
@@ -219,6 +328,7 @@ router.post('/', async (req, res) => {
       // 3. Create Appointment
       const created = await tx.appointment.create({
         data: {
+          clinicId: req.clinicId,
           date,
           time,
           notes,
@@ -254,8 +364,10 @@ router.post('/', async (req, res) => {
     if (err.code === 'P2002') {
       // Appointment itself has no unique constraints, so this can only come
       // from the Patient upsert above - map its known unique fields to a
-      // clear message, and fall back to a generic one for anything else.
-      const target = Array.isArray(err.meta?.target) ? err.meta.target[0] : null;
+      // clear message, and fall back to a generic one for anything else. The
+      // constraints are per clinic ([clinicId, cedula]), so look for the field
+      // among the columns instead of taking the first one.
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.find((field) => field !== 'clinicId') : null;
       const fieldMessages = {
         cedula: 'A patient with this cedula already exists',
         phone: 'A patient with this phone already exists'
@@ -292,10 +404,10 @@ router.put('/:id', async (req, res) => {
     // two moves into the same slot cannot both get through.
     const appointment = await runSerializableTransaction(async (tx) => {
       const current = await tx.appointment.findFirst({
-        where: {
+        where: inClinic(req, {
           id: req.params.id,
           ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-        }
+        })
       });
       if (!current) return null;
 
@@ -305,11 +417,16 @@ router.put('/:id', async (req, res) => {
       const moved = nextDate !== current.date || nextTime !== current.time;
       const reactivated = current.status === 'cancelled' && nextStatus !== 'cancelled';
 
+      // A visit can only be missed once its time has come
+      if (nextStatus === 'no_show' && current.status !== 'no_show' && appointmentInstant(nextDate, nextTime) > new Date()) {
+        throw new ScheduleConflictError('An appointment cannot be marked as no-show before its time');
+      }
+
       // A cancelled appointment holds no slot, so there is nothing to check.
       if (nextStatus !== 'cancelled' && (moved || reactivated)) {
         // Rescheduling to a time that has passed makes no sense, except for
         // an appointment already marked as done (correcting its record).
-        if (moved && nextStatus !== 'completed' && appointmentInstant(nextDate, nextTime) < new Date()) {
+        if (moved && !CLOSED_STATUSES.includes(nextStatus) && appointmentInstant(nextDate, nextTime) < new Date()) {
           throw new ScheduleConflictError('The appointment cannot be moved to a time that has already passed');
         }
         await assertSlotBookable(tx, {
@@ -375,10 +492,10 @@ router.delete('/:id', async (req, res) => {
     // cancellations cannot both leave a record of the same cancellation.
     const appointment = await runSerializableTransaction(async (tx) => {
       const current = await tx.appointment.findFirst({
-        where: {
+        where: inClinic(req, {
           id: req.params.id,
           ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-        }
+        })
       });
       if (!current) return null;
 

@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../src/server');
 const { prisma, resetDb } = require('./helpers/db');
-const { createUser, createPatient, createAppointment, bearer } = require('./helpers/factories');
+const { createUser, createPatient, createAppointment, defaultClinic, bearer } = require('./helpers/factories');
 const { stubNotifications } = require('./helpers/notifications');
 const { MONDAY, TUESDAY } = require('./helpers/time');
 const { diffFields, describeCreated, describeRemoved } = require('../src/services/auditLog');
@@ -309,10 +309,10 @@ describe('accounts managed by an admin', () => {
   const adminUpdate = (token, id, body) => request(app).put(`/api/admin/doctors/${id}`).set(bearer(token)).send(body);
   const adminDelete = (token, id) => request(app).delete(`/api/admin/doctors/${id}`).set(bearer(token));
 
-  it('records a new account with its name and role, but not its email or password', async () => {
+  it('records an invitation with its role, but not the name or the email of the person', async () => {
     const admin = await createUser({ role: 'admin', name: 'Admin Principal' });
 
-    const res = await adminCreate(admin.token, { name: 'Marta Secretaria', email: 'marta@example.test', password: 'una-clave-larga', role: 'secretary' });
+    const res = await adminCreate(admin.token, { name: 'Marta Secretaria', email: 'marta@example.test', role: 'secretary' });
 
     expect(res.status).toBe(201);
     expect(await entries()).toEqual([
@@ -321,12 +321,26 @@ describe('accounts managed by an admin', () => {
         actorName: 'Admin Principal',
         actorRole: 'admin',
         action: 'create',
-        entity: 'user',
+        entity: 'invitation',
         entityId: res.body.id,
-        changes: { name: { to: 'Marta Secretaria' }, role: { to: 'secretary' } }
+        changes: { role: { to: 'secretary' } }
       })
     ]);
-    expect(await dump()).not.toMatch(/marta@example|una-clave-larga|\$2[aby]\$/);
+    expect(await dump()).not.toMatch(/marta@example|Marta Secretaria|\$2[aby]\$/);
+  });
+
+  it('records inviting again with another role as an update, and cancelling an invitation as a deletion', async () => {
+    const admin = await createUser({ role: 'admin' });
+
+    const first = await adminCreate(admin.token, { name: 'Marta', email: 'marta@example.test', role: 'secretary' });
+    await adminCreate(admin.token, { name: 'Marta', email: 'marta@example.test', role: 'doctor' });
+    await request(app).delete(`/api/admin/invitations/${first.body.id}`).set(bearer(admin.token));
+
+    expect((await entries()).map((e) => [e.action, e.entity, e.changes])).toEqual([
+      ['create', 'invitation', { role: { to: 'secretary' } }],
+      ['update', 'invitation', { role: { from: 'secretary', to: 'doctor' } }],
+      ['delete', 'invitation', { role: { from: 'doctor' } }]
+    ]);
   });
 
   it('records a role change with before and after, a rename with before and after, and an email change without the email', async () => {
@@ -345,14 +359,15 @@ describe('accounts managed by an admin', () => {
     expect(await dump()).not.toMatch(/viejo@example|nuevo@example/);
   });
 
-  it('records a password change without anything of the password', async () => {
+  it('refuses to set a password, so nothing of it is recorded either', async () => {
     const admin = await createUser({ role: 'admin' });
     const { user } = await createUser();
 
-    await adminUpdate(admin.token, user.id, { password: 'nueva-clave-secreta' });
+    const res = await adminUpdate(admin.token, user.id, { password: 'nueva-clave-secreta' });
 
-    expect((await entries())[0].changes).toEqual({ password: { changed: true } });
-    expect(await dump()).not.toMatch(/nueva-clave-secreta|\$2[aby]\$/);
+    expect(res.status).toBe(400);
+    expect(await entries()).toEqual([]);
+    expect(await dump()).not.toMatch(/nueva-clave-secreta/);
   });
 
   it('leaves no record when an edit changes nothing or finds no account', async () => {
@@ -443,8 +458,10 @@ describe('GET /api/admin/audit-log', () => {
   const read = (token, query = '') => request(app).get(`/api/admin/audit-log${query}`).set(bearer(token));
 
   // entries written straight to the table, so the tests control who/when/what
-  const seed = (rows) =>
-    prisma.auditLog.createMany({
+  // (in the shared test clinic, which is where the admins of these tests work)
+  const seed = async (rows) => {
+    const clinic = await defaultClinic();
+    return prisma.auditLog.createMany({
       data: rows.map((row) => ({
         actorId: 'actor-1',
         actorName: 'Ana Secretaria',
@@ -452,9 +469,11 @@ describe('GET /api/admin/audit-log', () => {
         action: 'update',
         entity: 'appointment',
         entityId: 'entity-1',
+        clinicId: clinic.id,
         ...row
       }))
     });
+  };
 
   describe('who can read it', () => {
     it('is for admins only', async () => {
@@ -502,7 +521,9 @@ describe('GET /api/admin/audit-log', () => {
           entity: 'appointment',
           entityId: appointment.id,
           doctor: { id: doctor.user.id, name: 'Dra. Camila Torres' },
-          changes: { status: { from: 'pending_approval', to: 'cancelled' } }
+          changes: { status: { from: 'pending_approval', to: 'cancelled' } },
+          ip: expect.any(String),
+          userAgent: null // the test client sends none
         },
         expect.objectContaining({ action: 'update', changes: { time: { from: '10:00', to: '11:30' } } })
       ]);

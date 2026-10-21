@@ -10,6 +10,8 @@ import {
   Stethoscope,
   Shield,
   BarChart2,
+  Building2,
+  History,
   X
 } from 'lucide-react';
 
@@ -80,6 +82,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     menuItems = [
       { icon: <BarChart2 size={20} />, label: 'Analytics', path: '/reports' },
       { icon: <Shield size={20} />, label: 'Manage Doctors', path: '/admin' },
+      { icon: <History size={20} />, label: 'Activity Log', path: '/activity' },
       { icon: <Users size={20} />, label: 'Patients', path: '/patients' },
       { icon: <Clock size={20} />, label: 'Availability', path: '/availability' },
       { icon: <Settings size={20} />, label: 'Settings', path: '/settings' },
@@ -126,7 +129,16 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           </button>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
+        {user?.clinic?.name && (
+          <div className="mx-4 mt-6 px-4 py-4 rounded-2xl bg-white/5 border border-white/10">
+            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-primary">
+              <Building2 size={12} /> Clinic
+            </p>
+            <p className="mt-1.5 text-base font-bold leading-snug break-words">{user.clinic.name}</p>
+          </div>
+        )}
+
+        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {menuItems.map((item) => (
             <NavLink
               key={item.path}

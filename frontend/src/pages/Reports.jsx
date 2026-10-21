@@ -17,6 +17,7 @@ import {
   Pie
 } from 'recharts';
 import { TrendingUp, Users, Calendar, Award, FileBarChart } from 'lucide-react';
+import AttendanceReport from '../components/AttendanceReport';
 
 const Reports = () => {
   const [data, setData] = useState([]);
@@ -97,6 +98,8 @@ const Reports = () => {
                 </div>
               </div>
             </div>
+
+            <AttendanceReport />
 
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

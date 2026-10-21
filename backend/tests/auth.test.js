@@ -7,60 +7,6 @@ const { createUser, bearer } = require('./helpers/factories');
 beforeEach(resetDb);
 afterAll(() => prisma.$disconnect());
 
-describe('POST /api/auth/register', () => {
-  const valid = { name: 'Dra. Ana Torres', email: 'ana@example.test', password: 'secret123' };
-
-  it('creates a doctor and returns a token without exposing the password', async () => {
-    const res = await request(app).post('/api/auth/register').send(valid);
-
-    expect(res.status).toBe(201);
-    expect(res.body.user).toEqual({
-      id: expect.any(String),
-      name: 'Dra. Ana Torres',
-      email: 'ana@example.test',
-      role: 'doctor'
-    });
-    expect(res.body.user).not.toHaveProperty('password');
-
-    const decoded = jwt.verify(res.body.token, process.env.JWT_SECRET);
-    expect(decoded).toMatchObject({ id: res.body.user.id, role: 'doctor' });
-
-    const stored = await prisma.doctor.findUnique({ where: { email: 'ana@example.test' } });
-    expect(stored.password).not.toBe('secret123'); // stored hashed
-  });
-
-  it('trims the name and normalizes the email to lowercase', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ ...valid, name: '  Ana  ', email: '  ANA@Example.TEST ' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.user).toMatchObject({ name: 'Ana', email: 'ana@example.test' });
-  });
-
-  it('rejects an email that is already registered, ignoring case', async () => {
-    await request(app).post('/api/auth/register').send(valid);
-    const res = await request(app).post('/api/auth/register').send({ ...valid, email: 'ANA@example.test' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Email already registered');
-  });
-
-  it.each([
-    ['missing name', { ...valid, name: '   ' }, 'Name is required'],
-    ['invalid email', { ...valid, email: 'not-an-email' }, 'A valid email is required'],
-    ['missing email', { ...valid, email: undefined }, 'A valid email is required'],
-    ['short password', { ...valid, password: '12345' }, 'Password must be at least 6 characters'],
-    ['non-string password', { ...valid, password: 123456 }, 'Password must be at least 6 characters']
-  ])('returns 400 for %s', async (_label, body, message) => {
-    const res = await request(app).post('/api/auth/register').send(body);
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe(message);
-    expect(await prisma.doctor.count()).toBe(0);
-  });
-});
-
 describe('POST /api/auth/login', () => {
   it('returns a token and the user for valid credentials', async () => {
     const { user } = await createUser({ email: 'login@example.test', password: 'secret123' });
@@ -68,7 +14,14 @@ describe('POST /api/auth/login', () => {
     const res = await request(app).post('/api/auth/login').send({ email: 'login@example.test', password: 'secret123' });
 
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: user.id, name: user.name, email: 'login@example.test', role: 'doctor' });
+    const clinic = await prisma.clinic.findUnique({ where: { id: user.clinicId } });
+    expect(res.body.user).toEqual({
+      id: user.id,
+      name: user.name,
+      email: 'login@example.test',
+      role: 'doctor',
+      clinic: { id: clinic.id, name: clinic.name }
+    });
     expect(jwt.verify(res.body.token, process.env.JWT_SECRET)).toMatchObject({ id: user.id, role: 'doctor' });
   });
 

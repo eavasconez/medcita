@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import Sidebar from './Sidebar';
+import { AuthContext } from '../AuthContext';
 import { Menu, Stethoscope } from 'lucide-react';
 
 const Layout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { user } = useContext(AuthContext);
 
   // The drawer is only meaningful below md; force it closed if the
   // viewport grows past that so it can't get stuck open (and trapping
@@ -32,6 +34,11 @@ const Layout = ({ children }) => {
           </button>
           <Stethoscope size={20} className="text-primary" />
           <span className="text-lg font-black tracking-tighter">MedCita</span>
+          {user?.clinic?.name && (
+            <span className="ml-1 pl-3 border-l border-white/20 text-sm font-semibold text-slate-300 truncate" title={user.clinic.name}>
+              {user.clinic.name}
+            </span>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">

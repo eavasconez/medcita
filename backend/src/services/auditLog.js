@@ -1,13 +1,22 @@
 // A written record of what an admin or a secretary does with appointments,
-// patients and accounts. Doctors acting on their own data are not recorded.
+// patients and accounts, and of how people sign in: every successful and failed
+// sign-in of an existing account, and every password change. Doctors acting on
+// their own data are not recorded. Each entry also keeps where the request came
+// from (IP and User-Agent) and the clinic of whoever acted.
 //
 // Every record is written in the same database transaction as the action it
 // describes (pass the transaction client as `db`): there is never an action
 // without its record, nor a record of something that did not happen.
 
 const STAFF_ROLES = ['admin', 'secretary'];
-const AUDIT_ACTIONS = ['create', 'update', 'cancel', 'delete'];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user'];
+// `read` is for looking at something that must stay traceable (the clinical history,
+// when it exists); nothing writes it yet.
+const AUDIT_ACTIONS = [
+  'create', 'update', 'cancel', 'delete',
+  'login', 'login_failed', 'password_change', 'password_reset',
+  'read'
+];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -16,7 +25,9 @@ const AUDIT_ENTITIES = ['appointment', 'patient', 'user'];
 const FIELDS = {
   appointment: { shown: ['date', 'time', 'status'], hidden: ['notes'] },
   patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
-  user: { shown: ['name', 'role'], hidden: ['email', 'password'] }
+  user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
+  // An invitation to join the clinic; the account itself is created by its owner later
+  invitation: { shown: ['role'], hidden: ['name', 'email'] }
 };
 
 const orNull = (value) => (value === undefined ? null : value);
@@ -52,8 +63,20 @@ function describeRemoved(entity, record) {
   return nothingIfEmpty(changes);
 }
 
+const MAX_USER_AGENT_LENGTH = 255;
+
+// Node reports an IPv4 client on a dual-stack socket as "::ffff:203.0.113.7"; keep the
+// plain address people recognise.
+const plainIp = (ip) => (ip ? ip.replace(/^::ffff:/i, '') : null);
+
+// Where a request came from. `req.ip` is the real client when TRUST_PROXY is right.
+const requestOrigin = (req) => ({
+  ip: plainIp(req?.ip),
+  userAgent: (req?.get?.('user-agent') || '').slice(0, MAX_USER_AGENT_LENGTH) || null
+});
+
 // Writes one entry, or nothing when the request does not come from an admin or
-// a secretary. `req.userName` is set by the auth middleware.
+// a secretary. `req.userName` and `req.clinicId` are set by the auth middleware.
 async function recordAudit(db, req, { action, entity, entityId, doctorId = null, changes = null }) {
   if (!STAFF_ROLES.includes(req.userRole)) return null;
   return db.auditLog.create({
@@ -61,11 +84,50 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
       actorId: req.doctorId,
       actorName: req.userName,
       actorRole: req.userRole,
+      clinicId: req.clinicId,
       action,
       entity,
       entityId,
       doctorId,
-      changes: changes ?? undefined
+      changes: changes ?? undefined,
+      ...requestOrigin(req)
+    }
+  });
+}
+
+// An entry about the account itself, for the moments when the person is not (yet)
+// signed in: a sign-in, a failed one, a password reset. `account` is the Doctor row
+// (id, name, role, clinicId). Any role is recorded, not only staff, and nothing the
+// person typed is kept: not the email, not the password.
+function recordAccountEvent(db, req, account, action) {
+  return db.auditLog.create({
+    data: {
+      actorId: account.id,
+      actorName: account.name,
+      actorRole: account.role,
+      clinicId: account.clinicId,
+      action,
+      entity: 'user',
+      entityId: account.id,
+      ...requestOrigin(req)
+    }
+  });
+}
+
+// Someone looked at a record that must stay traceable (not used yet: it is here for
+// the clinical history). Recorded for every role, since reading is the point.
+function recordRead(db, req, { entity, entityId, doctorId = null }) {
+  return db.auditLog.create({
+    data: {
+      actorId: req.doctorId,
+      actorName: req.userName,
+      actorRole: req.userRole,
+      clinicId: req.clinicId,
+      action: 'read',
+      entity,
+      entityId,
+      doctorId,
+      ...requestOrigin(req)
     }
   });
 }
@@ -90,5 +152,7 @@ module.exports = {
   describeCreated,
   describeRemoved,
   recordAudit,
+  recordAccountEvent,
+  recordRead,
   auditPatientUpsert
 };

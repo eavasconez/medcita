@@ -55,7 +55,13 @@ describe('POST /api/auth/change-password', () => {
 
     const res = await changePassword(token, { currentPassword: password, newPassword: NEW_PASSWORD });
 
-    expect(res.body.user).toEqual({ id: user.id, name: user.name, email: user.email, role: user.role });
+    expect(res.body.user).toEqual({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      clinic: { id: user.clinicId, name: 'Consultorio de pruebas' }
+    });
     expect(JSON.stringify(res.body)).not.toMatch(/password"|\$2[aby]\$/);
     expect((await profile(res.body.token)).status).toBe(200);
   });
@@ -186,20 +192,19 @@ describe('sessions opened before a password change', () => {
     expect((await profile((await login(user.email, NEW_PASSWORD)).body.token)).status).toBe(200);
   });
 
-  describe('when an admin sets a new password for the account', () => {
+  describe('when an admin edits the account', () => {
     const adminUpdate = (adminToken, id, body) =>
       request(app).put(`/api/admin/doctors/${id}`).set(bearer(adminToken)).send(body);
 
-    it('stop working, and the admin session is untouched', async () => {
+    it('keep working: an admin can no longer set a password, so nobody is signed out that way', async () => {
       const admin = await createUser({ role: 'admin' });
       const { user } = await createUser();
-      const stale = tokenIssuedAgo(user);
+      const session = tokenIssuedAgo(user);
 
       const res = await adminUpdate(admin.token, user.id, { password: NEW_PASSWORD });
 
-      expect(res.status).toBe(200);
-      expect((await profile(stale)).status).toBe(401);
-      expect((await profile(admin.token)).status).toBe(200);
+      expect(res.status).toBe(400);
+      expect((await profile(session)).status).toBe(200);
     });
 
     it('keep working when the admin edits something else', async () => {

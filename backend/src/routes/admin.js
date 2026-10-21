@@ -3,10 +3,14 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
-const bcrypt = require('bcryptjs');
 const { addDays, format, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { isValidDate, appointmentInstant } = require('../utils/clinicTime');
+const { inClinic } = require('../utils/clinicScope');
+const { inviteLimiter } = require('../middleware/rateLimiters');
+const invitations = require('../services/invitationService');
+const notificationLog = require('../services/notificationLog');
+const { exposeLinks } = require('../utils/tokens');
 const {
   AUDIT_ACTIONS,
   AUDIT_ENTITIES,
@@ -18,6 +22,10 @@ const {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['admin', 'secretary', 'doctor'];
+const MAX_NAME_LENGTH = 100;
+const MIN_CLINIC_NAME_LENGTH = 2;
+const MAX_CLINIC_NAME_LENGTH = 80;
+const PASSWORD_BY_OWNER = 'Passwords are chosen by each person: invite them (they pick it from the emailed link) or ask them to use "Forgot password".';
 
 // Protect all routes with authentication
 router.use(auth);
@@ -34,7 +42,7 @@ router.use('/medicos', (req, res, next) => {
   next();
 });
 
-// List all doctors (Accessible by Admin and Secretary)
+// List the clinic's doctors (Accessible by Admin and Secretary)
 router.get(DOCTORS, async (req, res) => {
   if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
     return res.status(403).json({ error: 'Access denied. Admin or secretary rights required.' });
@@ -43,7 +51,7 @@ router.get(DOCTORS, async (req, res) => {
   const { role } = req.query;
   try {
     const doctors = await prisma.doctor.findMany({
-      where: role ? { role } : {},
+      where: inClinic(req, role ? { role } : {}),
       select: {
         id: true,
         name: true,
@@ -66,9 +74,13 @@ router.get(DOCTORS, async (req, res) => {
 // --- ROUTES BELOW ARE STRICTLY ADMIN ONLY ---
 router.use(admin);
 
-// Create new doctor
-router.post(DOCTORS, async (req, res) => {
-  const { name, email, password, role } = req.body;
+// Invite a person to the clinic. Nobody sets another person's password: the
+// invitation emails them a single-use link where they choose their own, and the
+// account exists from then on (see POST /api/auth/accept-invitation).
+router.post(DOCTORS, inviteLimiter, async (req, res) => {
+  const { name, email, role, password } = req.body || {};
+
+  if (password !== undefined) return res.status(400).json({ error: PASSWORD_BY_OWNER });
 
   const normalizedName = typeof name === 'string' ? name.trim() : '';
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -76,42 +88,91 @@ router.post(DOCTORS, async (req, res) => {
   if (!normalizedName) {
     return res.status(400).json({ error: 'Name is required' });
   }
-  if (!EMAIL_REGEX.test(normalizedEmail)) {
-    return res.status(400).json({ error: 'A valid email is required' });
+  if (normalizedName.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({ error: `Name must be at most ${MAX_NAME_LENGTH} characters` });
   }
-  if (typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (!EMAIL_REGEX.test(normalizedEmail) || normalizedEmail.length > 254) {
+    return res.status(400).json({ error: 'A valid email is required' });
   }
   if (role !== undefined && !VALID_ROLES.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
   }
 
   try {
-    const existing = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
-    if (existing) return res.status(400).json({ error: 'Email already registered' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const doctor = await prisma.$transaction(async (tx) => {
-      const created = await tx.doctor.create({
-        data: {
-          name: normalizedName,
-          email: normalizedEmail,
-          password: hashedPassword,
-          role: role || 'doctor'
-        },
-        select: { id: true, name: true, email: true, role: true, createdAt: true }
-      });
-      await recordAudit(tx, req, {
-        action: 'create',
-        entity: 'user',
-        entityId: created.id,
-        changes: describeCreated('user', created)
-      });
-      return created;
+    const result = await invitations.invite(req, { name: normalizedName, email: normalizedEmail, role: role || 'doctor' });
+    res.status(201).json({
+      ...result.invitation,
+      delivered: result.delivered,
+      ...(exposeLinks() && { devLink: result.url })
     });
-    res.status(201).json(doctor);
   } catch (err) {
-    if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
+    if (err instanceof invitations.AlreadyMemberError) {
+      return res.status(409).json({ error: 'This person already has an account in your clinic' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Is the clinic's WhatsApp and email actually going out? For each channel: the run of
+// failed messages since the last one that was sent, whether that is long enough to
+// warn about (`failing`), and the last failure with its reason. Admins only.
+router.get('/notification-status', async (req, res) => {
+  try {
+    res.json(await notificationLog.channelStatus(req.clinicId));
+  } catch (err) {
+    console.error('Notification status error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Pending invitations of the clinic
+router.get('/invitations', async (req, res) => {
+  try {
+    res.json(await invitations.list(req));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// New link (and a fresh week) for a pending invitation
+router.post('/invitations/:id/resend', inviteLimiter, async (req, res) => {
+  try {
+    const result = await invitations.resend(req, req.params.id);
+    if (!result) return res.status(404).json({ error: 'Invitation not found' });
+    res.json({ ...result.invitation, delivered: result.delivered, ...(exposeLinks() && { devLink: result.url }) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Cancel a pending invitation: its link stops working
+router.delete('/invitations/:id', async (req, res) => {
+  try {
+    if (!(await invitations.revoke(req, req.params.id))) return res.status(404).json({ error: 'Invitation not found' });
+    res.json({ message: 'Invitation cancelled successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Rename the admin's own clinic (the name people see all over the app and in the invitations)
+router.put('/clinic', async (req, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+  if (name.length < MIN_CLINIC_NAME_LENGTH || name.length > MAX_CLINIC_NAME_LENGTH) {
+    return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+  }
+  try {
+    const clinic = await prisma.clinic.update({
+      where: { id: req.clinicId },
+      data: { name },
+      select: { id: true, name: true }
+    });
+    res.json(clinic);
+  } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
@@ -120,6 +181,8 @@ router.post(DOCTORS, async (req, res) => {
 // Update doctor
 router.put(DOCTOR, async (req, res) => {
   const { name, email, role, password } = req.body;
+
+  if (password !== undefined) return res.status(400).json({ error: PASSWORD_BY_OWNER });
 
   const normalizedName = typeof name === 'string' ? name.trim() : name;
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
@@ -133,9 +196,6 @@ router.put(DOCTOR, async (req, res) => {
   if (role !== undefined && !VALID_ROLES.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
   }
-  if (password !== undefined && (typeof password !== 'string' || password.length < 6)) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
 
   try {
     const data = {
@@ -143,19 +203,14 @@ router.put(DOCTOR, async (req, res) => {
       ...(normalizedEmail !== undefined && { email: normalizedEmail }),
       ...(role !== undefined && { role })
     };
-    if (password) {
-      data.password = await bcrypt.hash(password, 10);
-      // Sessions opened with the old password stop working
-      data.passwordChangedAt = new Date();
-    }
 
     const doctor = await prisma.$transaction(async (tx) => {
-      const previous = await tx.doctor.findUnique({ where: { id: req.params.id } });
+      const previous = await tx.doctor.findFirst({ where: inClinic(req, { id: req.params.id }) });
       if (!previous) return null;
 
       const updated = await tx.doctor.update({ where: { id: previous.id }, data });
 
-      // Names and roles keep their before/after; email and password only say that they changed
+      // Names and roles keep their before/after; the email only says that it changed
       const changes = diffFields('user', previous, updated);
       if (changes) await recordAudit(tx, req, { action: 'update', entity: 'user', entityId: updated.id, changes });
 
@@ -181,7 +236,7 @@ router.delete(DOCTOR, async (req, res) => {
     }
 
     const deleted = await prisma.$transaction(async (tx) => {
-      const previous = await tx.doctor.findUnique({ where: { id: req.params.id } });
+      const previous = await tx.doctor.findFirst({ where: inClinic(req, { id: req.params.id }) });
       if (!previous) return false;
 
       await tx.doctor.delete({ where: { id: previous.id } });
@@ -216,7 +271,7 @@ const isBadId = (value) => value !== undefined && (typeof value !== 'string' || 
 const dayStart = (date) => appointmentInstant(date, '00:00');
 const nextDay = (date) => format(addDays(parseISO(date), 1), 'yyyy-MM-dd');
 
-// What admins and secretaries did, newest first, one page at a time. Filters:
+// What admins and secretaries of the clinic did, newest first, one page at a time. Filters:
 // from/to (clinic-local dates, both ends included), actorId (who did it),
 // entity (appointment, patient or user), entityId, action and doctorId (the doctor
 // whose agenda was affected). Read-only: nothing here updates or deletes entries.
@@ -246,7 +301,7 @@ router.get('/audit-log', async (req, res) => {
     if (isBadId(value)) return res.status(400).json({ error: `${name} must be a non-empty text of at most ${MAX_ID_LENGTH} characters` });
   }
 
-  const where = {
+  const where = inClinic(req, {
     ...(actorId && { actorId }),
     ...(entity && { entity }),
     ...(entityId && { entityId }),
@@ -258,7 +313,7 @@ router.get('/audit-log', async (req, res) => {
         ...(to && { lt: dayStart(nextDay(to)) })
       }
     })
-  };
+  });
 
   try {
     const [rows, total] = await Promise.all([
@@ -276,7 +331,7 @@ router.get('/audit-log', async (req, res) => {
     // Doctors are named from their account when it still exists (entries hold no foreign key)
     const doctorIds = [...new Set(rows.map((row) => row.doctorId).filter(Boolean))];
     const doctors = doctorIds.length
-      ? await prisma.doctor.findMany({ where: { id: { in: doctorIds } }, select: { id: true, name: true } })
+      ? await prisma.doctor.findMany({ where: inClinic(req, { id: { in: doctorIds } }), select: { id: true, name: true } })
       : [];
     const doctorNames = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
 
@@ -289,7 +344,9 @@ router.get('/audit-log', async (req, res) => {
         entity: row.entity,
         entityId: row.entityId,
         doctor: row.doctorId ? { id: row.doctorId, name: doctorNames.get(row.doctorId) ?? null } : null,
-        changes: row.changes
+        changes: row.changes,
+        ip: row.ip,
+        userAgent: row.userAgent
       })),
       ...pageInfo({ total, page, pageSize })
     });
@@ -314,7 +371,7 @@ router.get('/client-ip', (req, res) => {
 router.get('/reports/appointments-by-doctor', async (req, res) => {
   try {
     const report = await prisma.doctor.findMany({
-      where: { role: 'doctor' },
+      where: inClinic(req, { role: 'doctor' }),
       select: {
         name: true,
         _count: {
