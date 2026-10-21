@@ -158,6 +158,38 @@ describe('GET /api/availability/slots', () => {
     expect(res.body.error).toBe('A valid date (YYYY-MM-DD) is required');
   });
 
+  describe('today, in the clinic\'s time', () => {
+    // Everything but the clock keeps running for real (supertest and Prisma need their timers)
+    const freezeClock = (iso) =>
+      jest.useFakeTimers({
+        now: new Date(iso),
+        doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask', 'performance', 'hrtime']
+      });
+    afterEach(() => jest.useRealTimers());
+
+    it('only drops the slots that already passed in the clinic, even when the server clock (UTC) is already far ahead', async () => {
+      freezeClock('2030-01-14T19:00:00Z'); // 14:00 in Ecuador (UTC-5), a Monday (before the token is issued, or it would be expired)
+      const { user, token } = await createUser();
+      await prisma.availability.create({ data: slot(user, 1, '08:00', '18:00') });
+
+      const res = await getSlots(token, { date: MONDAY });
+
+      expect(res.status).toBe(200);
+      expect(res.body[0]).toEqual({ time: '14:00', status: 'available' });
+      expect(res.body.map((s) => s.time)).toEqual(['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30']);
+    });
+
+    it('keeps every slot of tomorrow, also late at night in the clinic', async () => {
+      freezeClock('2030-01-15T04:00:00Z'); // 23:00 of Monday in Ecuador, 04:00 UTC already Tuesday
+      const { user, token } = await createUser();
+      await prisma.availability.create({ data: slot(user, 2, '08:00', '09:00') });
+
+      const res = await getSlots(token, { date: TUESDAY });
+
+      expect(res.body.map((s) => s.time)).toEqual(['08:00', '08:30']);
+    });
+  });
+
   it('generates 30-minute slots inside the configured window', async () => {
     const { user, token } = await createUser();
     await prisma.availability.create({ data: slot(user, 1, '09:00', '11:00') });

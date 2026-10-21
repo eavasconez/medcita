@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { getDay, parseISO, addMinutes, format } = require('date-fns');
+const { clinicDateString, appointmentInstant } = require('../utils/clinicTime');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -118,7 +119,9 @@ router.get('/slots', async (req, res) => {
     const slots = [];
     const SLOT_DURATION = 30;
     const now = new Date();
-    const todayStr = format(now, 'yyyy-MM-dd');
+    // "Today" and "already passed" are decided in the clinic's time, not the server's
+    // (Render runs in UTC, which made every slot of the day look past from midday on)
+    const todayStr = clinicDateString(now);
 
     availabilities.forEach(avail => {
       let current = parseISO(`${date}T${avail.startTime}`);
@@ -128,7 +131,7 @@ router.get('/slots', async (req, res) => {
         const timeStr = format(current, 'HH:mm');
         
         // Skip if it's today and the time has already passed
-        const isPast = date === todayStr && current < now;
+        const isPast = date === todayStr && appointmentInstant(date, timeStr) < now;
 
         if (!isPast) {
           slots.push({

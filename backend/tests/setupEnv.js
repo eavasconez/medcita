@@ -3,6 +3,8 @@
 const { getTestDatabaseUrl } = require('./testDatabase');
 
 process.env.NODE_ENV = 'test';
+// Render runs in UTC; the suite must too, or a bug that only shows there (slots of "today") passes on a developer's machine
+process.env.TZ = 'UTC';
 process.env.DATABASE_URL = getTestDatabaseUrl();
 
 // Long enough and not one of the example values server.js refuses to boot with.
