@@ -21,6 +21,7 @@ const AdminDoctors = lazy(() => import('./pages/AdminDoctors'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Reports = lazy(() => import('./pages/Reports'));
 const AuditLog = lazy(() => import('./pages/AuditLog'));
+const LegalDocument = lazy(() => import('./pages/LegalDocument'));
 
 
 // React.lazy() rejects (e.g. a chunk fails to load after a new deploy ships
@@ -170,6 +171,8 @@ function App() {
               <Route path="/forgot-password" element={!token ? <ForgotPassword /> : <Navigate to="/dashboard" />} />
               {/* Open to everyone, even with a session: whoever follows the emailed link must be able to use it */}
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/privacy" element={<LegalDocument document="privacy" />} />
+              <Route path="/terms" element={<LegalDocument document="terms" />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
               <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />

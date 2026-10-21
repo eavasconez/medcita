@@ -161,6 +161,12 @@ const Register = () => {
               </>
             )}
           </button>
+          <p className="text-center text-xs text-slate-400 font-medium">
+            By creating a clinic you agree to the{' '}
+            <Link to="/terms" className="text-primary font-bold hover:underline">Terms of use</Link>
+            {' '}and the{' '}
+            <Link to="/privacy" className="text-primary font-bold hover:underline">Privacy policy</Link>.
+          </p>
         </form>
 
         <p className="text-center mt-8 text-slate-500 text-sm">

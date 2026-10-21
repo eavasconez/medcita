@@ -155,6 +155,11 @@ const Login = () => {
                 Register here
               </Link>
             </p>
+            <p className="text-xs text-slate-400 font-medium">
+              <Link to="/privacy" className="hover:text-primary hover:underline underline-offset-4">Privacy policy</Link>
+              {' · '}
+              <Link to="/terms" className="hover:text-primary hover:underline underline-offset-4">Terms of use</Link>
+            </p>
             <div className="pt-6 border-t border-slate-50">
               <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest mb-2">Demo Quick Access</p>
               <code className="text-xs bg-slate-50 text-slate-400 px-3 py-1.5 rounded-full font-bold">demo@medcita.ec / demo1234</code>

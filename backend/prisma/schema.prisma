@@ -24,6 +24,7 @@ model Clinic {
   appointments   Appointment[]
   availabilities Availability[]
   invitations    Invitation[]
+  consents       PatientConsent[]
 }
 
 model Doctor {
@@ -59,6 +60,7 @@ model Patient {
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
+  consents     PatientConsent[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -210,4 +212,32 @@ model NotificationLog {
 
   @@index([clinicId, createdAt])
   @@index([appointmentId, createdAt])
+}
+
+// What the patient agreed to about their health data, as an append-only list of events:
+// a consent given and, later, withdrawn is two rows, never an edit. `documentVersion` says
+// which text the patient was shown (see legal/healthDataConsent.js), so a change in the
+// wording is visible: whoever agreed to an older version is shown as out of date. The
+// person who recorded it is kept as plain text (not a link) so the record outlives the
+// account. No free-text note on purpose: it would end up holding health data.
+model PatientConsent {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  clinicId        String
+  patientId       String
+  // true = consent given, false = consent withdrawn
+  granted         Boolean
+  documentVersion String
+  // in_person_signed, in_person_verbal, electronic or other
+  method          String
+  recordedById    String
+  recordedByName  String
+  recordedByRole  String
+  clinic          Clinic   @relation(fields: [clinicId], references: [id])
+  // The patient must belong to the same clinic as the consent. A patient created by mistake
+  // can still be deleted: its consents go with it.
+  patient         Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Cascade)
+
+  @@index([patientId, createdAt])
+  @@index([clinicId, createdAt])
 }

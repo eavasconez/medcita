@@ -4,7 +4,9 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { upsertPatient } = require('../services/patientUpsert');
-const { recordAudit, diffFields, auditPatientUpsert } = require('../services/auditLog');
+const { recordAudit, recordRead, diffFields, auditPatientUpsert } = require('../services/auditLog');
+const consents = require('../services/patientConsent');
+const { consentDocumentFor, CONSENT_METHODS, CURRENT_CONSENT_VERSION } = require('../legal/healthDataConsent');
 const { inClinic } = require('../utils/clinicScope');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,9 +48,107 @@ router.get('/', async (req, res) => {
       }),
       prisma.patient.count({ where })
     ]);
-    res.json({ patients, ...pageInfo({ total, page, pageSize }) });
+    const standing = await consents.statusByPatient(req.clinicId, patients.map((p) => p.id));
+    res.json({
+      patients: patients.map((p) => ({ ...p, consent: standing[p.id] })),
+      ...pageInfo({ total, page, pageSize })
+    });
   } catch (err) {
     console.error('List patients error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The text of the health-data consent in force, with the clinic's name filled in. What the
+// patient is shown is exactly this, and what gets recorded is its version.
+router.get('/consent-document', async (req, res) => {
+  try {
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.clinicId }, select: { name: true } });
+    res.json({ ...consentDocumentFor(clinic?.name), methods: CONSENT_METHODS });
+  } catch (err) {
+    console.error('Consent document error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Where a patient stands on the health-data consent, and every event so far.
+router.get('/:id/consents', async (req, res) => {
+  try {
+    const patient = await prisma.patient.findFirst({ where: inClinic(req, { id: req.params.id }), select: { id: true } });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    res.json({ currentVersion: CURRENT_CONSENT_VERSION, ...(await consents.history(req.clinicId, patient.id)) });
+  } catch (err) {
+    console.error('Patient consents error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Records that the patient gave their consent, or took it back. Staff of the clinic
+// register it; the version is always the text in force, and `documentVersion` (if sent)
+// has to match it, so a text that changed while the form was open is not signed blind.
+router.post('/:id/consents', async (req, res) => {
+  const { granted, method, documentVersion } = req.body;
+  if (typeof granted !== 'boolean') {
+    return res.status(400).json({ error: 'granted must be true (consent given) or false (consent withdrawn)' });
+  }
+  if (!CONSENT_METHODS.includes(method)) {
+    return res.status(400).json({ error: `method must be one of: ${CONSENT_METHODS.join(', ')}` });
+  }
+  if (documentVersion !== undefined && documentVersion !== CURRENT_CONSENT_VERSION) {
+    return res.status(409).json({ error: 'The consent text has changed. Reload it and ask the patient again.' });
+  }
+
+  try {
+    const patient = await prisma.patient.findFirst({ where: inClinic(req, { id: req.params.id }), select: { id: true } });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    await consents.recordConsent(req, patient.id, { granted, method });
+    res.status(201).json({ currentVersion: CURRENT_CONSENT_VERSION, ...(await consents.history(req.clinicId, patient.id)) });
+  } catch (err) {
+    console.error('Record consent error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Everything MedCita holds about one patient, as a file: the answer to a patient who asks
+// for their data (access and portability). Admin only, because it is the whole record, and
+// every export is written to the audit log. The messages are listed without their text
+// (it is never stored) and with the destination masked.
+router.get('/:id/export', async (req, res) => {
+  if (req.userRole !== 'admin') return res.status(403).json({ error: 'Only an administrator can export a patient\'s data' });
+
+  try {
+    const patient = await prisma.patient.findFirst({
+      where: inClinic(req, { id: req.params.id }),
+      include: {
+        appointments: { orderBy: [{ date: 'asc' }, { time: 'asc' }], include: { doctor: { select: { name: true } } } },
+        clinic: { select: { name: true } }
+      }
+    });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    const messages = await prisma.notificationLog.findMany({
+      where: { clinicId: req.clinicId, recipient: 'patient', appointmentId: { in: patient.appointments.map((a) => a.id) } },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true, kind: true, channel: true, status: true, destination: true, appointmentId: true }
+    });
+    const consentHistory = await consents.history(req.clinicId, patient.id);
+
+    await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });
+
+    res.set('Content-Disposition', `attachment; filename="patient-${patient.id}.json"`);
+    res.json({
+      exportedAt: new Date().toISOString(),
+      clinic: patient.clinic.name,
+      patient: { id: patient.id, name: patient.name, cedula: patient.cedula, phone: patient.phone, email: patient.email, createdAt: patient.createdAt },
+      appointments: patient.appointments.map((a) => ({
+        id: a.id, date: a.date, time: a.time, status: a.status, notes: a.notes, doctor: a.doctor.name, createdAt: a.createdAt
+      })),
+      messagesSent: messages,
+      healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
+    });
+  } catch (err) {
+    console.error('Export patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

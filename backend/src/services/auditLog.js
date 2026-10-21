@@ -9,14 +9,14 @@
 // without its record, nor a record of something that did not happen.
 
 const STAFF_ROLES = ['admin', 'secretary'];
-// `read` is for looking at something that must stay traceable (the clinical history,
-// when it exists); nothing writes it yet.
+// `read` is for looking at something that must stay traceable: the export of a patient's
+// data today, the clinical history once it exists.
 const AUDIT_ACTIONS = [
   'create', 'update', 'cancel', 'delete',
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -114,8 +114,8 @@ function recordAccountEvent(db, req, account, action) {
   });
 }
 
-// Someone looked at a record that must stay traceable (not used yet: it is here for
-// the clinical history). Recorded for every role, since reading is the point.
+// Someone looked at a record that must stay traceable (today: the export of a patient's
+// data; later the clinical history). Recorded for every role, since reading is the point.
 function recordRead(db, req, { entity, entityId, doctorId = null }) {
   return db.auditLog.create({
     data: {
