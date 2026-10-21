@@ -14,8 +14,8 @@ model Clinic {
   name      String
   // URL-safe name, unique across the platform
   slug      String   @unique
-  // IANA zone of the clinic. Stored with the clinic; for now the app still reads
-  // CLINIC_UTC_OFFSET_MINUTES (utils/clinicTime.js) for every clinic.
+  // IANA zone of the clinic. Appointment date/time are clinic-local text; this zone
+  // says which real instant they are (utils/clinicTime.js).
   timezone  String   @default("America/Guayaquil")
   createdAt DateTime @default(now())
 

@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { addDays, format, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
-const { isValidDate, appointmentInstant } = require('../utils/clinicTime');
+const { isValidDate, isValidTimezone, appointmentInstant } = require('../utils/clinicTime');
 const { inClinic } = require('../utils/clinicScope');
 const { inviteLimiter } = require('../middleware/rateLimiters');
 const invitations = require('../services/invitationService');
@@ -159,17 +159,32 @@ router.delete('/invitations/:id', async (req, res) => {
   }
 });
 
-// Rename the admin's own clinic (the name people see all over the app and in the invitations)
+// Change the admin's own clinic: its name (what people see all over the app and in the
+// invitations) and/or its timezone (how every appointment time is read). Send either or both.
 router.put('/clinic', async (req, res) => {
-  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
-  if (name.length < MIN_CLINIC_NAME_LENGTH || name.length > MAX_CLINIC_NAME_LENGTH) {
-    return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+  const { timezone } = req.body || {};
+  const data = {};
+
+  // A request without a name is only valid when it changes the timezone
+  if (req.body?.name !== undefined || timezone === undefined) {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+    if (name.length < MIN_CLINIC_NAME_LENGTH || name.length > MAX_CLINIC_NAME_LENGTH) {
+      return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+    }
+    data.name = name;
   }
+  if (timezone !== undefined) {
+    if (!isValidTimezone(timezone)) {
+      return res.status(400).json({ error: 'timezone must be a valid IANA timezone (e.g. America/Guayaquil)' });
+    }
+    data.timezone = timezone;
+  }
+
   try {
     const clinic = await prisma.clinic.update({
       where: { id: req.clinicId },
-      data: { name },
-      select: { id: true, name: true }
+      data,
+      select: { id: true, name: true, timezone: true }
     });
     res.json(clinic);
   } catch (err) {
@@ -268,7 +283,7 @@ const MAX_ID_LENGTH = 64;
 
 const isBadId = (value) => value !== undefined && (typeof value !== 'string' || !value || value.length > MAX_ID_LENGTH);
 // Clinic-local midnight of a 'YYYY-MM-DD' date, and the date after it
-const dayStart = (date) => appointmentInstant(date, '00:00');
+const dayStart = (date, timezone) => appointmentInstant(date, '00:00', timezone);
 const nextDay = (date) => format(addDays(parseISO(date), 1), 'yyyy-MM-dd');
 
 // What admins and secretaries of the clinic did, newest first, one page at a time. Filters:
@@ -309,8 +324,8 @@ router.get('/audit-log', async (req, res) => {
     ...(doctorId && { doctorId }),
     ...((from || to) && {
       createdAt: {
-        ...(from && { gte: dayStart(from) }),
-        ...(to && { lt: dayStart(nextDay(to)) })
+        ...(from && { gte: dayStart(from, req.clinicTimezone) }),
+        ...(to && { lt: dayStart(nextDay(to), req.clinicTimezone) })
       }
     })
   });

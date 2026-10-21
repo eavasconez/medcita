@@ -261,7 +261,7 @@ describe('POST /api/auth/accept-invitation', () => {
       name: 'Marta Secretaria',
       email: 'marta@example.test',
       role: 'secretary',
-      clinic: { id: clinic.id, name: 'Consultorio Torres' }
+      clinic: { id: clinic.id, name: 'Consultorio Torres', timezone: 'America/Guayaquil' }
     });
     expect(jwt.verify(res.body.token, process.env.JWT_SECRET)).toMatchObject({ id: res.body.user.id, role: 'secretary' });
     const stored = await prisma.doctor.findUnique({ where: { email: 'marta@example.test' } });
@@ -348,7 +348,7 @@ describe('PUT /api/admin/clinic', () => {
     const res = await rename(admin.token, '  Consultorio   Dra. Torres ');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: clinic.id, name: 'Consultorio Dra. Torres' });
+    expect(res.body).toEqual({ id: clinic.id, name: 'Consultorio Dra. Torres', timezone: 'America/Guayaquil' });
     expect((await prisma.clinic.findUnique({ where: { id: other.id } })).name).toBe('Otra Clínica');
     const profile = await request(app).get('/api/auth/profile').set(bearer(admin.token));
     expect(profile.body.clinic.name).toBe('Consultorio Dra. Torres');
