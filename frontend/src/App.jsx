@@ -3,6 +3,8 @@ import { AuthContext } from './AuthContext';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from './config/api';
+import { IS_STAGING } from './config/environment';
+import EnvironmentBanner from './components/EnvironmentBanner';
 // Route-level code splitting: each page (and its own dependencies, e.g.
 // Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
 // all being bundled into the initial load.
@@ -150,7 +152,8 @@ function App() {
   // The tab says which clinic you are in (useful with several tabs or clinics open)
   const clinicName = user?.clinic?.name;
   useEffect(() => {
-    document.title = clinicName ? `${clinicName} · MedCita` : 'MedCita';
+    const title = clinicName ? `${clinicName} · MedCita` : 'MedCita';
+    document.title = IS_STAGING ? `[STAGING] ${title}` : title;
   }, [clinicName]);
 
   if (loading) return <div className="p-10 text-center">Loading...</div>;
@@ -158,6 +161,7 @@ function App() {
   return (
     <AuthContext.Provider value={{ user, token, login, startSession, logout, updateUser, updateToken }}>
       <Router>
+        <EnvironmentBanner />
         <RouteErrorBoundary>
           <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
             <Routes>
