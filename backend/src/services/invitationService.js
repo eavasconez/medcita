@@ -37,6 +37,7 @@ async function sendInvitationEmail(invitation, clinicName, token) {
   const delivered = await notificationService.sendInvitation({
     name: invitation.name,
     email: invitation.email,
+    clinicId: invitation.clinicId,
     clinicName,
     invitedBy: invitation.invitedByName,
     role: invitation.role,

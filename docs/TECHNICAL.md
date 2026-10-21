@@ -83,6 +83,7 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 | POST | `/` | Autenticado | Crea cita (transacción serializable: valida disponibilidad, evita doble reserva, upsert de paciente). Envía confirmación por WhatsApp/Email |
 | PUT | `/:id` | Autenticado (dueño, o admin/secretaria) | Actualiza fecha, hora, estado o notas. Si la cita **cambia de horario** o se **reactiva** (de `cancelled` a otro estado) pasa por las mismas reglas que al agendar, dentro de una transacción serializable: `400` si el médico no atiende a esa hora o si la nueva hora ya pasó (salvo citas `completed`, para corregir el registro); `409` si otra cita activa del médico ya ocupa ese horario. Las reglas se aplican al médico dueño de la cita, no a quien edita. Cambiar solo estado o notas no revisa el horario, y cancelar tampoco |
 | DELETE | `/:id` | Autenticado (dueño, o admin/secretaria) | **Cancela** la cita: la deja con `status: "cancelled"` (no se borra, para conservar historial y estadísticas) y libera el horario. Repetirlo da el mismo resultado. Responde `{ message, appointment }` |
+| GET | `/:id/notifications` | Autenticado (dueño, o admin/secretaria) | Los mensajes que se enviaron sobre la cita (ver «Historial de mensajes»): `{ notifications, reminderPending }` |
 
 El calendario del frontend pide solo el rango de fechas que está mostrando (semana, mes, día o los 30 días de la agenda) y sigue las páginas hasta completarlo; los KPIs salen de `/stats`.
 
@@ -117,6 +118,7 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
 | GET | `/audit-log` | admin | Registro de auditoría del consultorio: lo que hicieron sus admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
+| GET | `/notification-status` | admin | Si el WhatsApp y el correo del consultorio están saliendo: por canal, los envíos fallidos seguidos y el último error (ver «Historial de mensajes») |
 | GET | `/client-ip` | admin | Diagnóstico de `TRUST_PROXY`: devuelve `{ ip, forwardedFor, trustProxy }`; `ip` debe ser tu IP pública |
 
 `/api/admin/medicos` es el **nombre anterior** de `/api/admin/doctors`. Sigue respondiendo igual (mismos métodos y permisos) como alias temporal para clientes que no se hayan actualizado, por ejemplo un frontend viejo en caché mientras el backend ya está desplegado, y sus respuestas llevan el header `Deprecation: true`. Está pensado para eliminarse más adelante.
@@ -180,6 +182,27 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 ```
 
 **Pantalla.** Los administradores la ven en **Activity Log** (`/activity`): las entradas del consultorio, de 25 en 25, con filtros por fecha, persona y acción, frases legibles («Changed their password», «Failed sign-in attempt»…), la IP y un navegador corto («Chrome on Linux»). **Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`). Un intento fallido contra un correo que no existe queda fuera a propósito. La tabla `AuditLog` no se purga: crece con el uso, y ahora cada inicio de sesión suma una fila (conviene pensar en una política de retención antes de tener mucho tráfico).
+
+### Historial de mensajes (S8-04)
+
+Cada WhatsApp y cada correo que MedCita intenta enviar deja una fila en `NotificationLog` (`services/notificationLog.js`), para enterarse de una falla el mismo día y no cuando un paciente reclama (como el 20-oct).
+
+| Campo | Qué guarda |
+|---|---|
+| `kind` | Para qué era: `appointment_confirmation`, `appointment_reminder`, `doctor_new_appointment`, `password_reset`, `invitation`, `signup_confirmation`, `account_exists` |
+| `channel`, `provider`, `recipient` | `whatsapp` o `email`; quién lo manejó (`meta`, `twilio`, `brevo`, `sendgrid` o `mock`); a quién iba (`patient`, `doctor`, `user`) |
+| `status` | `sent`, `failed` o `simulated` (no hay proveedor configurado: no salió nada de verdad) |
+| `errorCode`, `error` | Si falló: código del proveedor (`meta_190`, `brevo_unauthorized`, `sendgrid_401`, `twilio_21211`, `timeout`, `network`…) y su mensaje, con correos y números tapados y 300 caracteres como máximo. Los errores de Meta con pista conocida añaden dónde arreglarlo (token vencido, plantilla sin aprobar…) |
+| `providerMessageId` | El id que devolvió el proveedor (`wamid…`, el de Brevo), para buscarlo en su panel |
+| `destination` | El destino **enmascarado** (`+593***042`, `pa******@gmail.com`) |
+| `clinicId`, `appointmentId` | El consultorio y la cita, cuando los hay. El alta de un consultorio (no existe aún) y el aviso «ya tienes cuenta» no llevan consultorio, para que nadie lo vea |
+
+**Nunca se guarda** el texto del mensaje ni la dirección completa. Si SendGrid entrega lo que Brevo no pudo, la fila queda `sent` por `sendgrid` y `error` dice qué falló en Brevo. Escribir la fila nunca puede fallar ni retrasar un envío: si no se pudo, solo queda en el log del servidor. No se purga (una fila por mensaje): conviene una política de retención al crecer.
+
+Lo que ve la aplicación:
+
+- **Detalle de una cita** (Dashboard): bloque «Messages» con la confirmación y el recordatorio por cada canal («Confirmation failed by WhatsApp» en rojo con el motivo), el aviso al médico y si el recordatorio de 24 h todavía no sale. `GET /api/appointments/:id/notifications` → `{ notifications, reminderPending }`, con la misma visibilidad que la cita (un médico solo las suyas; otro consultorio, `404`).
+- **Aviso para el administrador** (arriba del Dashboard): `GET /api/admin/notification-status` devuelve, por canal, cuántos envíos seguidos fallaron desde el último que salió (mira la última semana, ignora los simulados), `failing: true` desde **3** seguidos, el último error y cuándo salió el último bueno. El aviso desaparece solo cuando vuelve a salir un mensaje.
 
 ### Salud (`/api/health`)
 
@@ -250,9 +273,9 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 y con S8-02 a 525 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 250 peticiones y 432 aserciones al cierre de S8-02). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 276 peticiones y 471 aserciones al cierre de S8-04). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en memoria y las pruebas de S1-02 gastan los de la IP: **reinicia el backend entre una corrida y otra** o la tercera seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

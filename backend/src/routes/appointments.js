@@ -7,6 +7,7 @@ const { parsePagination, pageInfo } = require('../utils/pagination');
 const { DATE_REGEX, isValidDate, appointmentInstant } = require('../utils/clinicTime');
 const { upsertPatient } = require('../services/patientUpsert');
 const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require('../services/auditLog');
+const notificationLog = require('../services/notificationLog');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -167,6 +168,29 @@ router.get('/stats', async (req, res) => {
     res.json({ total, positive, cancelled, patients: patients.length });
   } catch (err) {
     console.error('Appointment stats error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// What happened to the messages sent about an appointment (confirmation, reminder,
+// the doctor's notice): through which channel and provider, and why a failed one
+// failed. Same visibility as the appointment: a doctor only sees their own.
+router.get('/:id/notifications', async (req, res) => {
+  const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: inClinic(req, { id: req.params.id, ...(isSpecialRole ? {} : { doctorId: req.doctorId }) }),
+      select: { id: true, status: true, date: true, time: true, reminderSentAt: true }
+    });
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
+
+    res.json({
+      notifications: await notificationLog.forAppointment(req.clinicId, appointment.id),
+      // Whether the 24h reminder is still owed (see tasks/reminderTask.js)
+      reminderPending: !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
+    });
+  } catch (err) {
+    console.error('Appointment notifications error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

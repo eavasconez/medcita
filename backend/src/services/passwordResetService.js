@@ -15,7 +15,7 @@ class InvalidResetTokenError extends Error {}
  * an email was delivered.
  */
 async function requestPasswordReset(email) {
-  const doctor = await prisma.doctor.findUnique({ where: { email }, select: { id: true, name: true, email: true } });
+  const doctor = await prisma.doctor.findUnique({ where: { email }, select: { id: true, name: true, email: true, clinicId: true } });
   if (!doctor) return false;
 
   const token = newToken();

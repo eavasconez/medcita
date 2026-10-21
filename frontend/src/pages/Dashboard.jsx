@@ -4,6 +4,8 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import MessageHistory from '../components/MessageHistory';
+import NotificationAlert from '../components/NotificationAlert';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -558,6 +560,8 @@ const Dashboard = () => {
       )}
 
       <div className="page-shell">
+        {user?.role === 'admin' && <NotificationAlert />}
+
         {/* Header with Stats */}
         <header className="page-header mb-10">
           <div>
@@ -1172,6 +1176,8 @@ const Dashboard = () => {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Patient Email</p>
                       <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
                     </div>
+
+                    <MessageHistory appointmentId={selectedEvent.id} />
 
                     {selectedEvent.notes && (
                       <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/30">
