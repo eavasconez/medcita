@@ -352,6 +352,22 @@ FROM "Clinic" WHERE slug = 'plataforma';
 
 **Marcha atrás.** Las migraciones no tienen «deshacer». Con la base ya migrada, la versión anterior del código no puede escribir (le falta `clinicId`), así que la salida es corregir hacia adelante o restaurar la copia de Neon, perdiendo lo escrito después de hacerla.
 
+## Despliegue de los tipos de cita (S9-04)
+
+S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica sola con el `prisma migrate deploy` del Build Command. Sobre los datos que ya existen hace esto, en este orden: crea la tabla `AppointmentType`; crea para **cada consultorio** su tipo predeterminado («Consultation», 30 min); agrega `Appointment.durationMinutes` (30 por defecto) y `Appointment.typeId`; asocia **todas las citas existentes** al predeterminado de su consultorio; y recién entonces agrega las claves foráneas. Ninguna cita, paciente ni horario cambia. Se probó con datos heredados en `backend/tests/appointmentTypesMigration.test.js`.
+
+**Antes de fusionar.** En Neon, *Branches → Create branch* desde la rama de producción (por ejemplo `antes-de-s9-04`), como en «Primer despliegue con consultorios». Es instantánea; bórrala cuando ya no la necesites. Si hay staging, despliega ahí primero.
+
+**Qué esperar.** A diferencia de S8-01, **la versión anterior sigue pudiendo agendar** entre la migración y el despliegue nuevo: `typeId` es opcional en la base y `durationMinutes` tiene valor por defecto, así que una cita creada por la versión vieja queda «sin tipo» y cuenta como del predeterminado. Y por lo mismo **volver atrás el código es seguro** (la tabla y las columnas nuevas quedan sin uso). No hay ventana en la que no se pueda escribir.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] La agenda de siempre se ve igual: las citas existentes con la misma hora y 30 minutos de duración.
+- [ ] En Settings, «Appointment types» muestra «Consultation · 30 minutes · Default».
+- [ ] En el SQL Editor de Neon: `SELECT count(*) FROM "Appointment" WHERE "typeId" IS NULL;` devuelve `0` (salvo citas que haya creado la versión anterior durante el despliegue; la aplicación las trata como del tipo predeterminado) y `SELECT "clinicId", count(*) FROM "AppointmentType" WHERE "isDefault" GROUP BY 1 HAVING count(*) > 1;` no devuelve filas.
+- [ ] Agendar una cita de prueba con otro tipo (por ejemplo, 40 min) y comprobar que el calendario la dibuja más larga; cancelarla después.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:

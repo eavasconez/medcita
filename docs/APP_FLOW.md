@@ -52,7 +52,8 @@ graph TD
 
 The system uses a "Block & Slot" logic:
 - Doctors define **Working Hours** (e.g., Mon-Fri 08:00 - 18:00).
-- The engine calculates 30-minute **Slots**.
+- The engine calculates **Slots** as long as the chosen **Appointment type** (the clinic's default is 30 minutes; admins add others such as "First visit, 40 min" in Settings). A slot is offered every `duration` minutes inside each block, plus one right where each booked visit ends.
+- A visit must fit inside a working block and may not overlap another one (back to back is fine); each appointment keeps the length its type had when it was booked.
 - If a slot is occupied in the DB, the UI marks it as **Occupied (Orange)**.
 - If it's a past time, the UI **Blocks** it for safety.
 - Moving an appointment (`PUT /api/appointments/:id`) applies the same rules as booking: it answers 409 if the new slot is taken.

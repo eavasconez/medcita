@@ -16,18 +16,20 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
 // appointment notes (they can hold medical details), emails and passwords are
 // never copied into the log.
 const FIELDS = {
-  appointment: { shown: ['date', 'time', 'status'], hidden: ['notes'] },
+  appointment: { shown: ['date', 'time', 'status'], hidden: ['notes', 'typeId'] },
   patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
   user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
   // An invitation to join the clinic; the account itself is created by its owner later
-  invitation: { shown: ['role'], hidden: ['name', 'email'] }
+  invitation: { shown: ['role'], hidden: ['name', 'email'] },
+  // A kind of visit the clinic offers (admins manage them)
+  appointment_type: { shown: ['name', 'durationMinutes', 'color', 'active'], hidden: [] }
 };
 
 const orNull = (value) => (value === undefined ? null : value);

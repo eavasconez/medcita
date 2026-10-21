@@ -1,8 +1,9 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../AuthContext';
+import AppointmentTypesCard from '../components/AppointmentTypesCard';
 import {
   User,
   Mail,
@@ -48,10 +49,10 @@ const Settings = () => {
   const [savingClinic, setSavingClinic] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const showToast = (message, type = 'success') => {
+  const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -77,7 +78,7 @@ const Settings = () => {
       }
     };
     fetchProfile();
-  }, [token]);
+  }, [token, showToast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -298,6 +299,8 @@ const Settings = () => {
                 </div>
               )}
             </div>
+
+            {displayRole === 'admin' && <AppointmentTypesCard onMessage={showToast} />}
 
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">
