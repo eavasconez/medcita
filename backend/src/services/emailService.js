@@ -171,6 +171,24 @@ function accountExistsHtml({ name, loginUrl, resetUrl }) {
   `);
 }
 
+const ROLE_LABELS_ES = { admin: 'administrador/a', secretary: 'secretario/a', doctor: 'médico/a' };
+
+function invitationHtml({ name, clinicName, invitedBy, role, url, expiresInDays }) {
+  const link = escapeHtml(url);
+  return baseLayout(`Te invitaron a ${clinicName}`, `
+    <p>Hola <strong>${escapeHtml(name)}</strong>,</p>
+    <p><strong>${escapeHtml(invitedBy)}</strong> te invitó a unirte al consultorio:</p>
+    <p style="text-align: center; font-size: 22px; font-weight: bold; color: #0f172a; margin: 20px 0 4px;">${escapeHtml(clinicName)}</p>
+    <p style="text-align: center; color: #64748b; margin: 0 0 8px;">como ${escapeHtml(ROLE_LABELS_ES[role] || role)}</p>
+    <p style="text-align: center; margin: 28px 0;">
+      <a href="${link}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Aceptar la invitación y elegir mi contraseña</a>
+    </p>
+    <p style="font-size: 13px; color: #64748b;">El enlace vale por ${escapeHtml(expiresInDays)} días y solo se puede usar una vez. Si el botón no funciona, copia y pega esta dirección en tu navegador:</p>
+    <p style="font-size: 12px; color: #64748b; word-break: break-all;">${link}</p>
+    <p style="font-size: 13px; color: #64748b;">Si no esperabas esta invitación, ignora este correo: no se creará ninguna cuenta.</p>
+  `);
+}
+
 function doctorNewAppointmentHtml({ doctorName, patientName, patientPhone, date, time }) {
   const phoneItem = patientPhone
     ? `<li><strong>Teléfono:</strong> ${escapeHtml(patientPhone)}</li>`
@@ -219,6 +237,7 @@ const emailService = {
     passwordResetHtml,
     signupConfirmationHtml,
     accountExistsHtml,
+    invitationHtml,
     doctorNewAppointmentHtml
   }
 };

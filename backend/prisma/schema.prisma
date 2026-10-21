@@ -23,6 +23,7 @@ model Clinic {
   patients       Patient[]
   appointments   Appointment[]
   availabilities Availability[]
+  invitations    Invitation[]
 }
 
 model Doctor {
@@ -155,4 +156,25 @@ model SignupRequest {
   createdAt    DateTime @default(now())
 
   @@index([email])
+}
+
+// A person an admin invited to join a clinic, until they accept: the account does
+// not exist yet (they choose their own password with the emailed link). One pending
+// invitation per email and clinic; inviting again replaces its link. Only the
+// SHA-256 hash of the token is stored. The inviter is kept by id and name, without a
+// foreign key, so the invitation outlives them.
+model Invitation {
+  id            String   @id @default(uuid())
+  tokenHash     String   @unique
+  name          String
+  email         String
+  role          String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  invitedById   String
+  invitedByName String
+  clinicId      String
+  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, email])
 }

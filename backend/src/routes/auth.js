@@ -18,6 +18,7 @@ const {
 } = require('../middleware/rateLimiters');
 const passwordReset = require('../services/passwordResetService');
 const signup = require('../services/signupService');
+const invitations = require('../services/invitationService');
 const { exposeLinks } = require('../utils/tokens');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,6 +37,7 @@ const MIN_CLINIC_NAME_LENGTH = 2;
 const REGISTER_MESSAGE = 'Check your email: we have sent a link to confirm your account.';
 // Machine-readable, so the UI can tell a dead link apart from a validation error.
 const INVALID_LINK_CODE = 'INVALID_LINK';
+const INVALID_INVITATION_MESSAGE = 'This invitation link is invalid or has expired. Ask your clinic admin to send you a new one.';
 const INVALID_SIGNUP_LINK_MESSAGE = 'This confirmation link is invalid or has expired. Please sign up again.';
 
 // Fields safe to expose about the authenticated user (never the password hash)
@@ -110,6 +112,42 @@ router.post('/verify-email', accountLinkIpLimiter, async (req, res) => {
       return res.status(400).json({ error: INVALID_SIGNUP_LINK_MESSAGE, code: INVALID_LINK_CODE });
     }
     console.error('Verify email error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Where an emailed invitation leads: the clinic that invited the person and the role,
+// so the page can say so before asking for a password. The token travels in the body,
+// not the URL, so it stays out of the access logs.
+router.post('/invitation-preview', accountLinkIpLimiter, async (req, res) => {
+  try {
+    res.json(await invitations.preview(req.body?.token));
+  } catch (err) {
+    if (err instanceof invitations.InvalidInvitationLinkError) {
+      return res.status(400).json({ error: INVALID_INVITATION_MESSAGE, code: INVALID_LINK_CODE });
+    }
+    console.error('Invitation preview error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Accept an invitation: the person chooses their password, the account is created in
+// the clinic that invited them and they are signed in. A link works once.
+router.post('/accept-invitation', accountLinkIpLimiter, async (req, res) => {
+  const { token, password } = req.body || {};
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: PASSWORD_TOO_SHORT });
+  }
+
+  try {
+    const doctor = await invitations.accept(token, password);
+    const sessionToken = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    res.status(201).json({ token: sessionToken, user: sessionUser(doctor) });
+  } catch (err) {
+    if (err instanceof invitations.InvalidInvitationLinkError) {
+      return res.status(400).json({ error: INVALID_INVITATION_MESSAGE, code: INVALID_LINK_CODE });
+    }
+    console.error('Accept invitation error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

@@ -27,7 +27,9 @@ const LIMITS = {
   registerPerEmail: { windowMs: HOUR, limit: 3 },
   registerPerIp: { windowMs: HOUR, limit: 5 },
   // Only failed attempts (400) count: someone guessing links, or retrying a dead one.
-  accountLinkPerIp: { windowMs: 15 * MINUTE, limit: 10 }
+  accountLinkPerIp: { windowMs: 15 * MINUTE, limit: 10 },
+  // Every invitation or resend sends an email to someone outside the clinic.
+  invitePerAdmin: { windowMs: HOUR, limit: 20 }
 };
 
 const stores = [];
@@ -119,6 +121,13 @@ const accountLinkIpLimiter = createLimiter({
 });
 
 // Must run after the auth middleware: it is keyed by the authenticated account.
+const inviteLimiter = createLimiter({
+  ...LIMITS.invitePerAdmin,
+  message: 'Too many invitations sent.',
+  keyGenerator: (req) => req.doctorId
+});
+
+// Must run after the auth middleware: it is keyed by the authenticated account.
 const changePasswordLimiter = createLimiter({
   ...LIMITS.changePasswordPerAccount,
   message: 'Too many incorrect attempts to change the password.',
@@ -148,6 +157,7 @@ module.exports = {
   registerIpLimiter,
   registerEmailLimiter,
   accountLinkIpLimiter,
+  inviteLimiter,
   clearLoginAttempts,
   resetRateLimits
 };

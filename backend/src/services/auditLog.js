@@ -7,7 +7,7 @@
 
 const STAFF_ROLES = ['admin', 'secretary'];
 const AUDIT_ACTIONS = ['create', 'update', 'cancel', 'delete'];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -16,7 +16,9 @@ const AUDIT_ENTITIES = ['appointment', 'patient', 'user'];
 const FIELDS = {
   appointment: { shown: ['date', 'time', 'status'], hidden: ['notes'] },
   patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
-  user: { shown: ['name', 'role'], hidden: ['email', 'password'] }
+  user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
+  // An invitation to join the clinic; the account itself is created by its owner later
+  invitation: { shown: ['role'], hidden: ['name', 'email'] }
 };
 
 const orNull = (value) => (value === undefined ? null : value);

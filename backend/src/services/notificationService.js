@@ -266,6 +266,20 @@ const notificationService = {
     return notificationService.sendEmail(doctor.email, 'Ya tienes una cuenta en MedCita', text, html);
   },
 
+  sendInvitation: async ({ name, email, clinicName, invitedBy, role, url, expiresInDays }) => {
+    const text = [
+      `Hola ${name},`,
+      '',
+      `${invitedBy} te invitó a unirte al consultorio "${clinicName}" en MedCita.`,
+      `Abre este enlace para aceptar y elegir tu contraseña (vale ${expiresInDays} días y solo se puede usar una vez):`,
+      url,
+      '',
+      'Si no esperabas esta invitación, ignora este correo: no se creará ninguna cuenta.'
+    ].join('\n');
+    const html = emailService.templates.invitationHtml({ name, clinicName, invitedBy, role, url, expiresInDays });
+    return notificationService.sendEmail(email, `${invitedBy} te invitó a ${clinicName} - MedCita`, text, html);
+  },
+
   sendPasswordReset: async ({ doctor, resetUrl, expiresInMinutes }) => {
     const text = [
       `Hola ${doctor.name},`,
