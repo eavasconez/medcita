@@ -14,7 +14,7 @@ export const ACTION_OPTIONS = [
   { value: 'read', label: 'Viewed' }
 ];
 
-const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data' };
+const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data', appointment_type: 'an appointment type' };
 const VERB = { create: 'Created', update: 'Updated', cancel: 'Cancelled', delete: 'Deleted', read: 'Viewed' };
 
 const SESSION_TITLES = {

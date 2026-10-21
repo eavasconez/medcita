@@ -128,6 +128,8 @@ const Dashboard = () => {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [doctors, setDoctors] = useState([]);
+  // The kinds of visit the clinic offers (name, length, color), default one first
+  const [appointmentTypes, setAppointmentTypes] = useState([]);
   // Maps doctorId -> a stable color, assigned by list order, so the combined
   // (no-doctor-selected) calendar can visually distinguish whose appointment
   // is whose without relying on the status color (which means something else).
@@ -156,7 +158,8 @@ const Dashboard = () => {
     patientCedula: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     time: '',
-    notes: ''
+    notes: '',
+    typeId: '' // the kind of visit; set to the clinic's default one when the types load
   });
   // True while an admin/secretary is viewing the clinic-wide calendar (no
   // doctor picked yet) - the view where events from multiple doctors overlap
@@ -208,11 +211,12 @@ const Dashboard = () => {
     }
   }, [showModal, modalStep, fetchPatients]);
 
-  const fetchSlots = useCallback(async (date, doctorId) => {
+  const fetchSlots = useCallback(async (date, doctorId, typeId) => {
     if (!doctorId) return;
     try {
       setLoadingSlots(true);
-      const res = await axios.get(`${API_BASE_URL}/api/availability/slots?date=${date}&doctorId=${doctorId}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/availability/slots`, {
+        params: { date, doctorId, ...(typeId && { typeId }) },
         headers: { Authorization: `Bearer ${token}` }
       });
       setAvailableSlots(res.data);
@@ -225,9 +229,27 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (showModal && formData.date && formData.doctorId) {
-      fetchSlots(formData.date, formData.doctorId);
+      fetchSlots(formData.date, formData.doctorId, formData.typeId);
     }
-  }, [formData.date, formData.doctorId, showModal, fetchSlots]);
+  }, [formData.date, formData.doctorId, formData.typeId, showModal, fetchSlots]);
+
+  // The clinic's kinds of visit, for the booking steps and for painting the calendar
+  useEffect(() => {
+    if (!token) return;
+    axios
+      .get(`${API_BASE_URL}/api/appointment-types`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setAppointmentTypes(res.data))
+      .catch((err) => console.error(err)); // without them everything is a default visit
+  }, [token]);
+
+  const defaultType = appointmentTypes.find((type) => type.isDefault) || appointmentTypes[0];
+  // Every new appointment starts as the default kind of visit
+  useEffect(() => {
+    if (showModal && !formData.typeId && defaultType) {
+      setFormData((prev) => ({ ...prev, typeId: defaultType.id }));
+    }
+  }, [showModal, formData.typeId, defaultType]);
+  const selectedType = appointmentTypes.find((type) => type.id === formData.typeId) || defaultType;
 
   const selectPatient = (p) => {
     setFormData({
@@ -281,6 +303,7 @@ const Dashboard = () => {
       patientEmail: '',
       patientCedula: '',
       notes: '',
+      typeId: '', // back to the default kind of visit
       date: selectedDate,
       time: selectedTime === '00:00' ? '' : selectedTime,
       doctorId: prev.doctorId || (isSpecialRole && doctors.length > 0 ? doctors[0].id : prev.doctorId)
@@ -415,7 +438,7 @@ const Dashboard = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_BASE_URL}/api/appointments`, formData, {
+      await axios.post(`${API_BASE_URL}/api/appointments`, { ...formData, typeId: formData.typeId || undefined }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setShowModal(false);
@@ -510,6 +533,7 @@ const Dashboard = () => {
       date: format(new Date(), 'yyyy-MM-dd'),
       time: '',
       notes: '',
+      typeId: '', // back to the default kind of visit
       doctorId: initialDoctorId
     }));
     setModalStep(1);
@@ -523,6 +547,13 @@ const Dashboard = () => {
   // (no-doctor-selected) calendar view.
   const EventContent = ({ event, title }) => (
     <span className="flex items-center gap-1 truncate">
+      {appointmentTypes.length > 1 && (
+        <span
+          className="inline-block w-2 h-2 rounded-sm flex-shrink-0 ring-1 ring-white/70"
+          style={{ backgroundColor: event.resource?.type?.color || defaultType?.color || '#0ea5e9' }}
+          title={event.resource?.type?.name || defaultType?.name}
+        ></span>
+      )}
       {showCombinedView && (
         <span
           className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -538,7 +569,8 @@ const Dashboard = () => {
 
   const calendarEvents = appointments.map(apt => {
     const start = new Date(`${apt.date}T${apt.time}`);
-    const end = new Date(start.getTime() + 30 * 60000); // 30 min duration
+    // Each visit lasts what its kind of visit lasted when it was booked
+    const end = new Date(start.getTime() + (apt.durationMinutes || 30) * 60000);
     return {
       id: apt.id,
       title: apt.Patient.name,
@@ -829,13 +861,13 @@ const Dashboard = () => {
                 const isPast = event.start < new Date();
                 
                 return {
-                  className: `!rounded-xl !p-2 !border-none !shadow-md hover:scale-[1.02] transition-all !cursor-pointer ${isPast ? 'opacity-50 grayscale-[0.3]' : ''}`,
+                  className: `!rounded-xl !px-2 !py-0.5 !border-none !shadow-md hover:scale-[1.02] transition-all !cursor-pointer ${isPast ? 'opacity-50 grayscale-[0.3]' : ''}`,
                   style: { 
                     backgroundColor,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    minHeight: '30px'
+                    minHeight: '18px'
                   },
                   children: (
                     <div className="flex flex-col overflow-hidden text-white">
@@ -895,6 +927,16 @@ const Dashboard = () => {
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Patient</p>
                   <p className="text-secondary font-bold flex items-center gap-2">
                     <User size={14} className="text-primary" /> {formData.patientName}
+                  </p>
+                </div>
+              )}
+
+              {selectedType && modalStep > 1 && appointmentTypes.length > 1 && (
+                <div className="mb-6 animate-in fade-in slide-in-from-left-2">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Type of visit</p>
+                  <p className="text-secondary font-bold flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: selectedType.color }}></span>
+                    {selectedType.name} · {selectedType.durationMinutes} min
                   </p>
                 </div>
               )}
@@ -992,7 +1034,33 @@ const Dashboard = () => {
                 {modalStep === 2 && (
                   <div className="animate-in fade-in slide-in-from-right-4 duration-300 flex flex-col h-full">
                     <h4 className="text-xl font-black text-secondary mb-6">When?</h4>
-                    
+
+                    {appointmentTypes.length > 1 && (
+                      <div className="mb-6">
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Type of visit</label>
+                        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Type of visit">
+                          {appointmentTypes.map((type) => (
+                            <button
+                              key={type.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={formData.typeId === type.id}
+                              onClick={() => setFormData({ ...formData, typeId: type.id, time: '' })}
+                              className={`px-3 py-2 rounded-xl border-2 text-xs font-black flex items-center gap-2 transition-all ${
+                                formData.typeId === type.id
+                                  ? 'border-secondary bg-secondary/5 text-secondary'
+                                  : 'border-slate-100 text-slate-500 hover:border-slate-300'
+                              }`}
+                            >
+                              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: type.color }}></span>
+                              {type.name}
+                              <span className="font-bold text-slate-400">{type.durationMinutes} min</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mb-6">
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Select Date</label>
                       <input 
@@ -1170,6 +1238,9 @@ const Dashboard = () => {
                         <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                         <Clock size={14} />
                         <span>{selectedEvent.time}</span>
+                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: selectedEvent.type?.color || defaultType?.color || '#0ea5e9' }}></span>
+                        <span>{selectedEvent.type?.name || defaultType?.name || 'Consultation'} · {selectedEvent.durationMinutes || 30} min</span>
                       </div>
                     </div>
                     <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-all">
