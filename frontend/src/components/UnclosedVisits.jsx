@@ -52,7 +52,7 @@ const UnclosedVisits = ({ doctorId, refreshKey, onChange }) => {
           </p>
           <p className="text-sm font-medium text-amber-600 mt-1">Mark whether the patient was seen, so your attendance numbers are right.</p>
           <ul className="mt-4 space-y-2">
-            {list.appointments.slice(0, 5).map((apt) => (
+            {list.appointments.slice(0, 3).map((apt) => (
               <li key={apt.id} className="flex flex-wrap items-center gap-3 bg-white/70 rounded-2xl px-4 py-3">
                 <span className="font-bold text-sm text-secondary truncate">{apt.Patient?.name}</span>
                 <span className="text-xs font-bold text-slate-400">{apt.date} · {apt.time}</span>
@@ -75,7 +75,7 @@ const UnclosedVisits = ({ doctorId, refreshKey, onChange }) => {
               </li>
             ))}
           </ul>
-          {list.total > 5 && <p className="text-xs font-bold text-amber-500 mt-3">And {list.total - 5} more once these are closed.</p>}
+          {list.total > 3 && <p className="text-xs font-bold text-amber-500 mt-3">And {list.total - 3} more once these are closed.</p>}
         </div>
       </div>
     </section>

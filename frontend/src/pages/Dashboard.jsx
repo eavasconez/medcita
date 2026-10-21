@@ -1211,7 +1211,7 @@ const Dashboard = () => {
                           style={{ backgroundColor: statusColor(next) }}
                           className={`${index === 0 ? 'flex-[2]' : 'flex-1'} py-4 text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2`}
                         >
-                          <CheckCircle2 size={18} /> {label}
+                          <CheckCircle2 size={18} className="shrink-0" /> {label}
                         </button>
                       ))}
                       <button 
