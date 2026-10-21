@@ -5,6 +5,11 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { getTestDatabaseUrl, getTestSchemaName } = require('./testDatabase');
 
+// Render runs in UTC; the suite must too (set here, in the real process: a worker's
+// process.env is a copy), or a bug that only shows there, like the slots of "today",
+// passes on a developer's machine in Ecuador.
+process.env.TZ = 'UTC';
+
 const backendDir = path.join(__dirname, '..');
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
