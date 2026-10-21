@@ -352,6 +352,13 @@ FROM "Clinic" WHERE slug = 'plataforma';
 
 **Marcha atrás.** Las migraciones no tienen «deshacer». Con la base ya migrada, la versión anterior del código no puede escribir (le falta `clinicId`), así que la salida es corregir hacia adelante o restaurar la copia de Neon, perdiendo lo escrito después de hacerla.
 
+## Ramas: `main` es producción, `develop` es donde se integra
+
+- **`main`** es lo que corre en producción (Render despliega de ahí). Solo recibe lo que ya se probó.
+- **`develop`** es la rama de integración del Sprint 8 en adelante: cada ticket sale de `develop` y su PR apunta a `develop`.
+- **S8-01 vive solo en `develop`.** Se fusionó a `main` por error el 21-oct-2026 (PR #103) y se deshizo con el commit `3a61e01` (revert); la base de Neon no llegó a migrarse.
+- **Para llevar `develop` a `main`** (cuando se decida pasar a producción), primero hay que **revertir ese revert** en `main` (`git revert 3a61e01`); si no, git considera S8-01 ya deshecho y lo omite al fusionar. Después se hace el merge de `develop` a `main` y se sigue «Primer despliegue con consultorios».
+
 ## Notas para futuros redeploys
 
 - Cada deploy del backend ejecuta `prisma migrate deploy`. Para cambiar el esquema a partir de ahora (migraciones, qué revisar, cómo se prueba) ver `docs/TECHNICAL.md`, sección 7. Nunca usar `db push` contra Neon: no deja historial.
