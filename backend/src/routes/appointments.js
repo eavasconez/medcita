@@ -10,6 +10,7 @@ const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require
 const notificationLog = require('../services/notificationLog');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 const appointmentTypes = require('../services/appointmentTypes');
+const scheduleBlocks = require('../services/scheduleBlocks');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
@@ -61,15 +62,22 @@ async function runSerializableTransaction(fn, maxAttempts = 3) {
 // What "cancelled" leaves out of lists and counts (see DELETE /:id).
 const NOT_CANCELLED = { not: 'cancelled' };
 
-// The rules a doctor's slot has to meet, shared by booking and rescheduling: the whole visit
+// The rules a doctor's slot has to meet, shared by booking and rescheduling: the day is not
+// blocked (vacation, holiday: see routes/scheduleBlocks.js), the whole visit
 // (from `time` for `durationMinutes`) fits inside one of the doctor's working blocks and does
 // not overlap another visit. Back to back is fine.
 // Runs inside the caller's transaction. `excludeId` leaves an appointment out
 // of the clash check (the one being moved must not clash with itself).
 // `checkAvailability: false` skips the schedule check, for an appointment that
 // keeps its slot and only needs to know the slot is still free.
-async function assertSlotBookable(tx, { doctorId, date, time, durationMinutes = 30, excludeId, occupiedStatus = 400, checkAvailability = true }) {
+async function assertSlotBookable(tx, { doctorId, clinicId, date, time, durationMinutes = 30, excludeId, occupiedStatus = 400, checkAvailability = true, checkBlocks = true }) {
   const start = appointmentTypes.toMinutes(time);
+
+  // A day the doctor (or the whole clinic) does not attend takes no appointments. Skipped for an
+  // appointment that keeps its day, which may well have been booked before the block existed.
+  if (checkBlocks && (await scheduleBlocks.findBlockOn(tx, { clinicId, doctorId, date }))) {
+    throw new ScheduleConflictError('The doctor does not attend on this date');
+  }
 
   if (checkAvailability) {
     const blocks = await tx.availability.findMany({
@@ -329,7 +337,7 @@ router.post('/', async (req, res) => {
       // how long it takes, then availability + conflict check (same rules as rescheduling)
       const type = await appointmentTypes.resolveBookableType(tx, req.clinicId, typeId);
       if (!type) throw new ScheduleConflictError(UNKNOWN_TYPE);
-      await assertSlotBookable(tx, { doctorId: targetDoctorId, date, time, durationMinutes: type.durationMinutes });
+      await assertSlotBookable(tx, { doctorId: targetDoctorId, clinicId: req.clinicId, date, time, durationMinutes: type.durationMinutes });
 
       // 2. Find or update the patient (a booking made by staff also leaves a
       // record of the patient it created or changed)
@@ -463,6 +471,7 @@ router.put('/:id', async (req, res) => {
         }
         await assertSlotBookable(tx, {
           doctorId: current.doctorId,
+          clinicId: current.clinicId,
           date: nextDate,
           time: nextTime,
           durationMinutes: nextDuration,
@@ -470,7 +479,10 @@ router.put('/:id', async (req, res) => {
           occupiedStatus: 409,
           // The schedule only matters when the slot or its length changes; a reactivated
           // appointment keeps the slot it was booked in.
-          checkAvailability: moved || resized
+          checkAvailability: moved || resized,
+          // A visit that stays on a day blocked after it was booked can still change its type or
+          // its status; moving it onto a blocked day, or bringing it back to one, cannot
+          checkBlocks: moved || reactivated
         });
       }
 

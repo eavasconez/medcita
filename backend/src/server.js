@@ -13,6 +13,7 @@ const availabilityRoutes = require('./routes/availability');
 const adminRoutes = require('./routes/admin');
 const platformRoutes = require('./routes/platform');
 const appointmentTypeRoutes = require('./routes/appointmentTypes');
+const scheduleBlockRoutes = require('./routes/scheduleBlocks');
 const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
@@ -85,6 +86,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/appointments', authMiddleware, appointmentRoutes);
 app.use('/api/appointment-types', authMiddleware, appointmentTypeRoutes);
+app.use('/api/schedule-blocks', authMiddleware, scheduleBlockRoutes);
 app.use('/api/patients', authMiddleware, patientRoutes);
 app.use('/api/availability', authMiddleware, availabilityRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);

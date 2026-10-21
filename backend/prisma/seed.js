@@ -46,6 +46,7 @@ async function main() {
   await prisma.signupRequest.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.appointmentType.deleteMany();
+  await prisma.scheduleBlock.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.doctor.deleteMany();
@@ -172,6 +173,18 @@ async function main() {
       typeId: (a.type || defaultType).id,
       durationMinutes: (a.type || defaultType).durationMinutes
     }))
+  });
+
+  // A vacation of one of the doctors, two weeks from now: the blocked days show in the calendar
+  // and nobody can book them
+  await prisma.scheduleBlock.create({
+    data: {
+      clinicId: clinic.id,
+      doctorId: pilotDoctors[1].id,
+      startDate: toLocalDateStr(addDays(today, 14)),
+      endDate: toLocalDateStr(addDays(today, 18)),
+      reason: 'Vacaciones'
+    }
   });
 
   // A second clinic with its own people and patients: nothing of it is visible

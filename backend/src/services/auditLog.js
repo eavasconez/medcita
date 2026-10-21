@@ -16,7 +16,7 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -29,7 +29,9 @@ const FIELDS = {
   // An invitation to join the clinic; the account itself is created by its owner later
   invitation: { shown: ['role'], hidden: ['name', 'email'] },
   // A kind of visit the clinic offers (admins manage them)
-  appointment_type: { shown: ['name', 'durationMinutes', 'color', 'active'], hidden: [] }
+  appointment_type: { shown: ['name', 'durationMinutes', 'color', 'active'], hidden: [] },
+  // Days nobody attends; the reason is free text that can say too much, so it is not kept
+  schedule_block: { shown: ['startDate', 'endDate'], hidden: [] }
 };
 
 const orNull = (value) => (value === undefined ? null : value);

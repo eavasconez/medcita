@@ -368,6 +368,16 @@ S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica
 - [ ] En el SQL Editor de Neon: `SELECT count(*) FROM "Appointment" WHERE "typeId" IS NULL;` devuelve `0` (salvo citas que haya creado la versión anterior durante el despliegue; la aplicación las trata como del tipo predeterminado) y `SELECT "clinicId", count(*) FROM "AppointmentType" WHERE "isDefault" GROUP BY 1 HAVING count(*) > 1;` no devuelve filas.
 - [ ] Agendar una cita de prueba con otro tipo (por ejemplo, 40 min) y comprobar que el calendario la dibuja más larga; cancelarla después.
 
+## Despliegue de los bloqueos de agenda (S9-05)
+
+S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea la tabla `ScheduleBlock`**: no toca ninguna fila existente y la versión anterior del código nunca la lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/scheduleBlocksMigration.test.js`. Aun así, por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-05`).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
+- [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
