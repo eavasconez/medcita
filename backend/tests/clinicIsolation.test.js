@@ -146,7 +146,7 @@ describe('appointments', () => {
 
     const res = await get(b.admin.token, '/api/appointments/stats');
 
-    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 0, patients: 1 });
+    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 0, noShow: 0, patients: 1 });
   });
 
   it('answers 404 to update or cancel an appointment of another clinic, and leaves it untouched', async () => {

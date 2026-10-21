@@ -46,7 +46,7 @@ afterEach(async () => {
 
 afterAll(() => prisma.$disconnect());
 
-const rows = (where = {}) => prisma.notificationLog.findMany({ where, orderBy: [{ createdAt: 'asc' }, { channel: 'asc' }, { kind: 'asc' }] });
+const rows = (where = {}) => prisma.notificationLog.findMany({ where, orderBy: [{ channel: 'asc' }, { kind: 'asc' }, { createdAt: 'asc' }] });
 
 // A doctor with a staff member, and a booking made through the API
 async function book({ patientEmail = 'paciente@example.test' } = {}) {

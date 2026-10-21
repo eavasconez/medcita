@@ -454,7 +454,7 @@ describe('GET /api/appointments/stats', () => {
     const res = await stats(token);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 4, positive: 2, cancelled: 0, patients: 2 });
+    expect(res.body).toEqual({ total: 4, positive: 2, cancelled: 0, noShow: 0, patients: 2 });
   });
 
   it('keeps cancelled appointments out of the totals and counts them apart', async () => {
@@ -467,7 +467,7 @@ describe('GET /api/appointments/stats', () => {
 
     const res = await stats(token);
 
-    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 2, patients: 1 });
+    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 2, noShow: 0, patients: 1 });
   });
 
   it('is all zeros for a doctor without appointments', async () => {
@@ -475,7 +475,7 @@ describe('GET /api/appointments/stats', () => {
 
     const res = await stats(token);
 
-    expect(res.body).toEqual({ total: 0, positive: 0, cancelled: 0, patients: 0 });
+    expect(res.body).toEqual({ total: 0, positive: 0, cancelled: 0, noShow: 0, patients: 0 });
   });
 
   it('only counts the caller\'s own appointments, but lets admin and secretary pick a doctor', async () => {
@@ -522,7 +522,7 @@ describe('PUT /api/appointments/:id', () => {
     expect(res.body.Patient).toBeDefined();
   });
 
-  it.each(['scheduled', 'pending_approval', 'confirmed', 'completed', 'cancelled'])('accepts status %s', async (status) => {
+  it.each(['scheduled', 'pending_approval', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled'])('accepts status %s', async (status) => {
     const { owner, appointment } = await setup();
 
     const res = await put(owner.token, appointment.id, { status });
