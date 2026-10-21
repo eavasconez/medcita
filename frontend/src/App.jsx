@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { AuthContext } from './AuthContext';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
@@ -113,13 +113,13 @@ function App() {
 
   // Merge fresh fields into the cached user (e.g. after a profile update) so the
   // sidebar and other screens reflect the change without forcing a re-login.
-  const updateUser = (fields) => {
+  const updateUser = useCallback((fields) => {
     setUser((prev) => {
       const next = { ...prev, ...fields };
       localStorage.setItem('user', JSON.stringify(next));
       return next;
     });
-  };
+  }, []);
 
   // Swap the session token for a fresh one without signing out (after a
   // password change the old token is no longer accepted).
@@ -127,6 +127,16 @@ function App() {
     localStorage.setItem('token', newToken);
     setToken(newToken);
   };
+
+  // A session saved before clinics existed has no clinic in its cached user: ask
+  // for it once instead of making the person sign in again.
+  useEffect(() => {
+    if (!token || !user || user.clinic) return;
+    axios
+      .get(`${API_BASE_URL}/api/auth/profile`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.data.clinic && updateUser({ clinic: res.data.clinic }))
+      .catch(() => {}); // the name is cosmetic; the 401 interceptor already handles a dead session
+  }, [token, user, updateUser]);
 
   if (loading) return <div className="p-10 text-center">Loading...</div>;
 
