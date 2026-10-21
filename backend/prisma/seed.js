@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const { checkSeedTarget } = require('../src/utils/seedGuard');
 
 const prisma = new PrismaClient();
 
@@ -35,6 +36,9 @@ function nextBusinessDays(base, count) {
 }
 
 async function main() {
+  const target = checkSeedTarget(process.env.DATABASE_URL);
+  if (!target.ok) throw new Error(target.message);
+
   // Clear existing data
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
