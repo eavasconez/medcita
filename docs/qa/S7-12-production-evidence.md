@@ -1,6 +1,6 @@
 # S7-12 — Evidencia de ejecución en producción (Sprint 7)
 
-> Prueba hecha con un navegador real contra el sitio desplegado (`https://medcita-frontend.onrender.com`), por la interfaz y no por la API, el **21-oct-2026**, con el despliegue que incluye S7-01 a S7-11 (el PR #93 ya estaba en `main`). Se usó el médico demo (Dr. Santiago Pérez) y el administrador del seed. Las capturas de pantalla las tomó Playwright; las del teléfono y la bandeja de entrada las aportó Erick.
+> Prueba hecha con un navegador real contra el sitio desplegado (`https://medcita-frontend.onrender.com`), por la interfaz y no por la API, el **21-oct-2026**, con el despliegue que incluye S7-01 a S7-11 (el PR #93 ya estaba en `main`). Se usó el médico demo (Dr. Santiago Pérez) y el administrador del seed. Las capturas de pantalla las tomó Playwright; las del teléfono y la bandeja de entrada las aportó Erick. Los correos personales que aparecen (el remitente del correo y el buzón temporal del paciente de prueba) están pixelados.
 
 ## Resumen
 
