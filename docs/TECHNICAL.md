@@ -230,6 +230,16 @@ Detalles útiles:
 - `tests/migrations.test.js` comprueba que lo que construyen las migraciones coincide con `schema.prisma` (y falla, mostrando el SQL que falta, si alguien cambió un modelo sin crear su migración).
 - **CI** (`.github/workflows/ci.yml`): en cada Pull Request y en cada push a `main` corre `npm test` (con un PostgreSQL de servicio) y `npm run lint`.
 
+### Guía en PDF (`frontend/public/medcita-demo-guide.pdf`)
+
+Es la guía que se descarga desde la pantalla de login (credenciales de prueba, qué probar por rol, flujo de una cita, y la configuración de WhatsApp con Meta). Es **pública**: no debe contener tokens, IDs de la cuenta de Meta ni capturas con datos personales. Su fuente es `docs/guide/medcita-demo-guide.html` (con las capturas en `docs/guide/img/`, copias JPEG de `docs/qa/screenshots/s7-12/`). Cuando cambie la app o la configuración de WhatsApp, edita el HTML y regenera el PDF desde `docs/guide/` con Chrome o Chromium:
+
+```bash
+google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
+  --print-to-pdf=../../frontend/public/medcita-demo-guide.pdf \
+  "file://$PWD/medcita-demo-guide.html"
+```
+
 ## 7. Base de datos: migraciones de Prisma
 
 El esquema está en `backend/prisma/schema.prisma` y su historial en `backend/prisma/migrations/`: una carpeta `<fecha>_<nombre>/migration.sql` por cada cambio. Desde S7-04 **ya no se usa `prisma db push`**: no deja historial ni se puede reproducir, y con pacientes y citas reales eso es un riesgo.

@@ -64,7 +64,7 @@ Debes tener dos terminales abiertas:
 | Doctor | `dra.torres@medcita.ec` | `demo1234` | Dra. Camila Torres — Pediatría |
 | Doctor | `dr.mendoza@medcita.ec` | `demo1234` | Dr. Andrés Mendoza — Medicina Familiar |
 
-> La app en producción tiene su propia copia de estos mismos datos de demo (sembrados en Neon). **Estas contraseñas están en este repositorio, que es público: cámbialas desde Ajustes → Update Password antes de cargar pacientes reales en producción.** También hay un **PDF de guía completa** descargable directo desde la pantalla de login (panel lateral) con credenciales, qué probar según el rol, y el flujo paso a paso con capturas.
+> La app en producción tiene su propia copia de estos mismos datos de demo (sembrados en Neon). **Estas contraseñas están en este repositorio, que es público: cámbialas desde Ajustes → Update Password antes de cargar pacientes reales en producción.** También hay un **PDF de guía completa** descargable directo desde la pantalla de login (panel lateral): credenciales, qué probar según el rol, el flujo de una cita con el WhatsApp y el correo que recibe el paciente, y la configuración de WhatsApp con Meta paso a paso. Su fuente está en `docs/guide/` (cómo regenerarlo: `docs/TECHNICAL.md`).
 
 ## 🛠️ Tecnologías Utilizadas
 - **Frontend:** React 19, Vite, Tailwind CSS, React Router, Lucide React, react-big-calendar, Recharts.
@@ -108,6 +108,7 @@ Debes tener dos terminales abiertas:
 - **`docs/qa/`** — reportes de testing, seguridad, performance y validación en producción de cada sprint, con capturas.
 - **`docs/qa/S6-01-demo-script.md`** + **`docs/qa/S6-03-demo-deck.html`** — guión y deck para demos con médicos candidatos.
 - **`docs/qa/S6-10-backlog-v1.md`** — backlog priorizado de lo que falta para una v1.0 real (actualizado al cierre del Sprint 7: lo resuelto, el incidente del 20-oct y lo pendiente).
+- **`CHANGELOG.md`** — notas del release del Sprint 7: novedades, checklist de despliegue y lo que queda fuera del código.
 - **`docs/qa/S7-12-production-evidence.md`** — evidencia de la ejecución en producción el 21-oct-2026, con capturas del flujo completo, el WhatsApp y el correo recibidos.
 
 ## 🚧 Lo que falta (según el plan original)
