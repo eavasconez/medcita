@@ -154,6 +154,14 @@ describe('POST /api/auth/register', () => {
     expect((await register({ ...valid, email: 'otro@example.test' })).status).toBe(202);
   });
 
+  it('does not count the requests that are rejected for their data: they send no email', async () => {
+    for (let i = 0; i < LIMITS.registerPerEmail.limit + 2; i++) {
+      expect((await register({ ...valid, password: '123' })).status).toBe(400);
+    }
+
+    expect((await register()).status).toBe(202);
+  });
+
   it('limits the requests per IP', async () => {
     for (let i = 0; i < LIMITS.registerPerIp.limit; i++) {
       expect((await register({ ...valid, email: `persona${i}@example.test` })).status).toBe(202);
@@ -289,6 +297,13 @@ describe('QA mode (EXPOSE_ACCOUNT_LINKS)', () => {
     expect(res.status).toBe(202);
     const token = res.body.devLink.match(TOKEN_IN_TEXT)[1];
     expect((await verify(token)).status).toBe(201);
+  });
+
+  it('lifts the sign-up limits, so a test script can run over and over', async () => {
+    process.env.EXPOSE_ACCOUNT_LINKS = 'true';
+
+    for (let i = 0; i < LIMITS.registerPerEmail.limit + 2; i++) expect((await register()).status).toBe(202);
+    for (let i = 0; i < LIMITS.accountLinkPerIp.limit + 2; i++) expect((await verify(newToken())).status).toBe(400);
   });
 
   it('answers the same for an existing account, with no link', async () => {
