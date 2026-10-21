@@ -10,6 +10,7 @@ import {
   Calendar,
   CalendarCheck,
   Lock,
+  Building2,
   Save,
   CheckCircle2,
   AlertCircle,
@@ -27,6 +28,8 @@ const Settings = () => {
   const [saving, setSaving] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [clinicName, setClinicName] = useState('');
+  const [savingClinic, setSavingClinic] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -42,6 +45,7 @@ const Settings = () => {
           headers: { Authorization: `Bearer ${token}` }
         });
         setProfile(res.data);
+        setClinicName(res.data.clinic?.name || '');
         setFormData({
           name: res.data.name || '',
           specialty: res.data.specialty || '',
@@ -73,6 +77,25 @@ const Settings = () => {
       showToast(err.response?.data?.error || 'Error updating profile', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveClinic = async (e) => {
+    e.preventDefault();
+    setSavingClinic(true);
+    try {
+      const res = await axios.put(`${API_BASE_URL}/api/admin/clinic`, { name: clinicName }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setClinicName(res.data.name);
+      setProfile((prev) => ({ ...prev, clinic: res.data }));
+      // The sidebar and the tab title read the clinic from the cached user
+      updateUser({ clinic: res.data });
+      showToast('Clinic name updated');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Error updating the clinic name', 'error');
+    } finally {
+      setSavingClinic(false);
     }
   };
 
@@ -196,6 +219,51 @@ const Settings = () => {
 
           {/* Settings Tabs/Forms */}
           <div className="lg:col-span-2 space-y-8">
+            <div className="card sm:p-10">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center text-white shadow-lg">
+                  <Building2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-secondary uppercase tracking-tight">Clinic</h3>
+                  <p className="text-slate-400 font-medium text-sm">The clinic you work at: patients, appointments and users belong to it</p>
+                </div>
+              </div>
+
+              {displayRole === 'admin' ? (
+                <form className="space-y-4" onSubmit={handleSaveClinic}>
+                  <div className="space-y-2">
+                    <label htmlFor="clinic-name" className="form-label">Clinic name</label>
+                    <input
+                      id="clinic-name"
+                      type="text"
+                      required
+                      minLength={2}
+                      maxLength={80}
+                      disabled={loading}
+                      value={clinicName}
+                      onChange={(e) => setClinicName(e.target.value)}
+                      className="form-input disabled:opacity-60"
+                    />
+                    <p className="text-slate-400 text-xs font-medium">Shown in the sidebar and in the invitations you send</p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={savingClinic || loading || clinicName.trim() === (profile?.clinic?.name || '')}
+                    className="btn-primary px-8 py-3 rounded-xl flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <Save size={18} /> {savingClinic ? 'Saving...' : 'Save clinic name'}
+                  </button>
+                </form>
+              ) : (
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clinic name</p>
+                  <p className="text-2xl font-black text-secondary mt-1 break-words">{profile?.clinic?.name || user?.clinic?.name || '—'}</p>
+                  <p className="text-slate-400 text-xs font-medium mt-2">Only a clinic administrator can change it</p>
+                </div>
+              )}
+            </div>
+
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20">

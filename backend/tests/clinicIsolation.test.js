@@ -146,7 +146,7 @@ describe('appointments', () => {
 
     const res = await get(b.admin.token, '/api/appointments/stats');
 
-    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 0, patients: 1 });
+    expect(res.body).toEqual({ total: 1, positive: 1, cancelled: 0, noShow: 0, patients: 1 });
   });
 
   it('answers 404 to update or cancel an appointment of another clinic, and leaves it untouched', async () => {
@@ -268,24 +268,23 @@ describe('admin', () => {
     expect(report.body).toEqual([{ doctor: 'Dr b', appointments: 1 }]);
   });
 
-  it('creates new accounts inside the admin\'s own clinic', async () => {
+  it('invites new accounts into the admin\'s own clinic', async () => {
     const { b } = await twoClinics();
 
     const res = await send('post', b.admin.token, '/api/admin/doctors', {
       name: 'Dra. Nueva',
       email: 'nueva@example.test',
-      password: 'secret123',
       role: 'secretary'
     });
 
     expect(res.status).toBe(201);
-    expect((await prisma.doctor.findUnique({ where: { id: res.body.id } })).clinicId).toBe(b.clinic.id);
+    expect((await prisma.invitation.findUnique({ where: { id: res.body.id } })).clinicId).toBe(b.clinic.id);
   });
 
   it('answers 404 to edit or delete an account of another clinic, and leaves it untouched', async () => {
     const { a, b } = await twoClinics();
 
-    const put = await send('put', b.admin.token, `/api/admin/doctors/${a.doctor.user.id}`, { name: 'Cambiado', role: 'admin', password: 'newpass123' });
+    const put = await send('put', b.admin.token, `/api/admin/doctors/${a.doctor.user.id}`, { name: 'Cambiado', role: 'admin' });
     const del = await send('delete', b.admin.token, `/api/admin/doctors/${a.doctor.user.id}`);
 
     expect(put.status).toBe(404);
@@ -300,7 +299,6 @@ describe('admin', () => {
     const res = await send('post', b.admin.token, '/api/admin/doctors', {
       name: 'Super',
       email: 'super@example.test',
-      password: 'secret123',
       role: 'superadmin'
     });
 

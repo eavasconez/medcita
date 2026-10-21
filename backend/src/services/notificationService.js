@@ -1,6 +1,8 @@
 const twilio = require('twilio');
 const emailService = require('./emailService');
 const { buildTemplate } = require('./whatsappTemplates');
+const { recordNotification } = require('./notificationLog');
+const { maskPhone } = require('../utils/mask');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 // Overridable only so tests and local checks can point at a fake Graph API.
@@ -10,13 +12,6 @@ const hasMetaCreds = () =>
   !!(process.env.META_WHATSAPP_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
 const hasTwilioCreds = () =>
   !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
-
-// Logs end up in the hosting provider's dashboard: keep patients' phone numbers
-// out of them ("+593***042").
-const maskPhone = (phone) => {
-  const digits = String(phone).replace(/\D/g, '');
-  return digits.length > 6 ? `+${digits.slice(0, 3)}***${digits.slice(-3)}` : '***';
-};
 
 // What to do about the Meta errors an operator is most likely to hit. Meta's own
 // message is logged too; these say where to fix it in this project.
@@ -50,6 +45,23 @@ function describeMetaError(status, raw) {
   if (META_ERROR_HINTS[error.code]) parts.push(`HINT: ${META_ERROR_HINTS[error.code]}`);
   if (error.fbtrace_id) parts.push(`fbtrace_id: ${error.fbtrace_id}`);
   return parts.join(' | ');
+}
+
+// What goes in the notification history for a Meta failure: the code (so it can be
+// looked up), Meta's message and, when we know one, where to fix it.
+function metaFailure(status, raw) {
+  let error;
+  try {
+    error = JSON.parse(raw).error;
+  } catch {
+    // not JSON: keep what came
+  }
+  if (!error) return { errorCode: `meta_${status}`, error: `${status} ${String(raw).slice(0, 200)}` };
+  const hint = META_ERROR_HINTS[error.code];
+  return {
+    errorCode: `meta_${error.code ?? status}`,
+    error: `${error.message || status}${error.error_data?.details ? ` (${error.error_data.details})` : ''}${hint ? ` — ${hint}` : ''}`
+  };
 }
 
 // Body of the Cloud API request. A business can only open a conversation with an
@@ -90,15 +102,22 @@ async function sendWhatsAppViaMeta(to, message, template) {
       body: JSON.stringify(metaPayload(recipient, message, template))
     });
 
+    const raw = await res.text();
     if (!res.ok) {
-      console.error(`[META WHATSAPP ERROR] sending to ${maskPhone(recipient)}: ${describeMetaError(res.status, await res.text())}`);
-      return false;
+      console.error(`[META WHATSAPP ERROR] sending to ${maskPhone(recipient)}: ${describeMetaError(res.status, raw)}`);
+      return { ok: false, provider: 'meta', ...metaFailure(res.status, raw) };
     }
     console.log(`[META WHATSAPP] ${template ? `Template ${template.name}` : 'Message'} sent successfully to ${maskPhone(recipient)}`);
-    return true;
+    let messageId = null;
+    try {
+      messageId = JSON.parse(raw).messages?.[0]?.id ?? null;
+    } catch {
+      // the answer had no id we can read
+    }
+    return { ok: true, provider: 'meta', messageId };
   } catch (error) {
     console.error('[META WHATSAPP ERROR]:', error.message);
-    return false;
+    return { ok: false, provider: 'meta', errorCode: 'network', error: error.message };
   }
 }
 
@@ -109,17 +128,32 @@ async function sendWhatsAppViaTwilio(to, message) {
   try {
     const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     const formattedTo = to.startsWith('+') ? to : `+${to}`;
-    await client.messages.create({
+    const created = await client.messages.create({
       body: message,
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${formattedTo}`
     });
     console.log(`[TWILIO] WhatsApp sent successfully to ${maskPhone(formattedTo)}`);
-    return true;
+    return { ok: true, provider: 'twilio', messageId: created?.sid ?? null };
   } catch (error) {
     console.error('[TWILIO ERROR]:', error.message);
-    return false;
+    return { ok: false, provider: 'twilio', errorCode: error.code ? `twilio_${error.code}` : 'network', error: error.message };
   }
+}
+
+// Picks the provider and sends: { ok, provider, messageId?, errorCode?, error?, simulated? }
+async function deliverWhatsApp(to, message, template) {
+  if (hasMetaCreds()) {
+    return sendWhatsAppViaMeta(to, message, template);
+  }
+  if (hasTwilioCreds()) {
+    return sendWhatsAppViaTwilio(to, message);
+  }
+  // Mock: show the text while developing, but never a patient's name in production logs.
+  const shown = process.env.NODE_ENV === 'production' ? '' : `, Message: ${message}`;
+  console.log(`[WHATSAPP MOCK] To: ${maskPhone(to)}${shown}`);
+  console.log('No WhatsApp provider configured, mocked output only.');
+  return { ok: true, provider: 'mock', simulated: true };
 }
 
 /**
@@ -131,26 +165,25 @@ const notificationService = {
    * Twilio -> mock (console only) when no provider is configured.
    * `message` is the finished text; `template` (from whatsappTemplates.buildTemplate)
    * is what Meta needs to start a conversation, and is ignored by the other providers.
+   * With a `context` ({ kind, recipient, clinicId?, appointmentId? }) the outcome is
+   * written to the notification history. Resolves to whether it went out.
    */
-  sendWhatsApp: async (to, message, template) => {
-    if (hasMetaCreds()) {
-      return sendWhatsAppViaMeta(to, message, template);
-    }
-    if (hasTwilioCreds()) {
-      return sendWhatsAppViaTwilio(to, message);
-    }
-    // Mock: show the text while developing, but never a patient's name in production logs.
-    const shown = process.env.NODE_ENV === 'production' ? '' : `, Message: ${message}`;
-    console.log(`[WHATSAPP MOCK] To: ${maskPhone(to)}${shown}`);
-    console.log('No WhatsApp provider configured, mocked output only.');
-    return true;
+  sendWhatsApp: async (to, message, template, context) => {
+    const detail = await deliverWhatsApp(to, message, template);
+    await recordNotification({ channel: 'whatsapp', to, detail, context });
+    return detail.ok;
   },
 
   /**
    * Send an email. Delegates provider selection and HTML templates to
-   * emailService (Brevo preferred, SendGrid fallback, mock last).
+   * emailService (Brevo preferred, SendGrid fallback, mock last). With a `context`
+   * the outcome is written to the notification history.
    */
-  sendEmail: emailService.sendEmail,
+  sendEmail: async (to, subject, text, html, context) => {
+    const detail = await emailService.deliverEmail(to, subject, text, html);
+    await recordNotification({ channel: 'email', to, detail, context });
+    return detail.ok;
+  },
 
   /**
    * Send a full appointment confirmation (WhatsApp + Email)
@@ -164,10 +197,13 @@ const notificationService = {
       time
     });
     const msg = whatsapp.text;
+    // What the notification history records about each message
+    const about = { clinicId: appointment.clinicId, appointmentId: appointment.id };
+    const toPatient = { ...about, kind: 'appointment_confirmation', recipient: 'patient' };
 
     // Each notification is independent: run them concurrently and don't let
     // one recipient's failure suppress the others (allSettled, not all).
-    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp)];
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp, toPatient)];
 
     // Patient confirmation email
     if (patient.email) {
@@ -179,7 +215,7 @@ const notificationService = {
         time,
         address: doctor.address
       });
-      tasks.push(notificationService.sendEmail(patient.email, subject, msg, html));
+      tasks.push(notificationService.sendEmail(patient.email, subject, msg, html, toPatient));
     }
 
     // Doctor notification email that a new appointment was booked
@@ -193,7 +229,7 @@ const notificationService = {
         date,
         time
       });
-      tasks.push(notificationService.sendEmail(doctor.email, doctorSubject, doctorMsg, doctorHtml));
+      tasks.push(notificationService.sendEmail(doctor.email, doctorSubject, doctorMsg, doctorHtml, { ...about, kind: 'doctor_new_appointment', recipient: 'doctor' }));
     }
 
     await Promise.allSettled(tasks);
@@ -213,9 +249,10 @@ const notificationService = {
       doctorName: doctor.name
     });
     const msg = whatsapp.text;
+    const about = { clinicId: appointment.clinicId, appointmentId: appointment.id, kind: 'appointment_reminder', recipient: 'patient' };
 
     // Each channel is independent: one failing must not suppress the other.
-    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp)];
+    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp, about)];
 
     if (patient.email && patient.email.includes('@')) {
       const html = emailService.templates.reminderHtml({
@@ -225,7 +262,7 @@ const notificationService = {
         time,
         dayLabel
       });
-      tasks.push(notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html));
+      tasks.push(notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html, about));
     }
 
     const results = await Promise.allSettled(tasks);
@@ -236,6 +273,51 @@ const notificationService = {
    * Email the account owner a password reset link. Resolves to true when the
    * email was delivered.
    */
+  sendSignupConfirmation: async ({ name, email, clinicName, url, expiresInHours }) => {
+    const text = [
+      `Hola ${name},`,
+      '',
+      `Para terminar de crear el consultorio "${clinicName}" en MedCita, confirma que este correo es tuyo.`,
+      `Abre este enlace (vale ${expiresInHours} horas y solo se puede usar una vez):`,
+      url,
+      '',
+      'Si no pediste esta cuenta, ignora este correo: no se creará nada.'
+    ].join('\n');
+    const html = emailService.templates.signupConfirmationHtml({ name, clinicName, url, expiresInHours });
+    return notificationService.sendEmail(email, `Confirma tu correo para crear ${clinicName} - MedCita`, text, html, { kind: 'signup_confirmation', recipient: 'user' });
+  },
+
+  // Sent instead of a confirmation when the email already has an account, so the
+  // page that asked for the sign-up never has to say which emails are registered.
+  sendAccountAlreadyExists: async ({ doctor, loginUrl, resetUrl }) => {
+    const text = [
+      `Hola ${doctor.name},`,
+      '',
+      'Alguien intentó crear una cuenta de MedCita con este correo, pero ya tienes una, así que no se creó nada nuevo.',
+      `Si fuiste tú, inicia sesión: ${loginUrl}`,
+      `Si olvidaste tu contraseña, restablécela: ${resetUrl}`,
+      '',
+      'Si no fuiste tú, ignora este correo: tu cuenta sigue como estaba.'
+    ].join('\n');
+    const html = emailService.templates.accountExistsHtml({ name: doctor.name, loginUrl, resetUrl });
+    // No clinic on the row: it would tell a clinic's admin that someone tried to sign up with their user's email
+    return notificationService.sendEmail(doctor.email, 'Ya tienes una cuenta en MedCita', text, html, { kind: 'account_exists', recipient: 'user' });
+  },
+
+  sendInvitation: async ({ name, email, clinicId, clinicName, invitedBy, role, url, expiresInDays }) => {
+    const text = [
+      `Hola ${name},`,
+      '',
+      `${invitedBy} te invitó a unirte al consultorio "${clinicName}" en MedCita.`,
+      `Abre este enlace para aceptar y elegir tu contraseña (vale ${expiresInDays} días y solo se puede usar una vez):`,
+      url,
+      '',
+      'Si no esperabas esta invitación, ignora este correo: no se creará ninguna cuenta.'
+    ].join('\n');
+    const html = emailService.templates.invitationHtml({ name, clinicName, invitedBy, role, url, expiresInDays });
+    return notificationService.sendEmail(email, `${invitedBy} te invitó a ${clinicName} - MedCita`, text, html, { kind: 'invitation', recipient: 'user', clinicId });
+  },
+
   sendPasswordReset: async ({ doctor, resetUrl, expiresInMinutes }) => {
     const text = [
       `Hola ${doctor.name},`,
@@ -247,7 +329,7 @@ const notificationService = {
       'Si no pediste este cambio, ignora este correo: tu contraseña no se modificará.'
     ].join('\n');
     const html = emailService.templates.passwordResetHtml({ name: doctor.name, resetUrl, expiresInMinutes });
-    return notificationService.sendEmail(doctor.email, 'Restablece tu contraseña - MedCita', text, html);
+    return notificationService.sendEmail(doctor.email, 'Restablece tu contraseña - MedCita', text, html, { kind: 'password_reset', recipient: 'user', clinicId: doctor.clinicId });
   }
 };
 

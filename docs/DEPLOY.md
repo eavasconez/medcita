@@ -352,6 +352,23 @@ FROM "Clinic" WHERE slug = 'plataforma';
 
 **Marcha atrás.** Las migraciones no tienen «deshacer». Con la base ya migrada, la versión anterior del código no puede escribir (le falta `clinicId`), así que la salida es corregir hacia adelante o restaurar la copia de Neon, perdiendo lo escrito después de hacerla.
 
+## Alta de consultorios e invitaciones: necesitan correo (S8-02)
+
+Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
+
+- **El proveedor de correo (Brevo) tiene que funcionar.** Sin proveedor el envío es *mock*: se anota en el log y el enlace nunca llega, así que nadie podría registrarse ni aceptar una invitación. El panel avisa a quien invita cuando el correo no salió («Invitation saved, but the email could not be delivered») y la invitación se puede reenviar.
+- **`FRONTEND_URL` debe empezar por el origen real de la aplicación**: los enlaces se arman con el primer origen de la lista (`https://…/verify-email?token=…`, `/accept-invitation?token=…`).
+- **No definir `EXPOSE_ACCOUNT_LINKS`.** Es un modo solo para pruebas locales que devuelve el enlace en la respuesta; el servidor se niega a arrancar si lo encuentra con `NODE_ENV=production` o en Render.
+- **Prueba de humo tras desplegar:** registrar un correo propio en `/register`, abrir el enlace del correo y comprobar que entra al consultorio nuevo; invitar a otro correo propio y aceptar la invitación.
+- Las cuentas ya existentes no cambian. Una migración nueva crea las tablas `SignupRequest` e `Invitation` (no toca datos).
+
+## Ramas: `main` es producción, `develop` es donde se integra
+
+- **`main`** es lo que corre en producción (Render despliega de ahí). Solo recibe lo que ya se probó.
+- **`develop`** es la rama de integración del Sprint 8 en adelante: cada ticket sale de `develop` y su PR apunta a `develop`.
+- **S8-01 vive solo en `develop`.** Se fusionó a `main` por error el 21-oct-2026 (PR #103) y se deshizo con el commit `3a61e01` (revert); la base de Neon no llegó a migrarse.
+- **Para llevar `develop` a `main`** (cuando se decida pasar a producción), primero hay que **revertir ese revert** en `main` (`git revert 3a61e01`); si no, git considera S8-01 ya deshecho y lo omite al fusionar. Después se hace el merge de `develop` a `main` y se sigue «Primer despliegue con consultorios».
+
 ## Notas para futuros redeploys
 
 - Cada deploy del backend ejecuta `prisma migrate deploy`. Para cambiar el esquema a partir de ahora (migraciones, qué revisar, cómo se prueba) ver `docs/TECHNICAL.md`, sección 7. Nunca usar `db push` contra Neon: no deja historial.

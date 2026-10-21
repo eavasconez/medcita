@@ -1,24 +1,13 @@
-const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const notificationService = require('./notificationService');
+const { recordAccountEvent } = require('./auditLog');
+const { TOKEN_PATTERN, newToken, hashToken, frontendLink, logDevLink } = require('../utils/tokens');
 
 const RESET_TOKEN_TTL_MINUTES = 60;
 const BCRYPT_ROUNDS = 10;
-// 32 random bytes encoded as base64url are always 43 characters long.
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 class InvalidResetTokenError extends Error {}
-
-// Tokens are high-entropy random values, so a plain SHA-256 is enough: there is
-// nothing to brute force, and a leaked table can't be turned back into links.
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
-
-function buildResetUrl(token) {
-  // FRONTEND_URL may list several CORS origins; the first one is the app itself.
-  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/+$/, '');
-  return `${frontendUrl}/reset-password?token=${token}`;
-}
 
 /**
  * Create a reset link for the account with this (already normalized) email and
@@ -26,10 +15,10 @@ function buildResetUrl(token) {
  * an email was delivered.
  */
 async function requestPasswordReset(email) {
-  const doctor = await prisma.doctor.findUnique({ where: { email }, select: { id: true, name: true, email: true } });
+  const doctor = await prisma.doctor.findUnique({ where: { email }, select: { id: true, name: true, email: true, clinicId: true } });
   if (!doctor) return false;
 
-  const token = crypto.randomBytes(32).toString('base64url');
+  const token = newToken();
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
 
   // Only the newest link works: asking again replaces any earlier, unused one.
@@ -38,12 +27,8 @@ async function requestPasswordReset(email) {
     prisma.passwordResetToken.create({ data: { doctorId: doctor.id, tokenHash: hashToken(token), expiresAt } })
   ]);
 
-  const resetUrl = buildResetUrl(token);
-  // Dev aid for machines with no email provider configured. Off unless asked for:
-  // a link in the logs is a valid credential for the next hour.
-  if (process.env.LOG_PASSWORD_RESET_LINKS === 'true') {
-    console.log(`[DEV] Password reset link for ${doctor.email}: ${resetUrl}`);
-  }
+  const resetUrl = frontendLink('/reset-password', token);
+  logDevLink('Password reset link', doctor.email, resetUrl);
 
   return notificationService.sendPasswordReset({ doctor, resetUrl, expiresInMinutes: RESET_TOKEN_TTL_MINUTES });
 }
@@ -53,7 +38,7 @@ async function requestPasswordReset(email) {
  * for any token that is malformed, unknown, expired or already used (callers must
  * not tell those apart). Resolves to the account { id, email }.
  */
-async function resetPassword(token, newPassword) {
+async function resetPassword(token, newPassword, req) {
   if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new InvalidResetTokenError();
 
   const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
@@ -77,8 +62,9 @@ async function resetPassword(token, newPassword) {
       where: { id: record.doctorId },
       // passwordChangedAt signs out every session opened with the old password
       data: { password: passwordHash, passwordChangedAt: new Date() },
-      select: { id: true, email: true }
+      select: { id: true, email: true, name: true, role: true, clinicId: true }
     });
+    await recordAccountEvent(tx, req, doctor, 'password_reset');
     // Any other link still floating around for this account dies with this one.
     await tx.passwordResetToken.deleteMany({ where: { doctorId: record.doctorId } });
     return doctor;

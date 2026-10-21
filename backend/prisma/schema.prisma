@@ -23,6 +23,7 @@ model Clinic {
   patients       Patient[]
   appointments   Appointment[]
   availabilities Availability[]
+  invitations    Invitation[]
 }
 
 model Doctor {
@@ -134,9 +135,79 @@ model AuditLog {
   // The clinic the actor belongs to. Entries keep no foreign key, like actorId.
   clinicId  String
   changes   Json?
+  // Where the request came from (the client IP and its User-Agent, shortened)
+  ip        String?
+  userAgent String?
 
   @@index([clinicId, createdAt, seq])
   @@index([createdAt, seq])
   @@index([actorId])
   @@index([entity, entityId])
+}
+
+// A sign-up waiting for its email to be confirmed. Nothing exists yet (no clinic,
+// no account): both are created when the link is used. Only the SHA-256 hash of
+// the link's token is stored, and the password only as a bcrypt hash.
+model SignupRequest {
+  id           String   @id @default(uuid())
+  tokenHash    String   @unique
+  name         String
+  email        String
+  clinicName   String
+  passwordHash String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+}
+
+// A person an admin invited to join a clinic, until they accept: the account does
+// not exist yet (they choose their own password with the emailed link). One pending
+// invitation per email and clinic; inviting again replaces its link. Only the
+// SHA-256 hash of the token is stored. The inviter is kept by id and name, without a
+// foreign key, so the invitation outlives them.
+model Invitation {
+  id            String   @id @default(uuid())
+  tokenHash     String   @unique
+  name          String
+  email         String
+  role          String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  invitedById   String
+  invitedByName String
+  clinicId      String
+  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, email])
+}
+
+// One row per message MedCita tried to send (WhatsApp or email): whether it went
+// out, through which provider, and why not when it failed. It never keeps the text
+// of the message or the full address: only a masked destination, enough to tell
+// recipients apart. Like AuditLog it has no foreign keys, so it outlives what it
+// refers to. `clinicId` is empty for messages sent before a clinic exists (the
+// sign-up confirmation).
+model NotificationLog {
+  id                String   @id @default(uuid())
+  createdAt         DateTime @default(now())
+  clinicId          String?
+  appointmentId     String?
+  // appointment_confirmation, appointment_reminder, doctor_new_appointment,
+  // password_reset, signup_confirmation, account_exists, invitation
+  kind              String
+  channel           String
+  provider          String
+  // patient, doctor or user: who the message was for
+  recipient         String
+  // sent, failed, or simulated (no provider is configured: nothing really left)
+  status            String
+  errorCode         String?
+  error             String?
+  providerMessageId String?
+  // "+593***042" or "ma***@gmail.com"
+  destination       String
+
+  @@index([clinicId, createdAt])
+  @@index([appointmentId, createdAt])
 }

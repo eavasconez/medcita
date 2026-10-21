@@ -6,7 +6,7 @@
   },
   "item": [
     {
-      "name": "S1-01 - Registro de médico",
+      "name": "S1-01 - Registro con correo confirmado (POST /auth/register y /auth/verify-email)",
       "item": [
         {
           "name": "Falla - nombre vacío",
@@ -31,7 +31,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"\",\n  \"email\": \"\",\n  \"password\": \"\"\n}"
+              "raw": "{\n  \"name\": \"\",\n  \"email\": \"\",\n  \"password\": \"\",\n  \"clinicName\": \"Consultorio de Prueba\"\n}"
             }
           },
           "event": [
@@ -70,7 +70,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123456\",\n  \"clinicName\": \"Consultorio de Prueba\"\n}"
             }
           },
           "event": [
@@ -80,6 +80,45 @@
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
                   "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('A valid email is required'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - nombre del consultorio vacío",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"123456\",\n  \"clinicName\": \" \"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Clinic name must be between 2 and 80 characters'));"
                 ],
                 "type": "text/javascript"
               }
@@ -109,7 +148,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"123\"\n}"
+              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"123\",\n  \"clinicName\": \"Consultorio de Prueba\"\n}"
             }
           },
           "event": [
@@ -126,7 +165,7 @@
           ]
         },
         {
-          "name": "Éxito - registro válido (normaliza espacios y mayúsculas)",
+          "name": "Éxito - registro válido (202: no crea nada hasta confirmar el correo)",
           "request": {
             "method": "POST",
             "header": [
@@ -148,7 +187,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"  {{testEmailMixedCase}}  \",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"  {{testEmailMixedCase}}  \",\n  \"password\": \"123456\",\n  \"clinicName\": \"  Consultorio   de  Prueba  \"\n}"
             }
           },
           "event": [
@@ -167,10 +206,13 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
-                  "pm.test('Devuelve token', () => pm.expect(pm.response.json().token).to.be.a('string'));",
-                  "pm.test('Email normalizado en minúsculas y sin espacios', () => pm.expect(pm.response.json().user.email).to.eql(pm.variables.get('testEmail')));",
-                  "pm.collectionVariables.set('lastToken', pm.response.json().token);"
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Pide revisar el correo y no entrega sesión', () => { pm.expect(body.message).to.match(/^Check your email/); pm.expect(body).to.not.have.property('token'); });",
+                  "pm.collectionVariables.set('s101Message', body.message);",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s101Token', link.split('token=')[1]);"
                 ],
                 "type": "text/javascript"
               }
@@ -178,7 +220,127 @@
           ]
         },
         {
-          "name": "Falla - email duplicado (case-insensitive)",
+          "name": "Éxito - confirmar el correo crea el consultorio y su admin (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s101Token}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve token', () => pm.expect(body.token).to.be.a('string'));",
+                  "pm.test('Email normalizado en minúsculas y sin espacios', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('testEmail')));",
+                  "pm.test('Es admin de un consultorio con el nombre elegido (espacios normalizados)', () => { pm.expect(body.user.role).to.eql('admin'); pm.expect(body.user.clinic.name).to.eql('Consultorio de Prueba'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el enlace sirve una sola vez (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s101Token}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Código INVALID_LINK', () => pm.expect(pm.response.json().code).to.eql('INVALID_LINK'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - enlace inventado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Código INVALID_LINK', () => pm.expect(pm.response.json().code).to.eql('INVALID_LINK'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - correo que ya tiene cuenta: misma respuesta y sin enlace (no revela la cuenta)",
           "request": {
             "method": "POST",
             "header": [
@@ -200,7 +362,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Otro Doctor\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"Otro Doctor\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"123456\",\n  \"clinicName\": \"Consultorio de Prueba\"\n}"
             }
           },
           "event": [
@@ -208,8 +370,10 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Email already registered'));"
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Mismo mensaje que con un correo nuevo', () => pm.expect(body.message).to.eql(pm.collectionVariables.get('s101Message')));",
+                  "pm.test('No se crea ningún enlace', () => pm.expect(body).to.not.have.property('devLink'));"
                 ],
                 "type": "text/javascript"
               }
@@ -2850,7 +3014,7 @@
       "name": "S1-09 - Gestión de disponibilidad (POST/GET)",
       "item": [
         {
-          "name": "Setup - registrar doctor de prueba propio",
+          "name": "Setup - doctor de prueba propio: pedir el alta (202, pide confirmar el correo)",
           "request": {
             "method": "POST",
             "header": [
@@ -2872,7 +3036,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S109 Doctor\",\n  \"email\": \"{{s109Email}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"S109 Doctor\",\n  \"email\": \"{{s109Email}}\",\n  \"password\": \"123456\",\n  \"clinicName\": \"Consultorio S109\"\n}"
             }
           },
           "event": [
@@ -2885,6 +3049,47 @@
                 "type": "text/javascript"
               }
             },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s109TokenLink', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - doctor de prueba propio: confirmar el correo (201, entra como admin de su consultorio)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s109TokenLink}}\"\n}"
+            }
+          },
+          "event": [
             {
               "listen": "test",
               "script": {
@@ -3768,7 +3973,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"email\": \"{{s111Email}}\"\n}"
             }
           },
           "event": [
@@ -3795,7 +4000,7 @@
           ]
         },
         {
-          "name": "Falla - crear médico con password corto",
+          "name": "Falla - el admin no puede fijar la contraseña de otra persona (400)",
           "request": {
             "method": "POST",
             "header": [
@@ -3821,7 +4026,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123\"\n}"
+              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\"\n}"
             }
           },
           "event": [
@@ -3830,7 +4035,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Password must be at least 6 characters'));"
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.include('Passwords are chosen by each person'));"
                 ],
                 "type": "text/javascript"
               }
@@ -3864,7 +4069,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\",\n  \"role\": \"superadmin\"\n}"
+              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"role\": \"superadmin\"\n}"
             }
           },
           "event": [
@@ -3907,7 +4112,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\"\n}"
             }
           },
           "event": [
@@ -3923,7 +4128,7 @@
           ]
         },
         {
-          "name": "Éxito - crear médico válido (sin exponer password)",
+          "name": "Éxito - invitar a una secretaria (201, sin contraseña)",
           "request": {
             "method": "POST",
             "header": [
@@ -3949,7 +4154,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\",\n  \"role\": \"secretary\"\n}"
+              "raw": "{\n  \"name\": \"S111 Test\",\n  \"email\": \"{{s111Email}}\",\n  \"role\": \"secretary\"\n}"
             }
           },
           "event": [
@@ -3959,8 +4164,10 @@
                 "exec": [
                   "pm.test('Status 201', () => pm.response.to.have.status(201));",
                   "const body = pm.response.json();",
-                  "pm.test('No expone el password', () => pm.expect(body).to.not.have.property('password'));",
-                  "pm.collectionVariables.set('s111DoctorId', body.id);"
+                  "pm.test('No hay contraseña y el correo salió', () => { pm.expect(body).to.not.have.property('password'); pm.expect(body.delivered).to.eql(true); });",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s111InviteToken', link.split('token=')[1]);"
                 ],
                 "type": "text/javascript"
               }
@@ -3968,7 +4175,47 @@
           ]
         },
         {
-          "name": "Falla - crear médico con email duplicado",
+          "name": "Setup - la secretaria acepta la invitación y elige su contraseña (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s111InviteToken}}\",\n  \"password\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Es secretaria', () => pm.expect(pm.response.json().user.role).to.eql('secretary'));",
+                  "pm.collectionVariables.set('s111DoctorId', pm.response.json().user.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - invitar a quien ya tiene cuenta en el consultorio (409)",
           "request": {
             "method": "POST",
             "header": [
@@ -3994,7 +4241,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Otro\",\n  \"email\": \"{{s111Email}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"Otro\",\n  \"email\": \"{{s111Email}}\"\n}"
             }
           },
           "event": [
@@ -4002,8 +4249,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('Email already registered'));"
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Mensaje de error correcto', () => pm.expect(pm.response.json().error).to.eql('This person already has an account in your clinic'));"
                 ],
                 "type": "text/javascript"
               }
@@ -4144,7 +4391,7 @@
           ]
         },
         {
-          "name": "Setup - crear médico dedicado para prueba de FK",
+          "name": "Setup - médico dedicado para la prueba de FK: el admin invita (201)",
           "request": {
             "method": "POST",
             "header": [
@@ -4170,7 +4417,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S111 FK Test\",\n  \"email\": \"{{s111FkEmail}}\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"S111 FK Test\",\n  \"email\": \"{{s111FkEmail}}\"\n}"
             }
           },
           "event": [
@@ -4188,7 +4435,48 @@
               "script": {
                 "exec": [
                   "pm.test('Status 201', () => pm.response.to.have.status(201));",
-                  "pm.collectionVariables.set('s111FkDoctorId', pm.response.json().id);"
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s111FkTokenLink', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - médico dedicado para la prueba de FK: la persona acepta y elige su contraseña (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s111FkTokenLink}}\",\n  \"password\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s111FkDoctorId', pm.response.json().user.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -6301,7 +6589,7 @@
       "name": "S7-08 - Cambio de contraseña e invalidar sesiones (POST /auth/change-password)",
       "item": [
         {
-          "name": "Setup - registrar un médico desechable",
+          "name": "Setup - médico desechable: pedir el alta (202, pide confirmar el correo)",
           "request": {
             "method": "POST",
             "header": [
@@ -6323,7 +6611,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S708 Médico\",\n  \"email\": \"{{s708Email}}\",\n  \"password\": \"old-password-707\"\n}"
+              "raw": "{\n  \"name\": \"S708 Médico\",\n  \"email\": \"{{s708Email}}\",\n  \"password\": \"old-password-707\",\n  \"clinicName\": \"Consultorio S708\"\n}"
             }
           },
           "event": [
@@ -6336,6 +6624,47 @@
                 "type": "text/javascript"
               }
             },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s708OldTokenLink', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - médico desechable: confirmar el correo (201, entra como admin de su consultorio)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s708OldTokenLink}}\"\n}"
+            }
+          },
+          "event": [
             {
               "listen": "test",
               "script": {
@@ -6850,7 +7179,7 @@
           ]
         },
         {
-          "name": "Setup - el admin crea una secretaria",
+          "name": "Setup - secretaria: el admin invita (201)",
           "request": {
             "method": "POST",
             "header": [
@@ -6876,7 +7205,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"S709 Secretaria\",\n  \"email\": \"{{s709SecEmail}}\",\n  \"password\": \"secretaria-709\",\n  \"role\": \"secretary\"\n}"
+              "raw": "{\n  \"name\": \"S709 Secretaria\",\n  \"email\": \"{{s709SecEmail}}\",\n  \"role\": \"secretary\"\n}"
             }
           },
           "event": [
@@ -6894,7 +7223,48 @@
               "script": {
                 "exec": [
                   "pm.test('Status 201', () => pm.response.to.have.status(201));",
-                  "pm.collectionVariables.set('s709SecId', pm.response.json().id);"
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s709SecInviteLink', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - secretaria: la persona acepta y elige su contraseña (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s709SecInviteLink}}\",\n  \"password\": \"secretaria-709\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s709SecId', pm.response.json().user.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -7365,7 +7735,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user'));"
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user, invitation'));"
                 ],
                 "type": "text/javascript"
               }
@@ -7475,7 +7845,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Las 4 entradas de hoy (paciente, cita, mover, cancelar)', () => pm.expect(pm.response.json().total).to.eql(4));"
+                  "pm.test('Las 6 entradas de hoy: 2 inicios de sesión (al aceptar la invitación y al entrar) y las 4 acciones (paciente, cita, mover, cancelar)', () => pm.expect(pm.response.json().total).to.eql(6));"
                 ],
                 "type": "text/javascript"
               }
@@ -7559,7 +7929,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Sigue habiendo 4 entradas, con el nombre que tenía', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(4); pm.expect(b.entries[0].actor.name).to.eql('S709 Secretaria'); });"
+                  "pm.test('Siguen las 6 entradas, con el nombre que tenía', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(6); pm.expect(b.entries[0].actor.name).to.eql('S709 Secretaria'); });"
                 ],
                 "type": "text/javascript"
               }
@@ -8657,6 +9027,3224 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S8-02 - Alta con correo confirmado, invitaciones y nombre del consultorio",
+      "item": [
+        {
+          "name": "Setup - login del admin del consultorio demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s802DemoAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - registro sin nombre del consultorio (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Doctora\",\n  \"email\": \"sin-consultorio@example.com\",\n  \"password\": \"secret-802\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('Clinic name must be between 2 and 80 characters'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - registro válido pide confirmar el correo (202)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Doctora\",\n  \"email\": \"{{s802Email}}\",\n  \"password\": \"secret-802\",\n  \"clinicName\": \"  Consultorio   S802  \"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s802Email', 's802.' + Date.now() + '@example.com');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Sin sesión: no se creó nada todavía', () => { pm.expect(body.message).to.match(/^Check your email/); pm.expect(body).to.not.have.property('token'); });",
+                  "pm.collectionVariables.set('s802Message', body.message);",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s802SignupToken', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - un correo que ya tiene cuenta recibe la misma respuesta y ningún enlace (202)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intruso\",\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"secret-802\",\n  \"clinicName\": \"Consultorio Intruso\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Mismo mensaje', () => pm.expect(body.message).to.eql(pm.collectionVariables.get('s802Message')));",
+                  "pm.test('Sin enlace', () => pm.expect(body).to.not.have.property('devLink'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - enlace de confirmación inventado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('INVALID_LINK', () => pm.expect(pm.response.json().code).to.eql('INVALID_LINK'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - confirmar crea el consultorio con el nombre elegido y su admin (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802SignupToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Admin de «Consultorio S802»', () => { pm.expect(body.user.role).to.eql('admin'); pm.expect(body.user.clinic.name).to.eql('Consultorio S802'); });",
+                  "pm.collectionVariables.set('s802AdminToken', body.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el enlace de confirmación sirve una sola vez (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802SignupToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el consultorio nuevo empieza vacío",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sin pacientes de otros', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - invitar con una contraseña (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Secretaria\",\n  \"email\": \"x@example.com\",\n  \"password\": \"una-clave\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.include('Passwords are chosen by each person'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - invitar a una secretaria (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Secretaria\",\n  \"email\": \"{{s802SecEmail}}\",\n  \"role\": \"secretary\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s802SecEmail', 's802.sec.' + Date.now() + '@example.com');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Enviada, sin contraseña', () => { pm.expect(body.delivered).to.eql(true); pm.expect(body).to.not.have.property('password'); pm.expect(body.expired).to.eql(false); });",
+                  "pm.collectionVariables.set('s802InvitationId', body.id);",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s802InviteToken', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la invitación aparece como pendiente y sin enlace",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('Está la invitación', () => pm.expect(list.map(i => i.id)).to.include(pm.collectionVariables.get('s802InvitationId')));",
+                  "pm.test('Nunca incluye el enlace', () => pm.expect(JSON.stringify(list)).to.not.match(/token|devLink/i));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la vista previa dice a qué consultorio se invita",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/invitation-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "invitation-preview"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802InviteToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Consultorio, rol y quién invita', () => { pm.expect(body.clinicName).to.eql('Consultorio S802'); pm.expect(body.role).to.eql('secretary'); pm.expect(body.invitedByName).to.eql('S802 Doctora'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - vista previa con un enlace inventado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/invitation-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "invitation-preview"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - aceptar con una contraseña corta (400); la invitación sigue viva",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802InviteToken}}\",\n  \"password\": \"123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('Password must be at least 6 characters'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - aceptar crea la cuenta en el consultorio con el rol invitado (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802InviteToken}}\",\n  \"password\": \"secretaria-802\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Secretaria de «Consultorio S802»', () => { pm.expect(body.user.role).to.eql('secretary'); pm.expect(body.user.clinic.name).to.eql('Consultorio S802'); });",
+                  "pm.collectionVariables.set('s802SecToken', body.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - la invitación se acepta una sola vez (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802InviteToken}}\",\n  \"password\": \"secretaria-802\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - invitar a quien ya tiene cuenta en el consultorio (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Secretaria\",\n  \"email\": \"{{s802SecEmail}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - una secretaria no puede invitar (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802SecToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"X\",\n  \"email\": \"otro@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - invitar a una asistente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"S802 Asistente\",\n  \"email\": \"{{s802AsstEmail}}\",\n  \"role\": \"secretary\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s802AsstEmail', 's802.asst.' + Date.now() + '@example.com');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s802AsstId', pm.response.json().id);",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s802AsstToken1', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - reenviar la invitación da un enlace nuevo (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations/{{s802AsstId}}/resend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations",
+                "{{s802AsstId}}",
+                "resend"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Enviada', () => pm.expect(pm.response.json().delivered).to.eql(true));",
+                  "const link = pm.response.json().devLink;",
+                  "pm.test('QA: la respuesta trae el enlace', () => pm.expect(link).to.be.a('string'));",
+                  "pm.collectionVariables.set('s802AsstToken2', link.split('token=')[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el enlace anterior ya no sirve tras reenviar (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802AsstToken1}}\",\n  \"password\": \"asistente-802\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un admin de OTRO consultorio no ve esa invitación",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802DemoAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No está', () => pm.expect(pm.response.json().map(i => i.id)).to.not.include(pm.collectionVariables.get('s802AsstId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un admin de OTRO consultorio no puede reenviarla (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802DemoAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations/{{s802AsstId}}/resend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations",
+                "{{s802AsstId}}",
+                "resend"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un admin de OTRO consultorio no puede cancelarla (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802DemoAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations/{{s802AsstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations",
+                "{{s802AsstId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - cancelar la invitación (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations/{{s802AsstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations",
+                "{{s802AsstId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un enlace cancelado ya no sirve (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/accept-invitation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "accept-invitation"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{s802AsstToken2}}\",\n  \"password\": \"asistente-802\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - cancelar de nuevo (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/invitations/{{s802AsstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "invitations",
+                "{{s802AsstId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - renombrar el consultorio (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/clinic",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "clinic"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"  Consultorio   S802 Renombrado \"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nombre normalizado', () => pm.expect(pm.response.json().name).to.eql('Consultorio S802 Renombrado'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el perfil ya trae el nombre nuevo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nombre nuevo', () => pm.expect(pm.response.json().clinic.name).to.eql('Consultorio S802 Renombrado'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - nombre de consultorio demasiado corto (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/clinic",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "clinic"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"A\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - una secretaria no puede renombrar el consultorio (403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802SecToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/clinic",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "clinic"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre Nuevo\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el consultorio demo conserva su nombre",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s802DemoAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sin cambios', () => pm.expect(pm.response.json().clinic.name).to.eql('Consultorio MedCita (demo)'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "S8-03 - Registro de sesiones y actividad (GET /admin/audit-log)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s803AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s803OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - cuántos intentos fallidos hay antes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?action=login_failed&pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "login_failed"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s803FailedBefore', pm.response.json().total);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la doctora inicia sesión (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dra.torres@medcita.ec\",\n  \"password\": \"demo1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s803DoctorId', pm.response.json().user.id);",
+                  "pm.collectionVariables.set('s803DoctorToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - contraseña equivocada contra la cuenta de la doctora (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dra.torres@medcita.ec\",\n  \"password\": \"contrasena-que-alguien-probo\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - correo que no existe (401): no deja ningún registro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nadie.s803@example.com\",\n  \"password\": \"lo-que-sea-1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el admin ve el intento fallido contra la doctora, con IP y navegador",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?action=login_failed&actorId={{s803DoctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "login_failed"
+                },
+                {
+                  "key": "actorId",
+                  "value": "{{s803DoctorId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const entries = pm.response.json().entries;",
+                  "pm.test('Hay un intento fallido de esa cuenta', () => { pm.expect(entries.length).to.be.at.least(1); pm.expect(entries[0]).to.include({ action: 'login_failed', entity: 'user' }); pm.expect(entries[0].actor.role).to.eql('doctor'); });",
+                  "pm.test('Trae IP y navegador', () => { pm.expect(entries[0].ip).to.be.a('string'); pm.expect(entries[0]).to.have.property('userAgent'); });",
+                  "pm.test('No guarda lo que se escribió', () => pm.expect(JSON.stringify(entries)).to.not.match(/torres@|contrasena-que-alguien-probo/));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el correo inexistente no sumó intentos fallidos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?action=login_failed&pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "login_failed"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Solo sumó el de la doctora', () => pm.expect(pm.response.json().total).to.eql(Number(pm.collectionVariables.get('s803FailedBefore')) + 1));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el inicio de sesión correcto también queda registrado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?action=login&actorId={{s803DoctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "login"
+                },
+                {
+                  "key": "actorId",
+                  "value": "{{s803DoctorId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Registrado', () => pm.expect(pm.response.json().total).to.be.at.least(1));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - action desconocida (400) y el mensaje lista las nuevas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?action=hackeado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "hackeado"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Lista login_failed y password_change', () => { const e = pm.response.json().error; pm.expect(e).to.include('login_failed'); pm.expect(e).to.include('password_change'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - una doctora no puede leer el registro (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el admin de otro consultorio no ve esa actividad",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s803OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?actorId={{s803DoctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "actorId",
+                  "value": "{{s803DoctorId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nada de otro consultorio', () => pm.expect(pm.response.json().entries).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "S8-04 - Historial de mensajes enviados (GET /appointments/:id/notifications)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s804AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s804OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login de otro médico del mismo consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dr.mendoza@medcita.ec\",\n  \"password\": \"demo1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s804DoctorBToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - id de la Dra. Torres",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors?role=doctor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "doctor"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().find(x => x.email === 'dra.torres@medcita.ec');",
+                  "pm.collectionVariables.set('s804DoctorId', d.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda una cita (dispara la confirmación)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S804 Paciente\",\n  \"patientPhone\": \"{{s804Phone}}\",\n  \"patientEmail\": \"s804.paciente@example.com\",\n  \"date\": \"2030-02-05\",\n  \"time\": \"10:00\",\n  \"doctorId\": \"{{s804DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s804Phone', '+59398' + String(Date.now()).slice(-7));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s804ApptId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la cita muestra los 3 mensajes que se intentaron",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s804ApptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s804ApptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Confirmación por WhatsApp y por correo, y aviso al médico', () => { const k = body.notifications.map(n => n.kind + ':' + n.channel).sort(); pm.expect(k).to.eql(['appointment_confirmation:email','appointment_confirmation:whatsapp','doctor_new_appointment:email']); });",
+                  "pm.test('Cada uno salió o se simuló (backend sin proveedores)', () => body.notifications.forEach(n => pm.expect(['sent','simulated']).to.include(n.status)));",
+                  "pm.test('Destino enmascarado y sin datos internos', () => { body.notifications.forEach(n => pm.expect(n.destination).to.include('*')); pm.expect(JSON.stringify(body)).to.not.match(/providerMessageId|clinicId|appointmentId|s804\\.paciente@/); });",
+                  "pm.test('El recordatorio de 24 h está pendiente', () => pm.expect(body.reminderPending).to.eql(true));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - otro médico del consultorio no ve los mensajes de esa cita (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804DoctorBToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s804ApptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s804ApptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el admin de OTRO consultorio no los ve (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s804ApptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s804ApptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - cita inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/00000000-0000-4000-8000-000000000000/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "00000000-0000-4000-8000-000000000000",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s804ApptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s804ApptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - estado de los envíos del consultorio (WhatsApp y correo)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/notification-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "notification-status"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Los dos canales y el umbral de aviso', () => { pm.expect(body.alertAfter).to.eql(3); pm.expect(body.channels).to.have.all.keys('whatsapp', 'email'); });",
+                  "pm.test('Sin fallas seguidas', () => { pm.expect(body.channels.whatsapp.failing).to.eql(false); pm.expect(body.channels.email.failing).to.eql(false); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un médico no puede ver el estado de los envíos (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804DoctorBToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/notification-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "notification-status"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - estado de los envíos sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/notification-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "notification-status"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - cancelar la cita de prueba",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s804AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s804ApptId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s804ApptId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "S8-05 - Flujo de la consulta y ausentismo (PUT status, /unclosed, /attendance)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s805AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s805OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - id de la Dra. Torres",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/doctors?role=doctor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "doctors"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "doctor"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().find(x => x.email === 'dra.torres@medcita.ec');",
+                  "pm.collectionVariables.set('s805DoctorId', d.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda la cita A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S805 Paciente A\",\n  \"patientPhone\": \"{{s805PhoneA}}\",\n  \"date\": \"2026-09-07\",\n  \"time\": \"{{s805TimeA}}\",\n  \"doctorId\": \"{{s805DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const m = String(10 + Math.floor(Math.random()*49)).padStart(2,'0');",
+                  "pm.collectionVariables.set('s805TimeA', '08:' + m);",
+                  "pm.collectionVariables.set('s805PhoneA', '+5939' + '1' + String(Date.now()).slice(-7));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s805ApptA', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda la cita B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S805 Paciente B\",\n  \"patientPhone\": \"{{s805PhoneB}}\",\n  \"date\": \"2026-09-14\",\n  \"time\": \"{{s805TimeB}}\",\n  \"doctorId\": \"{{s805DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const m = String(10 + Math.floor(Math.random()*49)).padStart(2,'0');",
+                  "pm.collectionVariables.set('s805TimeB', '08:' + m);",
+                  "pm.collectionVariables.set('s805PhoneB', '+5939' + '2' + String(Date.now()).slice(-7));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s805ApptB', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda la cita C",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S805 Paciente C\",\n  \"patientPhone\": \"{{s805PhoneC}}\",\n  \"date\": \"2026-09-21\",\n  \"time\": \"{{s805TimeC}}\",\n  \"doctorId\": \"{{s805DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const m = String(10 + Math.floor(Math.random()*49)).padStart(2,'0');",
+                  "pm.collectionVariables.set('s805TimeC', '08:' + m);",
+                  "pm.collectionVariables.set('s805PhoneC', '+5939' + '3' + String(Date.now()).slice(-7));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s805ApptC', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda una cita futura",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S805 Paciente F\",\n  \"patientPhone\": \"{{s805PhoneF}}\",\n  \"date\": \"2030-02-05\",\n  \"time\": \"{{s805TimeF}}\",\n  \"doctorId\": \"{{s805DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const m = String(10 + Math.floor(Math.random()*49)).padStart(2,'0');",
+                  "pm.collectionVariables.set('s805TimeF', '09:' + m);",
+                  "pm.collectionVariables.set('s805PhoneF', '+59396' + String(Date.now()).slice(-7));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s805ApptF', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la paciente llegó (arrived)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"arrived\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado arrived', () => pm.expect(pm.response.json().status).to.eql('arrived'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - empieza la consulta (in_progress)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado in_progress', () => pm.expect(pm.response.json().status).to.eql('in_progress'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - se cierra la consulta (completed)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado completed', () => pm.expect(pm.response.json().status).to.eql('completed'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - una cita pasada se marca como no asistió (no_show)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptB}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptB}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"no_show\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado no_show', () => pm.expect(pm.response.json().status).to.eql('no_show'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - no_show en una cita que aún no ocurre devuelve 400",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptF}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptF}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"no_show\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje claro', () => pm.expect(pm.response.json().error).to.match(/before its time/));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - un estado desconocido devuelve 400",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"vino\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Lista los estados válidos', () => pm.expect(pm.response.json().error).to.include('no_show'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - citas pasadas sin cerrar: aparece la C y no la A ni la B",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/unclosed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "unclosed"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const ids = body.appointments.map(a => a.id);",
+                  "pm.test('Incluye la cita sin cerrar', () => pm.expect(ids).to.include(pm.collectionVariables.get('s805ApptC')));",
+                  "pm.test('No incluye las cerradas ni la futura', () => { [ 's805ApptA','s805ApptB','s805ApptF' ].forEach(v => pm.expect(ids).to.not.include(pm.collectionVariables.get(v))); });",
+                  "pm.test('Trae el paciente y el total', () => { pm.expect(body.total).to.be.a('number'); pm.expect(body.appointments[0].Patient.name).to.be.a('string'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - ausentismo de septiembre",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/attendance?month=2026-09",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-09"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Mes y contadores', () => { pm.expect(b.month).to.eql('2026-09'); pm.expect(b.attended).to.be.at.least(1); pm.expect(b.noShow).to.be.at.least(1); });",
+                  "pm.test('Tasa entre 0 y 100', () => pm.expect(b.noShowRate).to.be.within(0, 100));",
+                  "pm.test('La paciente B aparece entre los que faltaron', () => pm.expect(b.noShowByPatient.map(r => r.name)).to.include('S805 Paciente B'));",
+                  "pm.test('Confirmadas contra no confirmadas', () => { pm.expect(b.confirmed).to.be.a('number'); pm.expect(b.notConfirmed).to.be.at.least(1); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - las estadísticas incluyen noShow",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/stats?doctorId={{s805DoctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "doctorId",
+                  "value": "{{s805DoctorId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae noShow', () => pm.expect(pm.response.json().noShow).to.be.at.least(1));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - un mes mal escrito devuelve 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/attendance?month=2026-13",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-13"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aislamiento - otro consultorio no ve esa paciente en su ausentismo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/attendance?month=2026-09",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-09"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No aparece S805 Paciente B', () => pm.expect(JSON.stringify(pm.response.json().noShowByPatient)).to.not.include('S805 Paciente'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aislamiento - otro consultorio no puede cambiar el estado (404)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"no_show\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limpieza - se cancelan las citas del folder",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s805AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s805ApptA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s805ApptA}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "['s805ApptB','s805ApptC','s805ApptF'].forEach(v => pm.sendRequest({url: pm.variables.get('baseUrl') + '/api/appointments/' + pm.collectionVariables.get(v), method: 'DELETE', header: {Authorization: 'Bearer ' + pm.collectionVariables.get('s805AdminToken')}}, () => {}));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -8938,6 +12526,210 @@
     },
     {
       "key": "s801PatientBId",
+      "value": ""
+    },
+    {
+      "key": "s101Message",
+      "value": ""
+    },
+    {
+      "key": "s101Token",
+      "value": ""
+    },
+    {
+      "key": "s101TokenLink",
+      "value": ""
+    },
+    {
+      "key": "s109TokenLink",
+      "value": ""
+    },
+    {
+      "key": "s111FkTokenLink",
+      "value": ""
+    },
+    {
+      "key": "s111InviteToken",
+      "value": ""
+    },
+    {
+      "key": "s708OldTokenLink",
+      "value": ""
+    },
+    {
+      "key": "s709SecInviteLink",
+      "value": ""
+    },
+    {
+      "key": "s802AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s802AsstEmail",
+      "value": ""
+    },
+    {
+      "key": "s802AsstId",
+      "value": ""
+    },
+    {
+      "key": "s802AsstToken1",
+      "value": ""
+    },
+    {
+      "key": "s802AsstToken1Link",
+      "value": ""
+    },
+    {
+      "key": "s802AsstToken2",
+      "value": ""
+    },
+    {
+      "key": "s802AsstToken2Link",
+      "value": ""
+    },
+    {
+      "key": "s802DemoAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s802Email",
+      "value": ""
+    },
+    {
+      "key": "s802InvitationId",
+      "value": ""
+    },
+    {
+      "key": "s802InviteToken",
+      "value": ""
+    },
+    {
+      "key": "s802InviteTokenLink",
+      "value": ""
+    },
+    {
+      "key": "s802Message",
+      "value": ""
+    },
+    {
+      "key": "s802SecEmail",
+      "value": ""
+    },
+    {
+      "key": "s802SecToken",
+      "value": ""
+    },
+    {
+      "key": "s802SignupToken",
+      "value": ""
+    },
+    {
+      "key": "s802SignupTokenLink",
+      "value": ""
+    },
+    {
+      "key": "s803AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s803OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s803DoctorToken",
+      "value": ""
+    },
+    {
+      "key": "s803DoctorId",
+      "value": ""
+    },
+    {
+      "key": "s803FailedBefore",
+      "value": ""
+    },
+    {
+      "key": "s804AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s804OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s804DoctorBToken",
+      "value": ""
+    },
+    {
+      "key": "s804DoctorId",
+      "value": ""
+    },
+    {
+      "key": "s804Phone",
+      "value": ""
+    },
+    {
+      "key": "s804ApptId",
+      "value": ""
+    },
+    {
+      "key": "s805AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s805OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s805DoctorId",
+      "value": ""
+    },
+    {
+      "key": "s805ApptA",
+      "value": ""
+    },
+    {
+      "key": "s805ApptB",
+      "value": ""
+    },
+    {
+      "key": "s805ApptC",
+      "value": ""
+    },
+    {
+      "key": "s805ApptF",
+      "value": ""
+    },
+    {
+      "key": "s805PhoneA",
+      "value": ""
+    },
+    {
+      "key": "s805PhoneB",
+      "value": ""
+    },
+    {
+      "key": "s805PhoneC",
+      "value": ""
+    },
+    {
+      "key": "s805PhoneF",
+      "value": ""
+    },
+    {
+      "key": "s805TimeA",
+      "value": ""
+    },
+    {
+      "key": "s805TimeB",
+      "value": ""
+    },
+    {
+      "key": "s805TimeC",
+      "value": ""
+    },
+    {
+      "key": "s805TimeF",
       "value": ""
     }
   ]
