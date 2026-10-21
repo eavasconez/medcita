@@ -135,6 +135,9 @@ model AuditLog {
   // The clinic the actor belongs to. Entries keep no foreign key, like actorId.
   clinicId  String
   changes   Json?
+  // Where the request came from (the client IP and its User-Agent, shortened)
+  ip        String?
+  userAgent String?
 
   @@index([clinicId, createdAt, seq])
   @@index([createdAt, seq])

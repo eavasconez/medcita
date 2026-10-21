@@ -146,9 +146,9 @@ Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/
 
 ### Registro de auditoría
 
-Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario. Un médico que trabaja con su propia agenda no genera registro.
+Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes.
 
-**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel` o `delete`; `entity`: `appointment`, `patient` o `user`, y `entityId`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
+**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user` o `invitation`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
 
 | Acción | Se registra |
 |---|---|
@@ -157,12 +157,16 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 | Crear, editar o borrar un paciente (`/api/patients`) | `create`, `update` (solo los **nombres** de los campos que cambiaron) o `delete`. Una reserva hecha por personal que crea o modifica al paciente deja también su entrada de paciente |
 | Invitar o cancelar una invitación (`/api/admin/doctors`, `/api/admin/invitations`) | `create`, `update` (invitar de nuevo con otro rol) o `delete`, con `entity: invitation` y solo el rol; ni el nombre ni el correo |
 | Editar o eliminar una cuenta (`/api/admin/doctors`) | `update` o `delete`. Nombre y rol con antes y después; del correo solo que cambió. Al eliminar queda el nombre y el rol, que es lo único que sobrevive de la cuenta |
+| Iniciar sesión (`POST /api/auth/login`, y el que empiezan confirmar un alta o aceptar una invitación) | `login`, `entity: user`, de cualquier rol. Un intento con contraseña equivocada contra una cuenta que **existe** deja `login_failed` a nombre de esa cuenta y de su consultorio; un correo que no existe no deja nada (no pertenece a ningún consultorio). Cuando el límite de intentos bloquea la cuenta ya no se registran más |
+| Cambiar la contraseña (`POST /api/auth/change-password`) o restablecerla con el enlace del correo | `password_change` o `password_reset`. Una contraseña actual equivocada (`403`) no deja nada |
+| Cambios de rol | Ya quedan como `update` de la cuenta, con el rol antes y después |
+| Leer algo que debe quedar trazado (la historia clínica, cuando exista) | `read`: el tipo y `recordRead()` ya existen, pero nada lo llama todavía |
 
-**Qué nunca se guarda.** Datos de contacto de pacientes (nombre, teléfono, correo, cédula), el texto de las notas de una cita (pueden contener datos médicos), correos ni contraseñas (ni su hash): de esos campos solo consta que cambiaron, como `{ "notes": { "changed": true } }`. Los campos visibles aparecen como `{ "time": { "from": "10:00", "to": "11:30" } }`. Una petición que no cambia nada, o que se rechaza (horario ocupado, validación, no existe), no deja entrada.
+**Qué nunca se guarda.** Datos de contacto de pacientes (nombre, teléfono, correo, cédula), el texto de las notas de una cita (pueden contener datos médicos), correos ni contraseñas (ni su hash), y **nada de lo que alguien escribió al intentar entrar**: ni el correo ni la contraseña de un intento: de esos campos solo consta que cambiaron, como `{ "notes": { "changed": true } }`. Los campos visibles aparecen como `{ "time": { "from": "10:00", "to": "11:30" } }`. Una petición que no cambia nada, o que se rechaza (horario ocupado, validación, no existe), no deja entrada.
 
-**Garantías.** La entrada se escribe en la **misma transacción** que la acción (`services/auditLog.js`): si no se puede registrar, la acción no ocurre y se responde `500`; y no queda constancia de algo que no sucedió. Las entradas son solo de lectura (no hay ruta para modificarlas o borrarlas) y no tienen claves foráneas, así que sobreviven a la cuenta o al dato al que se refieren. `seq` (serie) fija el orden de inserción: la base le pone la misma hora a todo lo escrito en una transacción, y así se sabe qué ocurrió primero.
+**Garantías.** La entrada se escribe en la **misma transacción** que la acción (`services/auditLog.js`): si no se puede registrar, la acción no ocurre y se responde `500`; y no queda constancia de algo que no sucedió. Las entradas son solo de lectura (no hay ruta para modificarlas o borrarlas) y no tienen claves foráneas, así que sobreviven a la cuenta o al dato al que se refieren. `seq` (serie) fija el orden de inserción: la base le pone la misma hora a todo lo escrito en una transacción, y así se sabe qué ocurrió primero. Los inicios de sesión se registran antes de entregar la sesión: si no se puede escribir la entrada, el inicio de sesión responde `500` y no se entrega token.
 
-**Consulta.** `GET /api/admin/audit-log` (solo admin; secretaria y médico reciben `403`). Cada entrada guarda el `clinicId` de quien actuó y cada admin solo ve las de su consultorio. Más reciente primero, de 50 en 50 por defecto (máx. 200: `page`, `pageSize`). Filtros opcionales: `from` y `to` (fechas `YYYY-MM-DD` de la clínica, ambos extremos incluidos), `actorId` (quién), `entity`, `entityId`, `action` y `doctorId`. Un valor inválido responde `400`. Responde `{ entries, total, page, pageSize, totalPages }`:
+**Consulta.** `GET /api/admin/audit-log` (solo admin; secretaria y médico reciben `403`). Cada entrada guarda el `clinicId` de quien actuó y cada admin solo ve las de su consultorio. Más reciente primero, de 50 en 50 por defecto (máx. 200: `page`, `pageSize`). Filtros opcionales: `from` y `to` (fechas `YYYY-MM-DD` de la clínica, ambos extremos incluidos), `actorId` (quién), `entity`, `entityId`, `action` y `doctorId`. Un valor inválido responde `400`; el mensaje de `action` lista las acciones válidas. Responde `{ entries, total, page, pageSize, totalPages }`:
 
 ```json
 {
@@ -170,11 +174,12 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
   "actor": { "id": "…", "name": "Ana Secretaria", "role": "secretary" },
   "action": "update", "entity": "appointment", "entityId": "…",
   "doctor": { "id": "…", "name": "Dra. Camila Torres" },
-  "changes": { "time": { "from": "10:00", "to": "11:30" } }
+  "changes": { "time": { "from": "10:00", "to": "11:30" } },
+  "ip": "203.0.113.7", "userAgent": "Mozilla/5.0 (X11; Linux x86_64) … Chrome/130.0 Safari/537.36"
 }
 ```
 
-**Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`) ni hay pantalla para ver el registro en la aplicación (solo el endpoint). La tabla `AuditLog` no se purga: crece con el uso.
+**Pantalla.** Los administradores la ven en **Activity Log** (`/activity`): las entradas del consultorio, de 25 en 25, con filtros por fecha, persona y acción, frases legibles («Changed their password», «Failed sign-in attempt»…), la IP y un navegador corto («Chrome on Linux»). **Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`). Un intento fallido contra un correo que no existe queda fuera a propósito. La tabla `AuditLog` no se purga: crece con el uso, y ahora cada inicio de sesión suma una fila (conviene pensar en una política de retención antes de tener mucho tráfico).
 
 ### Salud (`/api/health`)
 

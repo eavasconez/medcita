@@ -19,6 +19,7 @@ const {
 const passwordReset = require('../services/passwordResetService');
 const signup = require('../services/signupService');
 const invitations = require('../services/invitationService');
+const { recordAccountEvent } = require('../services/auditLog');
 const { exposeLinks } = require('../utils/tokens');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -104,7 +105,7 @@ router.post('/register', registerIpLimiter, registerEmailLimiter, async (req, re
 // admin in. A link works once.
 router.post('/verify-email', accountLinkIpLimiter, async (req, res) => {
   try {
-    const doctor = await signup.confirmSignup(req.body?.token);
+    const doctor = await signup.confirmSignup(req.body?.token, req);
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.status(201).json({ token, user: sessionUser(doctor) });
   } catch (err) {
@@ -140,7 +141,7 @@ router.post('/accept-invitation', accountLinkIpLimiter, async (req, res) => {
   }
 
   try {
-    const doctor = await invitations.accept(token, password);
+    const doctor = await invitations.accept(token, password, req);
     const sessionToken = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.status(201).json({ token: sessionToken, user: sessionUser(doctor) });
   } catch (err) {
@@ -167,7 +168,13 @@ router.post('/login', loginIpLimiter, loginEmailLimiter, async (req, res) => {
       include: { clinic: { select: CLINIC_SELECT } }
     });
     const isMatch = await bcrypt.compare(password, doctor ? doctor.password : DUMMY_PASSWORD_HASH);
-    if (!doctor || !isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!doctor || !isMatch) {
+      // Only for an account that exists (an unknown email belongs to no clinic, and
+      // what was typed is never kept): its admins see someone trying to get in.
+      if (doctor) await recordAccountEvent(prisma, req, doctor, 'login_failed');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    await recordAccountEvent(prisma, req, doctor, 'login');
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ token, user: sessionUser(doctor) });
@@ -197,7 +204,7 @@ router.post('/reset-password', resetPasswordIpLimiter, async (req, res) => {
   }
 
   try {
-    const doctor = await passwordReset.resetPassword(token, password);
+    const doctor = await passwordReset.resetPassword(token, password, req);
     await clearLoginAttempts(doctor.email);
     res.json({ message: 'Password updated successfully' });
   } catch (err) {
@@ -236,9 +243,13 @@ router.post('/change-password', auth, changePasswordLimiter, async (req, res) =>
     const isMatch = await bcrypt.compare(currentPassword, doctor.password);
     if (!isMatch) return res.status(403).json({ error: 'Current password is incorrect' });
 
-    await prisma.doctor.update({
-      where: { id: doctor.id },
-      data: { password: await bcrypt.hash(newPassword, 10), passwordChangedAt: new Date() }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.$transaction(async (tx) => {
+      await tx.doctor.update({
+        where: { id: doctor.id },
+        data: { password: passwordHash, passwordChangedAt: new Date() }
+      });
+      await recordAccountEvent(tx, req, doctor, 'password_change');
     });
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });

@@ -331,7 +331,9 @@ router.get('/audit-log', async (req, res) => {
         entity: row.entity,
         entityId: row.entityId,
         doctor: row.doctorId ? { id: row.doctorId, name: doctorNames.get(row.doctorId) ?? null } : null,
-        changes: row.changes
+        changes: row.changes,
+        ip: row.ip,
+        userAgent: row.userAgent
       })),
       ...pageInfo({ total, page, pageSize })
     });

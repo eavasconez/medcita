@@ -11,6 +11,7 @@ import {
   Shield,
   BarChart2,
   Building2,
+  History,
   X
 } from 'lucide-react';
 
@@ -81,6 +82,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     menuItems = [
       { icon: <BarChart2 size={20} />, label: 'Analytics', path: '/reports' },
       { icon: <Shield size={20} />, label: 'Manage Doctors', path: '/admin' },
+      { icon: <History size={20} />, label: 'Activity Log', path: '/activity' },
       { icon: <Users size={20} />, label: 'Patients', path: '/patients' },
       { icon: <Clock size={20} />, label: 'Availability', path: '/availability' },
       { icon: <Settings size={20} />, label: 'Settings', path: '/settings' },

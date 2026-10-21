@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const notificationService = require('./notificationService');
+const { recordAccountEvent } = require('./auditLog');
 const { TOKEN_PATTERN, newToken, hashToken, frontendLink, logDevLink } = require('../utils/tokens');
 
 const RESET_TOKEN_TTL_MINUTES = 60;
@@ -37,7 +38,7 @@ async function requestPasswordReset(email) {
  * for any token that is malformed, unknown, expired or already used (callers must
  * not tell those apart). Resolves to the account { id, email }.
  */
-async function resetPassword(token, newPassword) {
+async function resetPassword(token, newPassword, req) {
   if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new InvalidResetTokenError();
 
   const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
@@ -61,8 +62,9 @@ async function resetPassword(token, newPassword) {
       where: { id: record.doctorId },
       // passwordChangedAt signs out every session opened with the old password
       data: { password: passwordHash, passwordChangedAt: new Date() },
-      select: { id: true, email: true }
+      select: { id: true, email: true, name: true, role: true, clinicId: true }
     });
+    await recordAccountEvent(tx, req, doctor, 'password_reset');
     // Any other link still floating around for this account dies with this one.
     await tx.passwordResetToken.deleteMany({ where: { doctorId: record.doctorId } });
     return doctor;
