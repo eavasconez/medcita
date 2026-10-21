@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { checkSeedTarget } = require('../src/utils/seedGuard');
+const { ensureDefaultType } = require('../src/services/appointmentTypes');
 
 const prisma = new PrismaClient();
 
@@ -44,6 +45,7 @@ async function main() {
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
   await prisma.appointment.deleteMany();
+  await prisma.appointmentType.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.doctor.deleteMany();
@@ -129,6 +131,11 @@ async function main() {
     prisma.patient.findUniqueOrThrow({ where: { clinicId_phone: { clinicId: clinic.id, phone: p.phone } } })
   ));
 
+  // The kinds of visit of the demo clinic: the default one (30 min) and two more
+  const defaultType = await ensureDefaultType(prisma, clinic.id);
+  const firstVisit = await prisma.appointmentType.create({ data: { clinicId: clinic.id, name: 'First visit', durationMinutes: 40, color: '#f97316' } });
+  const checkUp = await prisma.appointmentType.create({ data: { clinicId: clinic.id, name: 'Check-up', durationMinutes: 20, color: '#22c55e' } });
+
   const today = new Date();
   // 3 consecutive business days from today (e.g. Thu/Fri/Mon if today is a
   // Thursday) - indexed 0/1/2 below instead of raw calendar offsets, so a
@@ -141,14 +148,14 @@ async function main() {
   // to show in a demo instead of a single flat list.
   const appointmentPlan = [
     // Dr. Santiago Pérez (Medicina General)
-    { doctor: pilotDoctors[0], patient: allPatients[0], dayIndex: 0, time: '09:00', status: 'confirmed' },
-    { doctor: pilotDoctors[0], patient: allPatients[1], dayIndex: 0, time: '10:00', status: 'scheduled' },
+    { doctor: pilotDoctors[0], patient: allPatients[0], dayIndex: 0, time: '09:00', status: 'confirmed', type: firstVisit },
+    { doctor: pilotDoctors[0], patient: allPatients[1], dayIndex: 0, time: '10:00', status: 'scheduled', type: checkUp },
     { doctor: pilotDoctors[0], patient: allPatients[2], dayIndex: 0, time: '14:00', status: 'pending_approval' },
     { doctor: pilotDoctors[0], patient: allPatients[3], dayIndex: 1, time: '16:30', status: 'confirmed' },
     // Dra. Camila Torres (Pediatría)
-    { doctor: pilotDoctors[1], patient: allPatients[4], dayIndex: 0, time: '09:30', status: 'confirmed' },
+    { doctor: pilotDoctors[1], patient: allPatients[4], dayIndex: 0, time: '09:30', status: 'confirmed', type: firstVisit },
     { doctor: pilotDoctors[1], patient: allPatients[5], dayIndex: 1, time: '11:00', status: 'pending_approval' },
-    { doctor: pilotDoctors[1], patient: allPatients[6], dayIndex: 2, time: '15:00', status: 'scheduled' },
+    { doctor: pilotDoctors[1], patient: allPatients[6], dayIndex: 2, time: '15:00', status: 'scheduled', type: checkUp },
     // Dr. Andrés Mendoza (Medicina Familiar)
     { doctor: pilotDoctors[2], patient: allPatients[7], dayIndex: 0, time: '08:30', status: 'scheduled' },
     { doctor: pilotDoctors[2], patient: allPatients[0], dayIndex: 2, time: '13:00', status: 'confirmed' }
@@ -161,7 +168,9 @@ async function main() {
       doctorId: a.doctor.id,
       patientId: a.patient.id,
       clinicId: clinic.id,
-      status: a.status
+      status: a.status,
+      typeId: (a.type || defaultType).id,
+      durationMinutes: (a.type || defaultType).durationMinutes
     }))
   });
 
@@ -183,6 +192,7 @@ async function main() {
     { name: 'Lucía Ramírez', phone: '+593966000001', cedula: '1788990011', email: 'lucia@example.com' },
     { name: 'Esteban Cárdenas', phone: '+593966000002', cedula: '1799001122' }
   ].map(data => prisma.patient.create({ data: { ...data, clinicId: otherClinic.id } })));
+  const otherDefaultType = await ensureDefaultType(prisma, otherClinic.id);
   await prisma.appointment.createMany({
     data: [
       { patient: otherPatients[0], dayIndex: 0, time: '10:30', status: 'confirmed' },
@@ -193,7 +203,8 @@ async function main() {
       doctorId: otherDoctor.id,
       patientId: a.patient.id,
       clinicId: otherClinic.id,
-      status: a.status
+      status: a.status,
+      typeId: otherDefaultType.id
     }))
   });
 

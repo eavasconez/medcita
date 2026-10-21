@@ -25,6 +25,7 @@ model Clinic {
   availabilities Availability[]
   invitations    Invitation[]
   consents       PatientConsent[]
+  appointmentTypes AppointmentType[]
 }
 
 model Doctor {
@@ -94,13 +95,43 @@ model Appointment {
   createdAt      DateTime  @default(now())
   // Set when the 24h reminder is claimed/sent; null means it is still owed.
   reminderSentAt DateTime?
+  // How long the visit lasts, copied from its type when it is booked: editing the
+  // type later does not move or overlap the appointments already in the agenda.
+  durationMinutes Int      @default(30)
   clinicId       String
   clinic         Clinic    @relation(fields: [clinicId], references: [id])
   // The doctor and the patient must belong to the same clinic as the appointment
   doctor         Doctor    @relation(fields: [doctorId, clinicId], references: [id, clinicId])
   patient        Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId])
+  // The kind of visit. Optional in the database on purpose: code from before the types
+  // existed can still book (an appointment without a type counts as the clinic's default
+  // type), so going back to an older release never breaks booking. The app always sets it.
+  typeId         String?
+  type           AppointmentType? @relation(fields: [typeId, clinicId], references: [id, clinicId], onDelete: Restrict)
 
   @@index([clinicId, date])
+}
+
+// A kind of visit a clinic offers ("First visit, 40 min", "Check-up, 20 min"): its
+// length decides how much of the agenda a booking takes. Every clinic has exactly one
+// default type of 30 minutes (what every appointment was before types existed). A type
+// is archived (`active = false`), never deleted, so past appointments keep theirs.
+model AppointmentType {
+  id              String        @id @default(uuid())
+  name            String
+  durationMinutes Int
+  // '#rrggbb', used to paint the type in the calendar
+  color           String
+  isDefault       Boolean       @default(false)
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  clinicId        String
+  clinic          Clinic        @relation(fields: [clinicId], references: [id])
+  appointments    Appointment[]
+
+  @@unique([clinicId, name])
+  // Lets Appointment point at a type *of the same clinic*
+  @@unique([id, clinicId])
 }
 
 // One-time password reset links. Only the SHA-256 hash of the token is stored, so
