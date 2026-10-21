@@ -6,6 +6,7 @@ const { getDay, parseISO } = require('date-fns');
 const { clinicDateString, appointmentInstant } = require('../utils/clinicTime');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 const appointmentTypes = require('../services/appointmentTypes');
+const scheduleBlocks = require('../services/scheduleBlocks');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -102,6 +103,11 @@ router.get('/slots', async (req, res) => {
 
     if (availabilities.length === 0) {
       return res.json([]); // No service this day
+    }
+
+    // A day the doctor (or the clinic) does not attend has no slots at all
+    if (await scheduleBlocks.findBlockOn(prisma, { clinicId: req.clinicId, doctorId: targetDoctorId, date })) {
+      return res.json([]);
     }
 
     // 2. The kind of visit being booked decides how long each slot is (the clinic's default

@@ -26,6 +26,7 @@ model Clinic {
   invitations    Invitation[]
   consents       PatientConsent[]
   appointmentTypes AppointmentType[]
+  scheduleBlocks ScheduleBlock[]
 }
 
 model Doctor {
@@ -45,6 +46,7 @@ model Doctor {
   appointments        Appointment[]
   availabilities      Availability[]
   passwordResetTokens PasswordResetToken[]
+  scheduleBlocks      ScheduleBlock[]
 
   // Lets Appointment and Availability point at a doctor *of the same clinic*
   @@unique([id, clinicId])
@@ -132,6 +134,25 @@ model AppointmentType {
   @@unique([clinicId, name])
   // Lets Appointment point at a type *of the same clinic*
   @@unique([id, clinicId])
+}
+
+// Days a doctor, or the whole clinic, does not attend: holidays, vacations, a congress.
+// Whole days only, `startDate` to `endDate` both included ('YYYY-MM-DD', clinic-local like
+// Appointment.date). Nobody can book on a blocked day; appointments already there stay and
+// are listed so they can be rescheduled. `doctorId` null means every doctor of the clinic.
+model ScheduleBlock {
+  id        String   @id @default(uuid())
+  startDate String
+  endDate   String
+  reason    String
+  createdAt DateTime @default(now())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  doctorId  String?
+  // The doctor must belong to the same clinic as the block; deleting the doctor deletes it
+  doctor    Doctor?  @relation(fields: [doctorId, clinicId], references: [id, clinicId], onDelete: Cascade)
+
+  @@index([clinicId, startDate, endDate])
 }
 
 // One-time password reset links. Only the SHA-256 hash of the token is stored, so
