@@ -475,6 +475,10 @@ npm run storage:check
 
 Sube un archivo de prueba con una URL firmada, lo lee con otra, comprueba que **la misma dirección sin firma es rechazada** (si alguna vez ves `FAIL … without the signature`, el bucket es público: corrígelo antes de guardar nada) y lo borra. No deja nada. Devuelve código distinto de cero si algo falla, así que sirve como paso de una lista de verificación.
 
+## Textos legales en el frontend (S8-07)
+
+`/privacy` y `/terms` se compilan dentro del frontend a partir de `docs/legal/politica-de-privacidad.md` y `terminos-de-uso.md` (una carpeta **fuera** de `frontend/`). Render clona todo el repositorio, así que el *build* los encuentra, pero con *Root Directory* `frontend` un cambio que solo toque `docs/legal/` puede no disparar un despliegue: en el Static Site, *Settings → Build Filters*, agrega `docs/legal/**`, o lanza un *Manual Deploy* después de cambiar los textos. Cuando un abogado apruebe los textos, cambia `LEGAL_REVIEWED` a `true` en `frontend/src/config/legal.js` para quitar el aviso de borrador.
+
 ## Notas para futuros redeploys
 
 - Cada deploy del backend ejecuta `prisma migrate deploy`. Para cambiar el esquema a partir de ahora (migraciones, qué revisar, cómo se prueba) ver `docs/TECHNICAL.md`, sección 7. Nunca usar `db push` contra Neon: no deja historial.

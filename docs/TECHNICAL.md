@@ -101,6 +101,10 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | POST | `/` | Autenticado | Crea o actualiza (upsert por teléfono **dentro del consultorio**: el mismo teléfono en otro consultorio es otro paciente) |
 | PUT | `/:id` | Autenticado | Actualiza datos del paciente |
 | DELETE | `/:id` | Autenticado | Elimina un paciente **sin citas** (pensado para registros creados por error). Con cualquier cita —activa, cancelada o completada— responde `409` y lo conserva, porque ese historial es suyo; el mensaje distingue «tiene citas activas, cancélalas primero» de «tiene historial». `404` si no existe |
+| GET | `/consent-document` | Autenticado | El texto del consentimiento de datos de salud vigente con el nombre del consultorio: `{ kind, version, title, paragraphs, methods }` |
+| GET | `/:id/consents` | Autenticado | Cómo está el paciente respecto del consentimiento y todos sus eventos: `{ status: none \| granted \| withdrawn, upToDate, current, history, currentVersion }`. De otro consultorio, `404` |
+| POST | `/:id/consents` | Autenticado | Registra que el paciente **dio** (`granted: true`) o **retiró** (`false`) el consentimiento, con `method` (`in_person_signed`, `in_person_verbal`, `electronic`, `other`). La versión es siempre la vigente; si se envía `documentVersion` y ya no lo es, `409`. Es un evento nuevo, nunca una edición. Quedó en el Activity Log si lo hizo un admin o una secretaria. `201` con el estado nuevo |
+| GET | `/:id/export` | Solo admin | Todos los datos del paciente como archivo (`Content-Disposition: attachment`): paciente, citas con sus notas, mensajes enviados (sin texto, con el destino enmascarado) y consentimientos. Cada exportación queda en el Activity Log (`read` sobre `patient_export`). Secretaria y médico: `403` |
 
 ### Disponibilidad (`/api/availability`)
 
@@ -188,6 +192,15 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 ```
 
 **Pantalla.** Los administradores la ven en **Activity Log** (`/activity`): las entradas del consultorio, de 25 en 25, con filtros por fecha, persona y acción, frases legibles («Changed their password», «Failed sign-in attempt»…), la IP y un navegador corto («Chrome on Linux»). **Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`). Un intento fallido contra un correo que no existe queda fuera a propósito. La tabla `AuditLog` no se purga: crece con el uso, y ahora cada inicio de sesión suma una fila (conviene pensar en una política de retención antes de tener mucho tráfico).
+
+### Consentimiento y exportación de datos (S8-07)
+
+Base para tratar datos de salud (documentos en `docs/legal/`, **borrador sin revisión de un abogado**: ver `docs/legal/puntos-para-el-abogado.md`).
+
+- **`PatientConsent`**: una fila por evento (dado o retirado) con la versión del texto que se mostró (`backend/src/legal/healthDataConsent.js`), el método, la fecha y quién lo registró (nombre y rol guardados como texto, para que el registro sobreviva a la cuenta). Nunca se edita ni se borra; solo desaparece junto con un paciente creado por error. No tiene nota libre a propósito: acabaría guardando datos de salud.
+- **Versión del texto.** Si el texto cambia se sube la versión (en el código y en `docs/legal/consentimiento-datos-salud.md`; `tests/legalDocs.test.js` falla si no coinciden) y quien aceptó la anterior aparece como «Consent: old text».
+- **Pantalla.** Pacientes muestra el estado de cada uno, el escudo abre el consentimiento (texto, cómo aceptó, historial) y, para administradores, el botón de descarga exporta sus datos.
+- **Públicas.** `/privacy` y `/terms` muestran `docs/legal/politica-de-privacidad.md` y `terminos-de-uso.md`, con un aviso de borrador mientras `LEGAL_REVIEWED` (`frontend/src/config/legal.js`) sea `false`. Los enlaces están en el inicio de sesión y en el registro; **aún no se registra la aceptación de los términos**.
 
 ### Historial de mensajes (S8-04)
 
@@ -279,9 +292,9 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 299 peticiones y 506 aserciones al cierre de S8-05). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en memoria y las pruebas de S1-02 gastan los de la IP: **reinicia el backend entre una corrida y otra** o la tercera seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 319 peticiones y 540 aserciones al cierre de S8-07). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en memoria y las pruebas de S1-02 gastan los de la IP: **reinicia el backend entre una corrida y otra** o la tercera seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
