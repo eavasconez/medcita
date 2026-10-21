@@ -20,7 +20,14 @@ const LIMITS = {
   resetPasswordPerIp: { windowMs: 15 * MINUTE, limit: 10 },
   // Only a wrong current password counts (403). Whoever is guessing it already holds a
   // session, so the limit is per account, not per IP.
-  changePasswordPerAccount: { windowMs: 15 * MINUTE, limit: 5 }
+  changePasswordPerAccount: { windowMs: 15 * MINUTE, limit: 5 },
+  // Every request counts: each one can send an email (a confirmation, or a notice to
+  // the owner of an existing account), so these also stop sign-ups from flooding an
+  // inbox or burning the email quota.
+  registerPerEmail: { windowMs: HOUR, limit: 3 },
+  registerPerIp: { windowMs: HOUR, limit: 5 },
+  // Only failed attempts (400) count: someone guessing links, or retrying a dead one.
+  accountLinkPerIp: { windowMs: 15 * MINUTE, limit: 10 }
 };
 
 const stores = [];
@@ -92,6 +99,25 @@ const resetPasswordIpLimiter = createLimiter({
   countOnlyStatus: 400
 });
 
+const registerMessage = 'Too many sign-up requests.';
+
+const registerIpLimiter = createLimiter({ ...LIMITS.registerPerIp, message: registerMessage });
+
+const registerEmailLimiter = createLimiter({
+  ...LIMITS.registerPerEmail,
+  message: registerMessage,
+  keyGenerator: normalizedEmail,
+  skip: (req) => !normalizedEmail(req)
+});
+
+// Shared by every endpoint that exchanges an emailed link for something (confirm a
+// sign-up, look at or accept an invitation).
+const accountLinkIpLimiter = createLimiter({
+  ...LIMITS.accountLinkPerIp,
+  message: 'Too many attempts with an invalid link.',
+  countOnlyStatus: 400
+});
+
 // Must run after the auth middleware: it is keyed by the authenticated account.
 const changePasswordLimiter = createLimiter({
   ...LIMITS.changePasswordPerAccount,
@@ -119,6 +145,9 @@ module.exports = {
   forgotPasswordEmailLimiter,
   resetPasswordIpLimiter,
   changePasswordLimiter,
+  registerIpLimiter,
+  registerEmailLimiter,
+  accountLinkIpLimiter,
   clearLoginAttempts,
   resetRateLimits
 };

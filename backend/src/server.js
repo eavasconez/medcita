@@ -35,6 +35,14 @@ if (
   process.exit(1);
 }
 
+// QA mode that returns emailed links in the response (see utils/tokens.js): it
+// would let anyone confirm an email that is not theirs, so a hosted service refuses
+// to start with it on, even if somebody sets the variable by mistake.
+if (process.env.EXPOSE_ACCOUNT_LINKS === 'true' && (process.env.NODE_ENV === 'production' || process.env.RENDER)) {
+  console.error('FATAL: EXPOSE_ACCOUNT_LINKS=true is only for local QA and cannot be used in production.');
+  process.exit(1);
+}
+
 const app = express();
 
 // Tell Express how many proxies are in front of the app, so req.ip (used by the

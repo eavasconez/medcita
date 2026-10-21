@@ -148,6 +148,29 @@ function passwordResetHtml({ name, resetUrl, expiresInMinutes }) {
   `);
 }
 
+function signupConfirmationHtml({ name, clinicName, url, expiresInHours }) {
+  const link = escapeHtml(url);
+  return baseLayout('Confirma tu correo', `
+    <p>Hola <strong>${escapeHtml(name)}</strong>,</p>
+    <p>Para terminar de crear el consultorio <strong>${escapeHtml(clinicName)}</strong> en MedCita, confirma que este correo es tuyo:</p>
+    <p style="text-align: center; margin: 28px 0;">
+      <a href="${link}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Confirmar correo y entrar</a>
+    </p>
+    <p style="font-size: 13px; color: #64748b;">El enlace vale por ${escapeHtml(expiresInHours)} horas y solo se puede usar una vez. Si el botón no funciona, copia y pega esta dirección en tu navegador:</p>
+    <p style="font-size: 12px; color: #64748b; word-break: break-all;">${link}</p>
+    <p style="font-size: 13px; color: #64748b;">Si no pediste esta cuenta, ignora este correo: no se creará nada.</p>
+  `);
+}
+
+function accountExistsHtml({ name, loginUrl, resetUrl }) {
+  return baseLayout('Ya tienes una cuenta', `
+    <p>Hola <strong>${escapeHtml(name)}</strong>,</p>
+    <p>Alguien intentó crear una cuenta de MedCita con este correo, pero <strong>ya tienes una</strong>, así que no se creó nada nuevo.</p>
+    <p>Si fuiste tú, <a href="${escapeHtml(loginUrl)}">inicia sesión</a>. Si olvidaste tu contraseña, puedes <a href="${escapeHtml(resetUrl)}">restablecerla aquí</a>.</p>
+    <p style="font-size: 13px; color: #64748b;">Si no fuiste tú, ignora este correo: tu cuenta sigue como estaba.</p>
+  `);
+}
+
 function doctorNewAppointmentHtml({ doctorName, patientName, patientPhone, date, time }) {
   const phoneItem = patientPhone
     ? `<li><strong>Teléfono:</strong> ${escapeHtml(patientPhone)}</li>`
@@ -194,6 +217,8 @@ const emailService = {
     appointmentConfirmationHtml,
     reminderHtml,
     passwordResetHtml,
+    signupConfirmationHtml,
+    accountExistsHtml,
     doctorNewAppointmentHtml
   }
 };

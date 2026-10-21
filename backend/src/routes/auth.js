@@ -11,10 +11,14 @@ const {
   forgotPasswordEmailLimiter,
   resetPasswordIpLimiter,
   changePasswordLimiter,
+  registerIpLimiter,
+  registerEmailLimiter,
+  accountLinkIpLimiter,
   clearLoginAttempts
 } = require('../middleware/rateLimiters');
 const passwordReset = require('../services/passwordResetService');
-const { randomSlug } = require('../utils/slug');
+const signup = require('../services/signupService');
+const { exposeLinks } = require('../utils/tokens');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
@@ -26,7 +30,13 @@ const INVALID_RESET_LINK_MESSAGE = 'This password reset link is invalid or has e
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
 
 const CLINIC_SELECT = { id: true, name: true };
-const MAX_SLUG_ATTEMPTS = 3;
+const MAX_NAME_LENGTH = 100;
+const MAX_CLINIC_NAME_LENGTH = 80;
+const MIN_CLINIC_NAME_LENGTH = 2;
+const REGISTER_MESSAGE = 'Check your email: we have sent a link to confirm your account.';
+// Machine-readable, so the UI can tell a dead link apart from a validation error.
+const INVALID_LINK_CODE = 'INVALID_LINK';
+const INVALID_SIGNUP_LINK_MESSAGE = 'This confirmation link is invalid or has expired. Please sign up again.';
 
 // Fields safe to expose about the authenticated user (never the password hash)
 const PROFILE_SELECT = {
@@ -51,50 +61,55 @@ const sessionUser = (doctor) => ({
   clinic: doctor.clinic
 });
 
-// Someone who signs up on their own gets a clinic of their own: they must never
-// land inside the data of a clinic that already exists. Both rows are created
-// together, and a slug that happens to collide is retried with another suffix.
-async function createDoctorWithOwnClinic(name, email, passwordHash) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await prisma.doctor.create({
-        data: {
-          name,
-          email,
-          password: passwordHash,
-          clinic: { create: { name: `Consultorio de ${name}`, slug: randomSlug(name) } }
-        },
-        include: { clinic: { select: CLINIC_SELECT } }
-      });
-    } catch (err) {
-      const slugCollision = err.code === 'P2002' && err.meta?.target?.includes('slug');
-      if (!slugCollision || attempt >= MAX_SLUG_ATTEMPTS) throw err;
-    }
-  }
-}
-
-router.post('/register', async (req, res) => {
-  const { name, email, password } = req.body;
+// Ask for a new clinic and its first admin. Nothing is created until the person
+// confirms their email with the link we send (see /verify-email). The answer is the
+// same whether or not the email already has an account, and it is sent BEFORE the
+// account is even looked up (that happens in the background), so neither its
+// content nor its response time reveals which emails are registered.
+router.post('/register', registerIpLimiter, registerEmailLimiter, async (req, res) => {
+  const { name, email, password, clinicName } = req.body || {};
 
   const normalizedName = typeof name === 'string' ? name.trim() : '';
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const normalizedClinicName = typeof clinicName === 'string' ? clinicName.trim().replace(/\s+/g, ' ') : '';
 
   if (!normalizedName) return res.status(400).json({ error: 'Name is required' });
-  if (!EMAIL_REGEX.test(normalizedEmail)) return res.status(400).json({ error: 'A valid email is required' });
+  if (normalizedName.length > MAX_NAME_LENGTH) return res.status(400).json({ error: `Name must be at most ${MAX_NAME_LENGTH} characters` });
+  if (!EMAIL_REGEX.test(normalizedEmail) || normalizedEmail.length > 254) return res.status(400).json({ error: 'A valid email is required' });
+  if (normalizedClinicName.length < MIN_CLINIC_NAME_LENGTH || normalizedClinicName.length > MAX_CLINIC_NAME_LENGTH) {
+    return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+  }
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_TOO_SHORT });
 
+  const details = { name: normalizedName, email: normalizedEmail, password, clinicName: normalizedClinicName };
+
+  // QA mode (never on a hosted service): wait for the work and hand back the link
+  if (exposeLinks()) {
+    try {
+      const result = await signup.requestSignup(details);
+      return res.status(202).json({ message: REGISTER_MESSAGE, ...(result && { devLink: result.url }) });
+    } catch (err) {
+      console.error('Register error:', err);
+      return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+  }
+
+  res.status(202).json({ message: REGISTER_MESSAGE });
+  signup.requestSignupInBackground(details);
+});
+
+// Confirm the email of a sign-up: creates the clinic and its admin, and signs the
+// admin in. A link works once.
+router.post('/verify-email', accountLinkIpLimiter, async (req, res) => {
   try {
-    const existingDoctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
-    if (existingDoctor) return res.status(400).json({ error: 'Email already registered' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const doctor = await createDoctorWithOwnClinic(normalizedName, normalizedEmail, hashedPassword);
-
+    const doctor = await signup.confirmSignup(req.body?.token);
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.status(201).json({ token, user: sessionUser(doctor) });
   } catch (err) {
-    if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
-    console.error('Register error:', err);
+    if (err instanceof signup.InvalidSignupLinkError) {
+      return res.status(400).json({ error: INVALID_SIGNUP_LINK_MESSAGE, code: INVALID_LINK_CODE });
+    }
+    console.error('Verify email error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

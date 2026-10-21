@@ -140,3 +140,19 @@ model AuditLog {
   @@index([actorId])
   @@index([entity, entityId])
 }
+
+// A sign-up waiting for its email to be confirmed. Nothing exists yet (no clinic,
+// no account): both are created when the link is used. Only the SHA-256 hash of
+// the link's token is stored, and the password only as a bcrypt hash.
+model SignupRequest {
+  id           String   @id @default(uuid())
+  tokenHash    String   @unique
+  name         String
+  email        String
+  clinicName   String
+  passwordHash String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+}
