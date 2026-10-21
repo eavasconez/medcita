@@ -1,5 +1,9 @@
 # Cambios de MedCita
 
+## Sprint 9 — en curso
+
+- **Zona horaria por consultorio (S9-01, #114).** Cada consultorio lee las horas de sus citas en su propia zona (`Clinic.timezone`), no en un desfase fijo de Ecuador continental: los horarios libres («hoy» y «ya pasó»), los recordatorios (y su «hoy» o «mañana»), las citas sin cerrar, la asistencia mensual y el filtro por fechas del Activity Log. Funciona con Galápagos (UTC-6) y con consultorios fuera de Ecuador, incluso con horario de verano. El administrador elige la zona en Settings; cambiarla no mueve las citas ya agendadas (conservan su hora local). Sin migración. La variable `CLINIC_UTC_OFFSET_MINUTES` desaparece: si está configurada en Render se puede borrar. Detalle: `docs/TECHNICAL.md`, «Zona horaria».
+
 ## Sprint 8 — 21-oct-2026 (v0.8.0)
 
 MedCita pasa a servir a varios consultorios con datos separados, con alta e invitaciones por correo, registro de actividad, historial de mensajes, control de asistencia y la base técnica y legal (en borrador) para datos de salud.

@@ -183,7 +183,7 @@ describe('POST /api/auth/verify-email', () => {
       name: 'Dra. Ana Torres',
       email: 'ana@example.test',
       role: 'admin',
-      clinic: { id: expect.any(String), name: 'Consultorio Torres' }
+      clinic: { id: expect.any(String), name: 'Consultorio Torres', timezone: 'America/Guayaquil' }
     });
     expect(jwt.verify(res.body.token, process.env.JWT_SECRET)).toMatchObject({ id: res.body.user.id, role: 'admin' });
     const clinic = await prisma.clinic.findUnique({ where: { id: res.body.user.clinic.id } });

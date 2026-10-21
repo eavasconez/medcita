@@ -31,7 +31,7 @@ const INVALID_RESET_LINK_CODE = 'INVALID_RESET_LINK';
 const INVALID_RESET_LINK_MESSAGE = 'This password reset link is invalid or has expired. Please request a new one.';
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
 
-const CLINIC_SELECT = { id: true, name: true };
+const CLINIC_SELECT = { id: true, name: true, timezone: true };
 const MAX_NAME_LENGTH = 100;
 const MAX_CLINIC_NAME_LENGTH = 80;
 const MIN_CLINIC_NAME_LENGTH = 2;

@@ -60,7 +60,7 @@ describe('POST /api/auth/change-password', () => {
       name: user.name,
       email: user.email,
       role: user.role,
-      clinic: { id: user.clinicId, name: 'Consultorio de pruebas' }
+      clinic: { id: user.clinicId, name: 'Consultorio de pruebas', timezone: 'America/Guayaquil' }
     });
     expect(JSON.stringify(res.body)).not.toMatch(/password"|\$2[aby]\$/);
     expect((await profile(res.body.token)).status).toBe(200);

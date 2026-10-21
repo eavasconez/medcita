@@ -59,7 +59,7 @@ The system uses a "Block & Slot" logic:
 
 ## 🔔 Reminders
 
-A cron job runs every hour and reminds, once (`reminderSentAt`), the `pending_approval`, `scheduled` and `confirmed` appointments that start within the next 24 hours, using the clinic's local time (`CLINIC_UTC_OFFSET_MINUTES`, default UTC-5).
+A cron job runs every hour and reminds, once (`reminderSentAt`), the `pending_approval`, `scheduled` and `confirmed` appointments that start within the next 24 hours, using each clinic's own timezone (`Clinic.timezone`, default `America/Guayaquil`, UTC-5; an admin changes it in Settings).
 
 ---
 *Created by Antigravity for the MedCita project.*

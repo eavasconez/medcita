@@ -2,7 +2,7 @@ const request = require('supertest');
 const app = require('../src/server');
 const { sendReminders } = require('../src/tasks/reminderTask');
 const { prisma, resetDb } = require('./helpers/db');
-const { createUser, createPatient, createAppointment, bearer } = require('./helpers/factories');
+const { createUser, createPatient, createAppointment, createClinic, bearer } = require('./helpers/factories');
 const { stubNotifications } = require('./helpers/notifications');
 const { clinicParts } = require('./helpers/time');
 
@@ -24,6 +24,14 @@ async function setup({ hoursFromNow, status = 'confirmed', patient: patientData 
   const patient = await createPatient(patientData);
   const appointment = await createAppointment({ doctor: user, patient, status, ...clinicParts(hoursFromNow), ...rest });
   return { doctor: user, patient, appointment };
+}
+
+// A confirmed appointment at `parts` (a clinic-local date and time) in `clinic` (the default one when omitted)
+async function remindableIn(clinic, parts) {
+  const { user } = await createUser({ clinic, name: 'Dr. Local' });
+  const patient = await createPatient(clinic ? { clinic } : {});
+  await createAppointment({ doctor: user, patient, status: 'confirmed', ...parts });
+  return patient;
 }
 
 const reload = (appointment) => prisma.appointment.findUnique({ where: { id: appointment.id } });
@@ -176,33 +184,52 @@ describe('sendReminders', () => {
     }
   });
 
-  it('reads appointment times with CLINIC_UTC_OFFSET_MINUTES instead of the server timezone', async () => {
-    // 26 hours away in real time: outside the window with the default UTC-5 offset...
-    const { patient } = await setup({ hoursFromNow: 26 });
-    await sendReminders();
-    expect(sentTo(patient.phone)).toHaveLength(0);
+  // The same wall-clock text is a different real instant in each zone: Galápagos (UTC-6)
+  // is an hour behind Ecuador (UTC-5) and Tokyo (UTC+9) is 14 hours ahead of it.
+  it("waits for a clinic whose zone puts the appointment more than 24 hours away", async () => {
+    const galapagos = await createClinic({ name: 'Galápagos', timezone: 'Pacific/Galapagos' });
+    const parts = clinicParts(23.5); // 23.5 hours away on Ecuador's clock
 
-    // ...but the same wall-clock text read as UTC (offset 0) is only 21 hours away.
-    process.env.CLINIC_UTC_OFFSET_MINUTES = '0';
-    let isolated;
-    jest.isolateModules(() => {
-      isolated = {
-        task: require('../src/tasks/reminderTask'),
-        prisma: require('../src/config/prisma'),
-        ns: require('../src/services/notificationService')
-      };
+    const ecuador = await remindableIn(undefined, parts);
+    const west = await remindableIn(galapagos, parts);
+
+    await sendReminders();
+
+    expect(sentTo(ecuador.phone)).toHaveLength(1);
+    expect(sentTo(west.phone)).toHaveLength(0); // 24.5 hours away there: not yet
+  });
+
+  it("does not remind a clinic whose zone says the appointment already took place", async () => {
+    const tokyo = await createClinic({ name: 'Tokio', timezone: 'Asia/Tokyo' });
+    const parts = clinicParts(10); // 10 hours away on Ecuador's clock
+
+    const ecuador = await remindableIn(undefined, parts);
+    const east = await remindableIn(tokyo, parts);
+
+    await sendReminders();
+
+    expect(sentTo(ecuador.phone)).toHaveLength(1);
+    expect(sentTo(east.phone)).toHaveLength(0); // 4 hours ago in Tokyo
+  });
+
+  it('says "hoy" or "mañana" by the clinic\'s own calendar day', async () => {
+    // 20:30 UTC on the 21st is already the 22nd in Tokyo and still the 21st in Ecuador
+    jest.useFakeTimers({
+      now: new Date('2026-10-21T20:30:00Z'),
+      doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout']
     });
     try {
-      const sent = [];
-      isolated.ns.sendWhatsApp = async (to, message) => sent.push({ to, message }) && true;
-      isolated.ns.sendEmail = async () => true;
+      const tokyo = await createClinic({ name: 'Tokio', timezone: 'Asia/Tokyo' });
+      const { user } = await createUser({ clinic: tokyo });
+      const patient = await createPatient({ clinic: tokyo });
+      // 22 Oct 07:00 in Tokyo = 21 Oct 22:00 UTC, 1.5 hours away
+      await createAppointment({ doctor: user, patient, status: 'confirmed', date: '2026-10-22', time: '07:00' });
 
-      await isolated.task.sendReminders();
+      await sendReminders();
 
-      expect(sent.map((m) => m.to)).toEqual([patient.phone]);
+      expect(sentTo(patient.phone)[0].message).toContain('tienes una cita hoy 2026-10-22 ');
     } finally {
-      delete process.env.CLINIC_UTC_OFFSET_MINUTES;
-      await isolated.prisma.$disconnect();
+      jest.useRealTimers();
     }
   });
 });

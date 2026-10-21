@@ -184,14 +184,14 @@ router.get('/stats', async (req, res) => {
 // no-show. Same visibility as the list; the oldest first.
 router.get('/unclosed', async (req, res) => {
   try {
-    const today = clinicDateString(new Date());
+    const today = clinicDateString(new Date(), req.clinicTimezone);
     const candidates = await prisma.appointment.findMany({
       where: { ...doctorScope(req), status: { in: OPEN_STATUSES }, date: { lte: today } },
       include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
       orderBy: [{ date: 'asc' }, { time: 'asc' }, { id: 'asc' }]
     });
     const now = new Date();
-    const unclosed = candidates.filter((apt) => appointmentInstant(apt.date, apt.time) < now);
+    const unclosed = candidates.filter((apt) => appointmentInstant(apt.date, apt.time, req.clinicTimezone) < now);
     res.json({ total: unclosed.length, appointments: unclosed.slice(0, 50).map((apt) => ({ ...apt, Patient: apt.patient })) });
   } catch (err) {
     console.error('Unclosed appointments error:', err);
@@ -203,7 +203,7 @@ router.get('/unclosed', async (req, res) => {
 // already closed, how many the patient missed; how many of the month's appointments
 // are confirmed against still waiting for the patient's answer; and who misses the most (all time). Same visibility as the list.
 router.get('/attendance', async (req, res) => {
-  const month = req.query.month ?? clinicDateString(new Date()).slice(0, 7);
+  const month = req.query.month ?? clinicDateString(new Date(), req.clinicTimezone).slice(0, 7);
   if (typeof month !== 'string' || !MONTH_REGEX.test(month)) {
     return res.status(400).json({ error: 'month must be a valid month (YYYY-MM)' });
   }
@@ -418,7 +418,7 @@ router.put('/:id', async (req, res) => {
       const reactivated = current.status === 'cancelled' && nextStatus !== 'cancelled';
 
       // A visit can only be missed once its time has come
-      if (nextStatus === 'no_show' && current.status !== 'no_show' && appointmentInstant(nextDate, nextTime) > new Date()) {
+      if (nextStatus === 'no_show' && current.status !== 'no_show' && appointmentInstant(nextDate, nextTime, req.clinicTimezone) > new Date()) {
         throw new ScheduleConflictError('An appointment cannot be marked as no-show before its time');
       }
 
@@ -426,7 +426,7 @@ router.put('/:id', async (req, res) => {
       if (nextStatus !== 'cancelled' && (moved || reactivated)) {
         // Rescheduling to a time that has passed makes no sense, except for
         // an appointment already marked as done (correcting its record).
-        if (moved && !CLOSED_STATUSES.includes(nextStatus) && appointmentInstant(nextDate, nextTime) < new Date()) {
+        if (moved && !CLOSED_STATUSES.includes(nextStatus) && appointmentInstant(nextDate, nextTime, req.clinicTimezone) < new Date()) {
           throw new ScheduleConflictError('The appointment cannot be moved to a time that has already passed');
         }
         await assertSlotBookable(tx, {

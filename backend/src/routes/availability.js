@@ -121,7 +121,7 @@ router.get('/slots', async (req, res) => {
     const now = new Date();
     // "Today" and "already passed" are decided in the clinic's time, not the server's
     // (Render runs in UTC, which made every slot of the day look past from midday on)
-    const todayStr = clinicDateString(now);
+    const todayStr = clinicDateString(now, req.clinicTimezone);
 
     availabilities.forEach(avail => {
       let current = parseISO(`${date}T${avail.startTime}`);
@@ -131,7 +131,7 @@ router.get('/slots', async (req, res) => {
         const timeStr = format(current, 'HH:mm');
         
         // Skip if it's today and the time has already passed
-        const isPast = date === todayStr && appointmentInstant(date, timeStr) < now;
+        const isPast = date === todayStr && appointmentInstant(date, timeStr, req.clinicTimezone) < now;
 
         if (!isPast) {
           slots.push({

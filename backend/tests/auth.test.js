@@ -20,7 +20,7 @@ describe('POST /api/auth/login', () => {
       name: user.name,
       email: 'login@example.test',
       role: 'doctor',
-      clinic: { id: clinic.id, name: clinic.name }
+      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone }
     });
     expect(jwt.verify(res.body.token, process.env.JWT_SECRET)).toMatchObject({ id: user.id, role: 'doctor' });
   });

@@ -8,7 +8,7 @@ const { randomSlug } = require('../utils/slug');
 const SIGNUP_TTL_HOURS = 24;
 const BCRYPT_ROUNDS = 10;
 const MAX_SLUG_ATTEMPTS = 3;
-const CLINIC_SELECT = { id: true, name: true };
+const CLINIC_SELECT = { id: true, name: true, timezone: true };
 
 // Any link that is malformed, unknown, expired, already used or no longer valid
 // (its email got an account in the meantime). Callers must not tell them apart.
