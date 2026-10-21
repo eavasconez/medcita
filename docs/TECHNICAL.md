@@ -46,7 +46,7 @@ El frontend asume que el backend corre en `http://localhost:5000` (la URL está 
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | No (default `es`) | Código de idioma de las plantillas |
 | `META_GRAPH_VERSION` | No (default `v21.0`) | Versión de la Graph API de Meta |
 | `META_GRAPH_BASE_URL` | No (default `https://graph.facebook.com`) | Solo para pruebas locales contra una Graph API falsa |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_NUMBER` | No | WhatsApp vía Twilio (fallback si no hay credenciales de Meta) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_NUMBER` | No | WhatsApp vía Twilio, como mensaje normal y no como plantilla. Solo se usa si **no** hay credenciales de Meta; si Meta responde con error, no se reintenta por Twilio. Cómo elegir entre uno y otro: `docs/DEPLOY.md`, sección 7.0. En producción se recomienda no definirlas |
 | `BREVO_API_KEY` / `BREVO_FROM_EMAIL` | No | Email vía Brevo (proveedor preferido) |
 | `SENDGRID_API_KEY` / `SENDGRID_FROM_EMAIL` | No | Email vía SendGrid (fallback si Brevo falla o no está configurado) |
 
@@ -205,7 +205,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** médicos, pacientes, dis
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`.
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

@@ -31,8 +31,8 @@ graph TD
     H --> I[Prisma DB: Save Record]
     H --> J[Notification Service]
     
-    J --> K[ WhatsApp Notification via Twilio ]
-    J --> L[ Email Notification via SendGrid ]
+    J --> K[ WhatsApp: approved Meta template (Twilio or mock if Meta is not configured) ]
+    J --> L[ Email via Brevo (SendGrid as fallback) ]
     
     I --> M[Dashboard Refresh: Green/Blue Block]
 ```
@@ -43,8 +43,10 @@ graph TD
 2.  **Backend (Express + Node.js):** REST API with JWT authentication.
 3.  **Database (PostgreSQL + Prisma):** Stores relationships between Doctors, Patients, and Appointments.
 4.  **Notifications:**
-    *   **Twilio:** Sends real-time WhatsApp messages for confirmation.
-    *   **SendGrid:** Sends professional email notifications if a valid email is provided.
+    *   **WhatsApp:** Meta Cloud API with two approved templates (confirmation and 24h reminder), so the patient receives them without having written first. Provider order: Meta, then Twilio (plain text, sandbox), then a console mock. Only one provider is used; there is no automatic fallback if Meta errors. See `docs/DEPLOY.md`, section 7.0.
+    *   **Email:** Brevo (SendGrid as fallback) sends the confirmation and reminder when the patient has an email.
+5.  **Security and traceability:** login rate limiting, password recovery by email, change password in Settings (older sessions stop working), and an append-only audit log of what admins and secretaries do (`GET /api/admin/audit-log`).
+6.  **Health:** `GET /api/health` answers 200, or 503 when the database is unreachable or behind the code.
 
 ## 🕒 Availability Engine
 
@@ -53,6 +55,11 @@ The system uses a "Block & Slot" logic:
 - The engine calculates 30-minute **Slots**.
 - If a slot is occupied in the DB, the UI marks it as **Occupied (Orange)**.
 - If it's a past time, the UI **Blocks** it for safety.
+- Moving an appointment (`PUT /api/appointments/:id`) applies the same rules as booking: it answers 409 if the new slot is taken.
+
+## 🔔 Reminders
+
+A cron job runs every hour and reminds, once (`reminderSentAt`), the `pending_approval`, `scheduled` and `confirmed` appointments that start within the next 24 hours, using the clinic's local time (`CLINIC_UTC_OFFSET_MINUTES`, default UTC-5).
 
 ---
 *Created by Antigravity for the MedCita project.*

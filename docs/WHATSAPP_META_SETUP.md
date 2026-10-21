@@ -4,7 +4,8 @@ Guía completa, paso a paso, para que el equipo configure el envío de WhatsApp 
 
 - **Qué resuelve.** MedCita inicia la conversación con el paciente, y Meta solo permite eso con **plantillas aprobadas**. El texto libre únicamente se entrega dentro de las 24 h posteriores a que el paciente escribió. El código ya envía ambos mensajes como plantilla; esta guía cubre lo que se hace **fuera del código**.
 - **Referencia técnica.** [DEPLOY.md, sección 7](DEPLOY.md): variables de entorno y tabla de errores. Si algo difiere entre los dos documentos, manda el que se haya actualizado después; los textos de las plantillas están en ambos y un test comprueba que coincidan con el código.
-- **Sin Meta no se rompe nada.** Si no hay credenciales de Meta, el backend usa Twilio y, si tampoco hay, el modo mock (solo registra en el log).
+- **Sin Meta no se rompe nada.** Si no hay credenciales de Meta, el backend usa Twilio y, si tampoco hay, el modo mock (solo registra en el log). Para decidir entre Meta y Twilio, con la tabla comparativa y cómo cambiar de uno a otro, ver [DEPLOY.md, sección 7.0](DEPLOY.md). Esta guía es solo para quien elige **Meta**.
+- **Estado verificado (21-oct-2026).** Con esta configuración, una cita agendada desde el sitio desplegado envió la plantilla `cita_confirmada` y llegó al teléfono de prueba. Evidencia en [`qa/S7-12-production-evidence.md`](qa/S7-12-production-evidence.md).
 - **Nombres de menús.** Meta los cambia con frecuencia y los traduce de forma distinta según el idioma de la cuenta. Aquí van en español con el nombre en inglés entre paréntesis. Si no encuentras uno, búscalo por su nombre en el buscador del panel.
 
 ## Índice
@@ -154,7 +155,11 @@ Ejemplos de las variables: `{{1}}` María Andrade · `{{2}}` mañana 2026-10-21 
 2. **Meta rechaza plantillas con demasiadas variables para su longitud** («demasiadas variables en relación con su longitud») y no admite una variable **al principio ni al final** del texto. Por eso el recordatorio tiene 4 variables (día y fecha juntos en `{{2}}`) y cierra con una frase. No simplifiques los textos sin revisar el código.
 3. **Las variables van por posición.** El código manda los valores en el orden `{{1}}…{{4}}` de arriba. Si cambias el orden o el texto, cambia también `backend/src/services/whatsappTemplates.js`, y la plantilla se vuelve a revisar.
 4. **Si Meta cambia la categoría a Marketing**, el texto suena promocional. Edítalo para que sea solo informativo.
-5. **La revisión es automática, pero tarda de minutos a 24 h** (en S7-06 pasó de medio día). Solo las plantillas **Aprobadas** se pueden enviar. No hay nada que hacer salvo esperar y recargar la pantalla; Meta también avisa por correo y en la bandeja de alertas del panel.
+5. **La revisión es automática, pero tarda de minutos a 24 h** (en S7-06 pasó de medio día; el 19-oct-2026 las dos plantillas quedaron aprobadas en español y en inglés). Solo las plantillas **Aprobadas** se pueden enviar. No hay nada que hacer salvo esperar y recargar la pantalla; Meta también avisa por correo y en la bandeja de alertas del panel.
+
+6. **El estado «Activa: calidad pendiente» es el de una plantilla aprobada** que todavía no tiene envíos con los que medir su calidad. No requiere ninguna acción.
+7. **No pulses «Editar plantilla» mientras está en revisión:** cada edición reinicia la revisión.
+8. **El recordatorio de prueba mostraba un guion** («tienes una cita - a las 10:00») porque `npm run whatsapp:test` no armaba el día y la fecha como un solo valor. Corregido en el PR #93; el envío real de recordatorios nunca tuvo ese defecto.
 
 ### Ver el estado por línea de comandos
 

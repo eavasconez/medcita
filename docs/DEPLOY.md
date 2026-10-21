@@ -95,7 +95,7 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
    | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
-   | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para WhatsApp con Meta (plantillas, número de prueba gratuito) ver la sección 7 |
+   | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para elegir entre WhatsApp con Meta (plantillas, número de prueba gratuito) y Twilio ver la sección 7 |
 
    > **Verificar `TRUST_PROXY` tras desplegar**: el login limita los intentos fallidos por IP y por correo, y la IP depende de cuántos proxies hay delante (en Render: Cloudflare + balanceador). Con un token de admin:
    > ```bash
@@ -161,9 +161,37 @@ curl -X POST https://medcita-backend.onrender.com/api/auth/login \
 
 Luego, en el navegador: entrar a la URL del frontend, iniciar sesión, y confirmar en las DevTools (pestaña Network) que las peticiones van al dominio del backend real, sin errores de CORS ni en la consola. Ver `docs/qa/S5-02-deploy-verification.md` para el detalle completo de esta verificación con capturas.
 
-## 7. WhatsApp con Meta Cloud API (plantillas)
+## 7. WhatsApp: elegir el proveedor (Meta o Twilio) y configurarlo
 
-Hasta ahora producción enviaba WhatsApp con el **sandbox de Twilio**, que obliga a cada destinatario a «unirse» a mano antes de recibir nada. Con la API de Meta no hace falta: el **número de prueba es gratuito** y se pueden agregar hasta 5 destinatarios desde el panel de Meta, sin escribirle nunca al número.
+MedCita envía WhatsApp con **un solo proveedor a la vez**, elegido por las variables de entorno del backend. El cliente decide cuál usar; el código soporta los dos.
+
+### 7.0 Qué proveedor elegir
+
+| | **Meta Cloud API** (recomendado, el de producción hoy) | **Twilio** |
+|---|---|---|
+| Se activa con | `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y `TWILIO_WHATSAPP_NUMBER` (y que no estén las de Meta) |
+| Qué se envía | **Plantillas aprobadas** en español (`cita_confirmada`, `recordatorio_cita`) | El mismo texto, como **mensaje normal** (no usa plantillas) |
+| Llega a un paciente que nunca escribió | **Sí**, con el número de prueba (hasta 5 destinatarios registrados) o con un número propio | **No** con el sandbox: cada destinatario debe «unirse» enviando `join <código>` al número de Twilio, y la sesión expira a las ~72 h sin actividad |
+| Para pacientes reales | Número propio + verificación del negocio (7.7) | Un remitente de WhatsApp aprobado en Twilio. Fuera de la ventana de 24 h, la política de WhatsApp exige plantillas, y **el código no envía plantillas por Twilio**; habría que añadirlo |
+| Costo | Número de prueba gratuito; con número propio, tarifa por mensaje de utilidad fuera de la ventana de 24 h (7.7) | Tarifa de Twilio por mensaje más la de Meta, según su plan vigente |
+| Mantenimiento | Token de usuario del sistema: 60 días sin negocio verificado (hoy vence el **19-dic-2026**), sin vencimiento con negocio verificado | Credenciales de Twilio sin vencimiento |
+| Si falla un envío | Se registra el error de Meta con una pista en el log. **No se reintenta por Twilio** | Se registra el error de Twilio en el log |
+
+**Orden de elección en el código** (`backend/src/services/notificationService.js`): Meta si sus dos variables están definidas; si no, Twilio si sus credenciales están; si no, **modo mock** (solo escribe en el log, no envía nada y responde como si hubiera funcionado).
+
+**Cómo cambiar de uno a otro (sin tocar el código):**
+- **A Meta:** definir `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` en Render (7.5). Tiene prioridad sobre Twilio aunque las variables de Twilio sigan puestas.
+- **A Twilio:** borrar las dos variables de Meta y dejar las `TWILIO_*`. Solo sirve para pruebas con el sandbox o si se añade soporte de plantillas.
+- **A ninguno (mock):** borrar las de Meta y las de Twilio.
+- Render redespliega solo al guardar las variables. Después de cualquier cambio, prueba con `npm run whatsapp:test -- +593… ` y una cita real (7.6).
+
+**Recomendación para producción:** usar solo Meta y **no cargar las variables `TWILIO_*` en Render** (una sola ruta de envío y menos secretos guardados). Twilio queda para desarrollo local. Las variables viejas en Render no hacen daño mientras las de Meta estén definidas, pero sí quedarían como respaldo manual: si Meta se cae, basta con borrar las de Meta para volver a Twilio.
+
+**Estado al 21-oct-2026:** producción envía por **Meta** con el número de prueba. La confirmación de una cita agendada desde el sitio desplegado llegó al teléfono de prueba; evidencia en `docs/qa/S7-12-production-evidence.md`.
+
+### 7.0b Cómo funciona Meta (resumen)
+
+Hasta S7-06 producción enviaba WhatsApp con el **sandbox de Twilio**, que obliga a cada destinatario a «unirse» a mano antes de recibir nada. Con la API de Meta no hace falta: el **número de prueba es gratuito** y se pueden agregar hasta 5 destinatarios desde el panel de Meta, sin escribirle nunca al número.
 
 > **Por qué plantillas.** Meta solo deja que un negocio abra una conversación con una **plantilla aprobada**. El texto libre únicamente se entrega dentro de las 24 h posteriores a que el paciente escribió. La confirmación de cita y el recordatorio los inicia MedCita, así que desde S7-06 se envían como plantillas (`backend/src/services/whatsappTemplates.js`). Sin credenciales de Meta nada cambia: Twilio y el modo mock envían el mismo texto como mensaje normal.
 
@@ -231,7 +259,7 @@ Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar tambi�
 | `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | Opcionales. Nombres de las plantillas (por defecto `cita_confirmada` y `recordatorio_cita`) |
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | Opcional. Idioma de las plantillas (por defecto `es`) |
 
-Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio, borra las variables `TWILIO_*`.
+Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio (recomendado en producción), borra las variables `TWILIO_*`; elegir entre Meta y Twilio se explica en la sección 7.0.
 
 ### 7.6 Comprobar que funciona
 
