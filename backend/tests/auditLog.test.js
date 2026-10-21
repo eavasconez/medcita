@@ -521,7 +521,9 @@ describe('GET /api/admin/audit-log', () => {
           entity: 'appointment',
           entityId: appointment.id,
           doctor: { id: doctor.user.id, name: 'Dra. Camila Torres' },
-          changes: { status: { from: 'pending_approval', to: 'cancelled' } }
+          changes: { status: { from: 'pending_approval', to: 'cancelled' } },
+          ip: expect.any(String),
+          userAgent: null // the test client sends none
         },
         expect.objectContaining({ action: 'update', changes: { time: { from: '10:00', to: '11:30' } } })
       ]);

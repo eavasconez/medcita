@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const notificationService = require('./notificationService');
-const { recordAudit, describeCreated, describeRemoved, diffFields } = require('./auditLog');
+const { recordAudit, recordAccountEvent, describeCreated, describeRemoved, diffFields } = require('./auditLog');
 const { inClinic } = require('../utils/clinicScope');
 const { TOKEN_PATTERN, newToken, hashToken, frontendLink, logDevLink } = require('../utils/tokens');
 
@@ -162,7 +162,7 @@ async function preview(token) {
  * password chosen now, and consumes the link. Resolves to the new account, with its
  * clinic.
  */
-async function accept(token, password) {
+async function accept(token, password, req) {
   const invitation = await findValid(token);
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
@@ -173,7 +173,7 @@ async function accept(token, password) {
       const claimed = await tx.invitation.deleteMany({ where: { id: invitation.id, expiresAt: { gt: new Date() } } });
       if (claimed.count !== 1) throw new InvalidInvitationLinkError();
 
-      return tx.doctor.create({
+      const account = await tx.doctor.create({
         data: {
           clinicId: invitation.clinicId,
           name: invitation.name,
@@ -183,6 +183,9 @@ async function accept(token, password) {
         },
         include: { clinic: { select: { id: true, name: true } } }
       });
+      // The link signs the new account in
+      await recordAccountEvent(tx, req, account, 'login');
+      return account;
     });
   } catch (err) {
     // The email got an account in another clinic after the invitation was sent

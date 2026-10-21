@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const notificationService = require('./notificationService');
+const { recordAccountEvent } = require('./auditLog');
 const { TOKEN_PATTERN, newToken, hashToken, frontendLink, logDevLink } = require('../utils/tokens');
 const { randomSlug } = require('../utils/slug');
 
@@ -55,7 +56,7 @@ async function requestSignup({ name, email, password, clinicName }) {
  * Use a confirmation link: creates the clinic and its first admin in one
  * transaction and consumes the link. Resolves to the new admin, with its clinic.
  */
-async function confirmSignup(token) {
+async function confirmSignup(token, req) {
   if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new InvalidSignupLinkError();
 
   const request = await prisma.signupRequest.findUnique({ where: { tokenHash: hashToken(token) } });
@@ -75,7 +76,7 @@ async function confirmSignup(token) {
         // Any other pending sign-up for the same email dies with this one.
         await tx.signupRequest.deleteMany({ where: { email: request.email } });
 
-        return tx.doctor.create({
+        const admin = await tx.doctor.create({
           data: {
             name: request.name,
             email: request.email,
@@ -85,6 +86,9 @@ async function confirmSignup(token) {
           },
           include: { clinic: { select: CLINIC_SELECT } }
         });
+        // The link signs the new admin in
+        await recordAccountEvent(tx, req, admin, 'login');
+        return admin;
       });
     } catch (err) {
       if (err.code === 'P2002') {
