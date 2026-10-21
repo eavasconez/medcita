@@ -10,6 +10,8 @@ Este manual contiene los pasos exactos para realizar una demostración de la pla
 | **Doctor Demo** | `demo@medcita.ec` | `demo1234` |
 | **Admin de otro consultorio** | `admin@clinicavida.ec` | `admin1234` |
 
+> Las cuentas nuevas ya no se crean con una contraseña escrita por el administrador: se **invita** por correo (Manage Doctors → Invite User) y cada persona elige la suya. Quien se registra en `/register` debe confirmar su correo antes de entrar.
+>
 > En producción cambia estas contraseñas antes de cargar pacientes reales: están en un repositorio público. Se cambian en **Settings → Update Password**.
 
 **Sitio:** https://medcita-frontend.onrender.com (el servidor gratuito se duerme tras 15 minutos: la primera carga puede tardar ~50 s; abre la página un minuto antes de la demo).

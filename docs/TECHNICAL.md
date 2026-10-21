@@ -38,7 +38,8 @@ El frontend asume que el backend corre en `http://localhost:5000` (la URL está 
 | `JWT_SECRET` | Sí | Secreto para firmar JWT. El servidor **falla al arrancar** (`process.exit(1)`) si falta, tiene menos de 32 caracteres, o es uno de los valores de ejemplo conocidos (`demo_secret_key_123`, `replace_me_with_a_generated_secret`). Generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `FRONTEND_URL` | No (default `http://localhost:5173`) | Origen(es) permitido(s) por CORS. Acepta una lista separada por comas para múltiples orígenes |
 | `TRUST_PROXY` | No (default `false`; `2` en Render) | Número de proxies inversos delante de la app, para leer la IP real del cliente en los límites de intentos por IP. Nunca `true` (permite falsificar la IP). En Render, donde `RENDER=true`, el default es `2` (Cloudflare + balanceador de Render). Se verifica con `GET /api/admin/client-ip` |
-| `LOG_PASSWORD_RESET_LINKS` | No (solo desarrollo) | Con `true`, imprime en consola el enlace de recuperación de contraseña (útil sin proveedor de email). **Nunca activarlo en producción**: un enlace en los logs es una credencial válida por 1 hora |
+| `LOG_PASSWORD_RESET_LINKS` | No (solo desarrollo) | Con `true`, imprime en consola los enlaces que se envían por correo (recuperación de contraseña, confirmación del alta e invitaciones), útil sin proveedor de email. **Nunca activarlo en producción**: un enlace en los logs es una credencial válida hasta que vence |
+| `EXPOSE_ACCOUNT_LINKS` | No (solo QA local) | Con `true`, las respuestas de `register` y de las invitaciones traen además el enlace como `devLink`, y se levantan los límites del alta, de los enlaces y de las invitaciones, para que Postman/newman complete los flujos sin leer un buzón. **El servidor se niega a arrancar** con `NODE_ENV=production` o en Render |
 | `CLINIC_UTC_OFFSET_MINUTES` | No (default `-300`, Ecuador continental UTC-5) | Desfase horario de la clínica en minutos. Las citas guardan `date`/`time` como texto local sin zona horaria; el cron de recordatorios los interpreta con este desfase en lugar de la zona del servidor (Render corre en UTC) |
 | `TEST_DATABASE_URL` | Solo para `npm test` | Base de datos **exclusiva para pruebas**. Su nombre debe terminar en `_test` o la suite se niega a correr (borra todas las tablas entre pruebas). Nunca se usa `DATABASE_URL`. Ver sección 6 |
 | `META_WHATSAPP_TOKEN` / `META_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp vía Meta Cloud API (proveedor preferido si están presentes). La confirmación y el recordatorio se envían como **plantillas aprobadas** (guía completa en `docs/DEPLOY.md`, sección 7) |
@@ -62,7 +63,10 @@ Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`)
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| POST | `/register` | Público | Crea un nuevo médico (rol `doctor`) **en un consultorio propio** (`Consultorio de <nombre>`): nadie nuevo entra a un consultorio que ya existe |
+| POST | `/register` | Público | Pide crear un consultorio y su primer admin: body `{ name, email, password, clinicName }`. **No crea nada**: responde `202` con el mismo mensaje exista o no el correo y envía un enlace de confirmación (24 h, un solo uso). Si el correo ya tiene cuenta, su dueño recibe un aviso en vez del enlace. Limitado por correo y por IP (ver «Límite de intentos») |
+| POST | `/verify-email` | Público | Body `{ token }`. Usa el enlace de confirmación: crea el consultorio con el nombre elegido y su admin, y devuelve `201 { token, user }` ya con sesión. Enlace inválido, vencido o usado → `400 { error, code: "INVALID_LINK" }` (un solo mensaje) |
+| POST | `/invitation-preview` | Público | Body `{ token }`. Dice a dónde se invita: `{ clinicName, name, email, role, invitedByName }`. No gasta la invitación. Mismo `400 INVALID_LINK` |
+| POST | `/accept-invitation` | Público | Body `{ token, password }`. La persona elige su contraseña: se crea la cuenta en el consultorio que invitó, con el rol de la invitación, y devuelve `201 { token, user }`. Un solo uso |
 | POST | `/login` | Público | Devuelve `{ token, user }` (`user` incluye `clinic: { id, name }`). Limitado: tras 5 intentos fallidos por correo (o 20 por IP) en 15 min responde `429` (ver "Límite de intentos") |
 | POST | `/forgot-password` | Público | Body `{ email }`. Responde siempre `200` con el mismo mensaje, exista o no la cuenta, y envía por email un enlace de recuperación si existe (ver "Recuperación de contraseña"). Limitado |
 | POST | `/reset-password` | Público | Body `{ token, password }`. Cambia la contraseña con el token del enlace (un solo uso, válido 60 min). Token inválido, vencido o ya usado → `400 { error, code: "INVALID_RESET_LINK" }` (un único mensaje para los tres casos) |
@@ -104,8 +108,12 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/doctors` | admin, secretary | Lista las cuentas del consultorio (filtro opcional `role`) |
-| POST | `/doctors` | admin | Crea médico/secretaria en el consultorio del admin. No puede crear `superadmin` (`400`) |
-| PUT | `/doctors/:id` | admin | Actualiza médico |
+| POST | `/doctors` | admin | **Invita** a una persona (`{ name, email, role }`): crea una invitación y le envía un enlace de 7 días. No acepta `password` (`400`): cada persona elige la suya. `409` si ya tiene cuenta en el consultorio; un correo con cuenta en otro consultorio se invita igual, sin revelarlo. No puede invitar `superadmin`. Limitado: 20 por admin por hora |
+| GET | `/invitations` | admin | Invitaciones pendientes del consultorio (id, nombre, correo, rol, quién invitó, vencimiento, `expired`), sin enlaces |
+| POST | `/invitations/:id/resend` | admin | Enlace nuevo (el anterior deja de servir) y una semana más. `404` si no es de su consultorio |
+| DELETE | `/invitations/:id` | admin | Cancela la invitación: su enlace deja de servir. `404` si no es de su consultorio |
+| PUT | `/clinic` | admin | Renombra el propio consultorio (`{ name }`, 2 a 80 caracteres) |
+| PUT | `/doctors/:id` | admin | Actualiza nombre, correo y rol (nunca la contraseña: `400`) |
 | DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
 | GET | `/audit-log` | admin | Registro de auditoría del consultorio: lo que hicieron sus admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
@@ -121,7 +129,7 @@ Desde S8-01 los datos pertenecen a un **consultorio** (`Clinic`: nombre, `slug` 
 - **Un id de otro consultorio no existe.** Pedir, editar o borrar un paciente, una cita o una cuenta de otro consultorio responde `404`, igual que uno inexistente. Un `doctorId` ajeno (al agendar o al leer o cambiar horarios) responde `404 Doctor not found`. Los listados solo traen lo propio, y filtrar por un médico o un paciente ajeno devuelve una lista vacía.
 - **Teléfono y cédula** son únicos **por consultorio** (`@@unique([clinicId, phone])` y `[clinicId, cedula]`): el mismo número puede ser un paciente distinto en otro consultorio, y agendar nunca toca al paciente de otro. El **correo** de una cuenta sigue siendo único en toda la plataforma, porque es con lo que se inicia sesión.
 - **La base de datos también lo exige.** `Appointment` y `Availability` apuntan a su médico (y la cita a su paciente) con claves foráneas compuestas `(id, clinicId)`: aunque una ruta futura olvidara filtrar, la base rechaza (`P2003`) una cita entre un médico y un paciente de consultorios distintos. `clinicId` es obligatorio en las cinco tablas.
-- **Registro.** `POST /api/auth/register` le crea a quien se registra un consultorio propio, del que queda como `doctor`. Es un paso provisional: S8-02 lo reemplaza por el alta de un consultorio con correo verificado y un administrador.
+- **Alta.** `POST /api/auth/register` pide el nombre del consultorio y no crea nada hasta que la persona confirma su correo con el enlace (`POST /api/auth/verify-email`): entonces se crean el consultorio con ese nombre y su primer **admin**. Se guarda como `SignupRequest` (solo el hash del enlace y de la contraseña). Las demás personas entran por invitación (ver «Invitaciones»).
 - **Sesión.** `login`, `register` y `change-password` devuelven `user.clinic = { id, name }`, y `GET /api/auth/profile` también. El frontend lo muestra en la tarjeta de usuario de la barra lateral; una sesión guardada antes de S8-01 lo pide una vez al abrir la app.
 - **Zona horaria.** `Clinic.timezone` se guarda (`America/Guayaquil` por defecto) pero todavía no se usa: las horas se siguen interpretando con `CLINIC_UTC_OFFSET_MINUTES` para todos los consultorios (`utils/clinicTime.js`).
 - **Operador de la plataforma.** El rol `superadmin` cuida de MedCita, no de un consultorio. Solo se crea en la base de datos o con el seed (un admin no puede asignarlo) y su cuenta pertenece a un consultorio propio (`plataforma`); en las rutas de un consultorio se comporta como un médico más de ese. Lo único que hace de más:
@@ -130,7 +138,11 @@ Desde S8-01 los datos pertenecen a un **consultorio** (`Clinic`: nombre, `slug` 
 |---|---|---|---|
 | GET | `/api/platform/clinics` | superadmin | Consultorios paginados (`page`, `pageSize`; 50 por defecto, máx. 200) con `{ id, name, slug, timezone, createdAt, _count: { doctors, patients, appointments } }`. Solo tamaños: nunca el contenido de un consultorio |
 
-**Límites actuales.** No hay pantalla para el operador ni forma de crear un consultorio desde la API (llega con S8-02); mientras tanto un consultorio se crea al registrarse o con SQL (`docs/DEPLOY.md`, «Primer despliegue con consultorios»). Un consultorio no se puede borrar ni mover cuentas entre consultorios.
+**Límites actuales.** No hay pantalla para el operador. Un consultorio se crea al confirmar un alta o con SQL (`docs/DEPLOY.md`, «Primer despliegue con consultorios»). Un consultorio no se puede borrar ni mover cuentas entre consultorios.
+
+### Invitaciones (S8-02)
+
+Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/doctors`) y se crea una `Invitation` (consultorio, correo, rol, quién invitó, hash del enlace, vencimiento; una pendiente por consultorio y correo). La persona recibe un correo que **nombra el consultorio**, abre `/accept-invitation`, ve a qué consultorio entra y con qué rol, elige su contraseña y queda con sesión. Los enlaces (de alta y de invitación) son aleatorios de 32 bytes, solo se guarda su hash, valen una vez y viajan en el cuerpo de las peticiones, no en la URL, para que no queden en los logs de acceso. Invitar de nuevo al mismo correo reemplaza la invitación. Las invitaciones y su cancelación quedan en el registro de auditoría (`entity: invitation`, solo el rol; ni nombre ni correo).
 
 ### Registro de auditoría
 
@@ -143,7 +155,8 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 | Agendar, mover o editar una cita (`POST`/`PUT /api/appointments`) | `create` o `update`, con la fecha, la hora y el estado antes y después. Pasar a `cancelled` por `PUT` cuenta como `cancel` |
 | Cancelar una cita (`DELETE /api/appointments/:id`) | `cancel`, con el estado antes y después. Repetirlo no deja una segunda entrada |
 | Crear, editar o borrar un paciente (`/api/patients`) | `create`, `update` (solo los **nombres** de los campos que cambiaron) o `delete`. Una reserva hecha por personal que crea o modifica al paciente deja también su entrada de paciente |
-| Crear, editar o eliminar una cuenta (`/api/admin/doctors`) | `create`, `update` o `delete`. Nombre y rol con antes y después; del correo y de la contraseña solo que cambiaron. Al eliminar queda el nombre y el rol, que es lo único que sobrevive de la cuenta |
+| Invitar o cancelar una invitación (`/api/admin/doctors`, `/api/admin/invitations`) | `create`, `update` (invitar de nuevo con otro rol) o `delete`, con `entity: invitation` y solo el rol; ni el nombre ni el correo |
+| Editar o eliminar una cuenta (`/api/admin/doctors`) | `update` o `delete`. Nombre y rol con antes y después; del correo solo que cambió. Al eliminar queda el nombre y el rol, que es lo único que sobrevive de la cuenta |
 
 **Qué nunca se guarda.** Datos de contacto de pacientes (nombre, teléfono, correo, cédula), el texto de las notas de una cita (pueden contener datos médicos), correos ni contraseñas (ni su hash): de esos campos solo consta que cambiaron, como `{ "notes": { "changed": true } }`. Los campos visibles aparecen como `{ "time": { "from": "10:00", "to": "11:30" } }`. Una petición que no cambia nada, o que se rechaza (horario ocupado, validación, no existe), no deja entrada.
 
@@ -187,6 +200,10 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 | `POST /api/auth/forgot-password` | Todas las solicitudes, por IP | 10 por hora |
 | `POST /api/auth/reset-password` | Intentos fallidos (400), por IP | 10 cada 15 min |
 | `POST /api/auth/change-password` | Contraseña actual incorrecta (403), por cuenta | 5 cada 15 min |
+| `POST /api/auth/register` | Solo las solicitudes que envían correo (202), por correo | 3 por hora |
+| `POST /api/auth/register` | Solo las que envían correo (202), por IP | 5 por hora |
+| `verify-email`, `invitation-preview`, `accept-invitation` | Intentos con enlace inválido (400), por IP, compartido | 10 cada 15 min |
+| `POST /api/admin/doctors` y `/invitations/:id/resend` | Todas, por admin | 20 por hora |
 
 - En el login solo cuentan las credenciales incorrectas: los logins exitosos y las peticiones mal formadas (400) no gastan intentos. En `forgot-password` cuenta toda solicitud, porque cada una puede enviar un correo (el límite evita inundar la bandeja de alguien o gastar la cuota del proveedor).
 - Al superar el límite responde `429 { error, retryAfterSeconds }` con los headers `Retry-After` y `RateLimit-*`, **incluso con la contraseña correcta**. El mensaje es el mismo para cuentas que existen y que no.
@@ -205,7 +222,7 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 ### Sesiones y cambio de contraseña
 
 - Los JWT duran 24 h, pero ya no valen solo por su firma: el middleware `auth` consulta la cuenta por clave primaria en cada petición autenticada y rechaza con `401 Invalid token` el token de una cuenta **borrada** o emitido **antes del último cambio de contraseña** (`Doctor.passwordChangedAt`). Un fallo de la base de datos responde `500`, no `401`, para no cerrar la sesión de todos por un problema pasajero.
-- Se registra `passwordChangedAt` al cambiar la contraseña desde Settings (`POST /api/auth/change-password`), al restablecerla con el enlace del correo y cuando un admin le asigna una nueva a un usuario (`PUT /api/admin/doctors/:id` con `password`). Editar otros datos no cierra sesiones. Las cuentas que nunca cambiaron su contraseña (`passwordChangedAt` nulo) no se ven afectadas.
+- Se registra `passwordChangedAt` al cambiar la contraseña desde Settings (`POST /api/auth/change-password`) y al restablecerla con el enlace del correo (un admin ya no puede asignar contraseñas). Editar otros datos no cierra sesiones. Las cuentas que nunca cambiaron su contraseña (`passwordChangedAt` nulo) no se ven afectadas.
 - `iat` del JWT tiene resolución de un segundo, así que la comparación se hace a segundos: el token nuevo que devuelve `change-password` (mismo segundo que el cambio) sigue valiendo, y uno emitido en ese mismo segundo con la contraseña vieja también.
 - Desde Settings, quien cambia la contraseña conserva su sesión (recibe un token nuevo); las demás se cierran. El rol dentro del JWT no se refresca: un cambio de rol hecho por un admin se nota al volver a iniciar sesión.
 
@@ -228,7 +245,9 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas y con S8-01 llegó a 470 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 y con S8-02 a 525 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
+
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 250 peticiones y 432 aserciones al cierre de S8-02). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
