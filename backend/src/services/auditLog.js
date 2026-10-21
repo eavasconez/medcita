@@ -53,7 +53,7 @@ function describeRemoved(entity, record) {
 }
 
 // Writes one entry, or nothing when the request does not come from an admin or
-// a secretary. `req.userName` is set by the auth middleware.
+// a secretary. `req.userName` and `req.clinicId` are set by the auth middleware.
 async function recordAudit(db, req, { action, entity, entityId, doctorId = null, changes = null }) {
   if (!STAFF_ROLES.includes(req.userRole)) return null;
   return db.auditLog.create({
@@ -61,6 +61,7 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
       actorId: req.doctorId,
       actorName: req.userName,
       actorRole: req.userRole,
+      clinicId: req.clinicId,
       action,
       entity,
       entityId,

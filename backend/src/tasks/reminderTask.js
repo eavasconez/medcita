@@ -16,8 +16,9 @@ const REMINDABLE_STATUSES = ['pending_approval', 'scheduled', 'confirmed'];
  * has crossed into the 24h window since the last run and hasn't been
  * reminded yet (`reminderSentAt` is null), so each one is reminded once,
  * close to 24h out, rather than all at once "the day before".
+ * Covers every clinic, or only `clinicId` when one is given.
  */
-const sendReminders = async () => {
+const sendReminders = async ({ clinicId } = {}) => {
   console.log('Running reminder task...');
 
   const now = new Date();
@@ -32,7 +33,8 @@ const sendReminders = async () => {
       where: {
         date: { in: [todayStr, tomorrowStr] },
         status: { in: REMINDABLE_STATUSES },
-        reminderSentAt: null
+        reminderSentAt: null,
+        ...(clinicId && { clinicId })
       },
       include: {
         patient: true,
