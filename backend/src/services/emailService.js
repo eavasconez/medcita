@@ -1,4 +1,6 @@
 const sgMail = require('@sendgrid/mail');
+// Patient contact info must not end up in plaintext logs ("jo***@example.com")
+const { maskEmail } = require('../utils/mask');
 
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -10,16 +12,9 @@ const hasSendGridCreds = () => !!process.env.SENDGRID_API_KEY;
 
 const EMAIL_TIMEOUT_MS = 10000;
 
-/**
- * Mask an email address for logging (e.g. "jo***@example.com") so
- * patient contact info doesn't end up in plaintext logs.
- */
-function maskEmail(to) {
-  const [local, domain] = String(to).split('@');
-  if (!domain) return '***';
-  const visible = local.slice(0, 2);
-  return `${visible}${'*'.repeat(Math.max(local.length - visible.length, 1))}@${domain}`;
-}
+// What a provider attempt returns: { ok, provider, messageId?, errorCode?, error? }
+const sent = (provider, messageId = null) => ({ ok: true, provider, messageId });
+const failed = (provider, errorCode, error) => ({ ok: false, provider, errorCode, error });
 
 /**
  * Send an email through Brevo's transactional email API.
@@ -44,16 +39,24 @@ async function sendEmailViaBrevo(to, subject, text, html) {
       signal: controller.signal
     });
 
+    const raw = typeof res.text === 'function' ? await res.text() : '';
+    let body = {};
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      // not JSON: nothing more to read
+    }
     if (!res.ok) {
       console.error(`[BREVO EMAIL ERROR] ${res.status} sending to ${maskEmail(to)}`);
-      return false;
+      return failed('brevo', body.code ? `brevo_${body.code}` : `brevo_${res.status}`, `${res.status} ${body.message || raw.slice(0, 200) || 'error'}`);
     }
     console.log(`[BREVO EMAIL] Email sent successfully to ${maskEmail(to)}`);
-    return true;
+    return sent('brevo', body.messageId);
   } catch (error) {
-    const reason = error.name === 'AbortError' ? 'request timed out' : error.message;
+    const timedOut = error.name === 'AbortError';
+    const reason = timedOut ? 'request timed out' : error.message;
     console.error(`[BREVO EMAIL ERROR] sending to ${maskEmail(to)}:`, reason);
-    return false;
+    return failed('brevo', timedOut ? 'timeout' : 'network', reason);
   } finally {
     clearTimeout(timeout);
   }
@@ -71,20 +74,22 @@ async function sendEmailViaSendGrid(to, subject, text, html) {
       text,
       html: html || `<p>${text}</p>`
     };
-    await Promise.race([
+    const [response] = await Promise.race([
       sgMail.send(msg),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('request timed out')), EMAIL_TIMEOUT_MS)
       )
     ]);
     console.log(`[SENDGRID] Email sent successfully to ${maskEmail(to)}`);
-    return true;
+    return sent('sendgrid', response?.headers?.['x-message-id']);
   } catch (error) {
     console.error(`[SENDGRID ERROR] Failed to send to ${maskEmail(to)}:`, error.message);
     if (error.response) {
       console.error(`[SENDGRID ERROR] provider status: ${error.response.statusCode}`);
     }
-    return false;
+    const status = error.response?.statusCode;
+    const timedOut = error.message === 'request timed out';
+    return failed('sendgrid', status ? `sendgrid_${status}` : timedOut ? 'timeout' : 'network', error.message);
   }
 }
 
@@ -212,24 +217,38 @@ const emailService = {
    * configured Brevo actually fails to deliver) -> mock (console only)
    * when no provider is configured.
    */
-  sendEmail: async (to, subject, text, html) => {
+  /**
+   * Send an email and say exactly what happened: { ok, provider, messageId?,
+   * errorCode?, error?, simulated? }. Provider precedence: Brevo (preferred) ->
+   * SendGrid (fallback, tried both when Brevo isn't configured and when a
+   * configured Brevo actually fails to deliver) -> mock (console only) when no
+   * provider is configured. When SendGrid saves a message Brevo could not send, the
+   * result is ok and `error` keeps what went wrong with Brevo.
+   */
+  deliverEmail: async (to, subject, text, html) => {
     if (!to || !to.includes('@')) {
       console.log(`[EMAIL SKIP] Invalid or missing email: ${maskEmail(to)}`);
-      return false;
+      return { ok: false, provider: 'none', errorCode: 'invalid_recipient', error: 'The recipient has no valid email address' };
     }
 
     if (hasBrevoCreds()) {
-      if (await sendEmailViaBrevo(to, subject, text, html)) return true;
-      if (hasSendGridCreds()) return sendEmailViaSendGrid(to, subject, text, html);
-      return false;
+      const brevo = await sendEmailViaBrevo(to, subject, text, html);
+      if (brevo.ok || !hasSendGridCreds()) return brevo;
+      const sendgrid = await sendEmailViaSendGrid(to, subject, text, html);
+      return sendgrid.ok
+        ? { ...sendgrid, errorCode: brevo.errorCode, error: `Brevo failed (${brevo.error}); sent through SendGrid` }
+        : sendgrid;
     }
     if (hasSendGridCreds()) {
       return sendEmailViaSendGrid(to, subject, text, html);
     }
     console.log(`[EMAIL MOCK] To: ${maskEmail(to)}, Subject: ${subject}`);
     console.log('No email provider configured, mocked output only.');
-    return true;
+    return { ok: true, provider: 'mock', simulated: true };
   },
+
+  /** Same, answering only whether the email went out. */
+  sendEmail: async (to, subject, text, html) => (await emailService.deliverEmail(to, subject, text, html)).ok,
 
   templates: {
     appointmentConfirmationHtml,

@@ -181,3 +181,33 @@ model Invitation {
 
   @@unique([clinicId, email])
 }
+
+// One row per message MedCita tried to send (WhatsApp or email): whether it went
+// out, through which provider, and why not when it failed. It never keeps the text
+// of the message or the full address: only a masked destination, enough to tell
+// recipients apart. Like AuditLog it has no foreign keys, so it outlives what it
+// refers to. `clinicId` is empty for messages sent before a clinic exists (the
+// sign-up confirmation).
+model NotificationLog {
+  id                String   @id @default(uuid())
+  createdAt         DateTime @default(now())
+  clinicId          String?
+  appointmentId     String?
+  // appointment_confirmation, appointment_reminder, doctor_new_appointment,
+  // password_reset, signup_confirmation, account_exists, invitation
+  kind              String
+  channel           String
+  provider          String
+  // patient, doctor or user: who the message was for
+  recipient         String
+  // sent, failed, or simulated (no provider is configured: nothing really left)
+  status            String
+  errorCode         String?
+  error             String?
+  providerMessageId String?
+  // "+593***042" or "ma***@gmail.com"
+  destination       String
+
+  @@index([clinicId, createdAt])
+  @@index([appointmentId, createdAt])
+}

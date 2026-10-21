@@ -7,7 +7,7 @@ const { resetRateLimits } = require('../../src/middleware/rateLimiters');
 // Safe: setupEnv.js guarantees DATABASE_URL points at a "*_test" database.
 async function resetDb() {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "AuditLog", "SignupRequest", "Invitation", "PasswordResetToken", "Appointment", "Availability", "Patient", "Doctor", "Clinic" RESTART IDENTITY CASCADE'
+    'TRUNCATE TABLE "AuditLog", "NotificationLog", "SignupRequest", "Invitation", "PasswordResetToken", "Appointment", "Availability", "Patient", "Doctor", "Clinic" RESTART IDENTITY CASCADE'
   );
   await resetRateLimits();
 }

@@ -9,6 +9,7 @@ const { isValidDate, appointmentInstant } = require('../utils/clinicTime');
 const { inClinic } = require('../utils/clinicScope');
 const { inviteLimiter } = require('../middleware/rateLimiters');
 const invitations = require('../services/invitationService');
+const notificationLog = require('../services/notificationLog');
 const { exposeLinks } = require('../utils/tokens');
 const {
   AUDIT_ACTIONS,
@@ -109,6 +110,18 @@ router.post(DOCTORS, inviteLimiter, async (req, res) => {
       return res.status(409).json({ error: 'This person already has an account in your clinic' });
     }
     console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Is the clinic's WhatsApp and email actually going out? For each channel: the run of
+// failed messages since the last one that was sent, whether that is long enough to
+// warn about (`failing`), and the last failure with its reason. Admins only.
+router.get('/notification-status', async (req, res) => {
+  try {
+    res.json(await notificationLog.channelStatus(req.clinicId));
+  } catch (err) {
+    console.error('Notification status error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
