@@ -84,6 +84,14 @@ describe('sign-ins', () => {
     expect(await prisma.auditLog.count({ where: { action: 'login_failed' } })).toBe(LIMITS.loginPerEmail.limit);
   });
 
+  it('stores an IPv4 client as the plain address, without the ::ffff: prefix', async () => {
+    await createUser({ email: 'doc@example.test', password: 'secret123' });
+
+    await login('doc@example.test', 'secret123');
+
+    expect((await entries())[0].ip).toMatch(/^(\d{1,3}\.){3}\d{1,3}$|^::1$/);
+  });
+
   it('keeps only the first 255 characters of the browser', async () => {
     await createUser({ email: 'doc@example.test', password: 'secret123' });
 

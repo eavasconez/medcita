@@ -37,6 +37,8 @@ function nextBusinessDays(base, count) {
 async function main() {
   // Clear existing data
   await prisma.auditLog.deleteMany();
+  await prisma.invitation.deleteMany();
+  await prisma.signupRequest.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.patient.deleteMany();

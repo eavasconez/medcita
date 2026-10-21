@@ -122,7 +122,7 @@ const AuditLog = () => {
                 const details = entryDetails(entry);
                 const browser = shortBrowser(entry.userAgent);
                 return (
-                  <li key={entry.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-[11rem_1fr_14rem] gap-3 md:gap-6 md:items-center">
+                  <li key={entry.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-[10rem_1fr_17rem] gap-3 md:gap-6 md:items-center">
                     <time dateTime={entry.createdAt} className="text-sm font-bold text-slate-400">
                       {new Date(entry.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     </time>
@@ -139,8 +139,8 @@ const AuditLog = () => {
                       <p className="font-black text-secondary truncate">{entry.actor.name}</p>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{entry.actor.role}</p>
                       {(entry.ip || browser) && (
-                        <p className="flex items-center gap-1 text-xs text-slate-400 font-medium mt-1 truncate" title={entry.userAgent || ''}>
-                          <MapPin size={12} className="shrink-0" /> {[entry.ip, browser].filter(Boolean).join(' · ')}
+                        <p className="flex items-start gap-1 text-xs text-slate-400 font-medium mt-1 break-words" title={entry.userAgent || ''}>
+                          <MapPin size={12} className="shrink-0 mt-0.5" /> <span>{[entry.ip, browser].filter(Boolean).join(' · ')}</span>
                         </p>
                       )}
                     </div>

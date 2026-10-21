@@ -65,9 +65,13 @@ function describeRemoved(entity, record) {
 
 const MAX_USER_AGENT_LENGTH = 255;
 
+// Node reports an IPv4 client on a dual-stack socket as "::ffff:203.0.113.7"; keep the
+// plain address people recognise.
+const plainIp = (ip) => (ip ? ip.replace(/^::ffff:/i, '') : null);
+
 // Where a request came from. `req.ip` is the real client when TRUST_PROXY is right.
 const requestOrigin = (req) => ({
-  ip: req?.ip || null,
+  ip: plainIp(req?.ip),
   userAgent: (req?.get?.('user-agent') || '').slice(0, MAX_USER_AGENT_LENGTH) || null
 });
 
