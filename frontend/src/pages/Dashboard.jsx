@@ -6,6 +6,8 @@ import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import MessageHistory from '../components/MessageHistory';
 import NotificationAlert from '../components/NotificationAlert';
+import UnclosedVisits from '../components/UnclosedVisits';
+import { STATUS, statusLabel, statusColor, nextSteps } from '../utils/appointmentStatus';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -34,7 +36,8 @@ import {
   Clock,
   ChevronRight,
   Search,
-  User
+  User,
+  UserX
 } from 'lucide-react';
 import { debounce } from 'lodash';
 
@@ -81,7 +84,8 @@ const MAX_APPOINTMENT_PAGES = 20;
 
 // Headline numbers from the API's /stats (computed in the database), so they
 // don't depend on which appointments the calendar happens to have loaded.
-const statsFromApi = ({ total, positive, patients }) => ({
+const statsFromApi = ({ total, positive, noShow, patients }) => ({
+  noShow: noShow || 0,
   totalAppointments: total,
   newPatients: patients,
   effectiveness: total > 0 ? `${Math.round((positive / total) * 100)}%` : '—'
@@ -94,7 +98,7 @@ const Dashboard = () => {
   // The calendar list or the KPIs could not be loaded (as opposed to being empty)
   const [loadError, setLoadError] = useState(false);
   const [toast, setToast] = useState(null);
-  const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
+  const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—', noShow: 0 });
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [date, setDate] = useState(new Date());
@@ -354,7 +358,7 @@ const Dashboard = () => {
     // would return clinic-wide aggregates; show a neutral placeholder instead
     // until a doctor is chosen, matching the "select a doctor" empty state.
     if (!formData.doctorId) {
-      setStats({ totalAppointments: 0, newPatients: 0, effectiveness: '—' });
+      setStats({ totalAppointments: 0, newPatients: 0, effectiveness: '—', noShow: 0 });
       return;
     }
     try {
@@ -464,7 +468,7 @@ const Dashboard = () => {
       await axios.put(`${API_BASE_URL}/api/appointments/${id}`, { status }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setToast({ message: `Appointment ${status === 'confirmed' ? 'confirmed' : 'updated'}`, type: 'success' });
+      setToast({ message: `Appointment ${status === 'confirmed' ? 'confirmed' : 'marked as ' + statusLabel(status).toLowerCase()}`, type: 'success' });
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
@@ -561,6 +565,7 @@ const Dashboard = () => {
 
       <div className="page-shell">
         {user?.role === 'admin' && <NotificationAlert />}
+        <UnclosedVisits doctorId={formData.doctorId} refreshKey={appointments} onChange={() => { fetchAppointments(); fetchStats(); }} />
 
         {/* Header with Stats */}
         <header className="page-header mb-10">
@@ -612,7 +617,7 @@ const Dashboard = () => {
 
         {/* Header with Stats and Legend */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
-        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-500">
               <CalendarIcon size={32} />
@@ -642,6 +647,16 @@ const Dashboard = () => {
               <h3 className="text-4xl font-black text-secondary">{stats.effectiveness}</h3>
             </div>
           </div>
+
+          <div className="card flex items-center gap-6 group hover:scale-[1.02] transition-all cursor-default">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors duration-500">
+              <UserX size={32} />
+            </div>
+            <div>
+              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-1">No-shows</p>
+              <h3 className="text-4xl font-black text-secondary">{stats.noShow}</h3>
+            </div>
+          </div>
         </div>
 
         {/* Legend Card */}
@@ -660,6 +675,12 @@ const Dashboard = () => {
               <div className="w-3 h-3 rounded-full bg-[#f59e0b]"></div>
               <span className="text-xs font-bold text-secondary">Pending</span>
             </div>
+            {['arrived', 'in_progress', 'completed', 'no_show'].map((value) => (
+              <div key={value} className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: STATUS[value].color }}></div>
+                <span className="text-xs font-bold text-secondary">{STATUS[value].label}</span>
+              </div>
+            ))}
           </div>
 
           {showCombinedView && doctors.length > 0 && (
@@ -691,9 +712,9 @@ const Dashboard = () => {
           className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm text-secondary outline-none focus:ring-4 focus:ring-primary/10 w-full sm:w-auto"
         >
           <option value="">All statuses</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="pending_approval">Pending</option>
+          {Object.entries(STATUS).filter(([value]) => value !== 'cancelled').map(([value, { label }]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
 
         <div className="relative w-full sm:w-auto">
@@ -801,11 +822,7 @@ const Dashboard = () => {
             components={{ event: EventContent }}
               eventPropGetter={(event) => {
                 const status = event.resource?.status;
-                let backgroundColor = '#1e293b'; // Default secondary
-                
-                if (status === 'confirmed') backgroundColor = '#10b981'; // Green
-                if (status === 'pending_approval') backgroundColor = '#f59e0b'; // Orange
-                if (status === 'scheduled') backgroundColor = '#0ea5e9'; // Blue
+                const backgroundColor = statusColor(status);
 
                 const startStr = format(event.start, 'HH:mm');
                 
@@ -1097,7 +1114,7 @@ const Dashboard = () => {
                         />
                       </div>
 
-                      <div className="pt-6 flex gap-4">
+                      <div className="pt-6 flex flex-wrap gap-3">
                         <button 
                           type="button"
                           onClick={() => setModalStep(2)}
@@ -1129,16 +1146,16 @@ const Dashboard = () => {
             <div className="modal-panel relative rounded-[3rem] max-w-2xl animate-in zoom-in-95 duration-300">
               <div className="flex flex-col md:flex-row">
                 {/* Status Sidebar */}
-                <div className={`w-full md:w-1/3 p-6 sm:p-8 flex flex-row md:flex-col items-center gap-4 md:gap-0 justify-center text-white text-center
-                  ${selectedEvent.status === 'confirmed' ? 'bg-[#10b981]' :
-                    selectedEvent.status === 'pending_approval' ? 'bg-[#f59e0b]' : 'bg-[#0ea5e9]'}
-                `}>
+                <div
+                  className="w-full md:w-1/3 p-6 sm:p-8 flex flex-row md:flex-col items-center gap-4 md:gap-0 justify-center text-white text-center"
+                  style={{ backgroundColor: statusColor(selectedEvent.status) }}
+                >
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center md:mb-4 backdrop-blur-md shrink-0">
                     <User size={32} />
                   </div>
                   <div className="text-left md:text-center">
                     <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-1">Appointment</h3>
-                    <p className="text-2xl font-black leading-tight">{selectedEvent.status === 'confirmed' ? 'Confirmed' : 'Pending'}</p>
+                    <p className="text-2xl font-black leading-tight">{statusLabel(selectedEvent.status)}</p>
                   </div>
                 </div>
 
@@ -1186,15 +1203,17 @@ const Dashboard = () => {
                       </div>
                     )}
 
-                    <div className="pt-6 flex gap-4">
-                      {selectedEvent.status !== 'confirmed' && (
-                        <button 
-                          onClick={() => handleUpdateStatus(selectedEvent.id, 'confirmed')}
-                          className="flex-[2] py-4 bg-[#10b981] text-white font-black rounded-2xl shadow-xl shadow-[#10b981]/20 hover:scale-[1.02] active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+                    <div className="pt-6 flex flex-wrap gap-3">
+                      {nextSteps(selectedEvent.status, { started: new Date(`${selectedEvent.date}T${selectedEvent.time}`) <= new Date() }).map(([next, label], index) => (
+                        <button
+                          key={next}
+                          onClick={() => handleUpdateStatus(selectedEvent.id, next)}
+                          style={{ backgroundColor: statusColor(next) }}
+                          className={`${index === 0 ? 'flex-[2]' : 'flex-1'} py-4 text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2`}
                         >
-                          <CheckCircle2 size={18} /> Confirm Appointment
+                          <CheckCircle2 size={18} /> {label}
                         </button>
-                      )}
+                      ))}
                       <button 
                          onClick={() => handleDeleteAppointment(selectedEvent.id)}
                          className="flex-1 py-4 border-2 border-red-100 text-red-400 font-black rounded-2xl hover:bg-red-50 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
