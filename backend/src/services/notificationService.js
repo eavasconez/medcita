@@ -236,6 +236,50 @@ const notificationService = {
    * Email the account owner a password reset link. Resolves to true when the
    * email was delivered.
    */
+  sendSignupConfirmation: async ({ name, email, clinicName, url, expiresInHours }) => {
+    const text = [
+      `Hola ${name},`,
+      '',
+      `Para terminar de crear el consultorio "${clinicName}" en MedCita, confirma que este correo es tuyo.`,
+      `Abre este enlace (vale ${expiresInHours} horas y solo se puede usar una vez):`,
+      url,
+      '',
+      'Si no pediste esta cuenta, ignora este correo: no se creará nada.'
+    ].join('\n');
+    const html = emailService.templates.signupConfirmationHtml({ name, clinicName, url, expiresInHours });
+    return notificationService.sendEmail(email, `Confirma tu correo para crear ${clinicName} - MedCita`, text, html);
+  },
+
+  // Sent instead of a confirmation when the email already has an account, so the
+  // page that asked for the sign-up never has to say which emails are registered.
+  sendAccountAlreadyExists: async ({ doctor, loginUrl, resetUrl }) => {
+    const text = [
+      `Hola ${doctor.name},`,
+      '',
+      'Alguien intentó crear una cuenta de MedCita con este correo, pero ya tienes una, así que no se creó nada nuevo.',
+      `Si fuiste tú, inicia sesión: ${loginUrl}`,
+      `Si olvidaste tu contraseña, restablécela: ${resetUrl}`,
+      '',
+      'Si no fuiste tú, ignora este correo: tu cuenta sigue como estaba.'
+    ].join('\n');
+    const html = emailService.templates.accountExistsHtml({ name: doctor.name, loginUrl, resetUrl });
+    return notificationService.sendEmail(doctor.email, 'Ya tienes una cuenta en MedCita', text, html);
+  },
+
+  sendInvitation: async ({ name, email, clinicName, invitedBy, role, url, expiresInDays }) => {
+    const text = [
+      `Hola ${name},`,
+      '',
+      `${invitedBy} te invitó a unirte al consultorio "${clinicName}" en MedCita.`,
+      `Abre este enlace para aceptar y elegir tu contraseña (vale ${expiresInDays} días y solo se puede usar una vez):`,
+      url,
+      '',
+      'Si no esperabas esta invitación, ignora este correo: no se creará ninguna cuenta.'
+    ].join('\n');
+    const html = emailService.templates.invitationHtml({ name, clinicName, invitedBy, role, url, expiresInDays });
+    return notificationService.sendEmail(email, `${invitedBy} te invitó a ${clinicName} - MedCita`, text, html);
+  },
+
   sendPasswordReset: async ({ doctor, resetUrl, expiresInMinutes }) => {
     const text = [
       `Hola ${doctor.name},`,

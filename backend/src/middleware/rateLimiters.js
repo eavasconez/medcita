@@ -1,4 +1,5 @@
 const { rateLimit, MemoryStore } = require('express-rate-limit');
+const { exposeLinks } = require('../utils/tokens');
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -20,7 +21,16 @@ const LIMITS = {
   resetPasswordPerIp: { windowMs: 15 * MINUTE, limit: 10 },
   // Only a wrong current password counts (403). Whoever is guessing it already holds a
   // session, so the limit is per account, not per IP.
-  changePasswordPerAccount: { windowMs: 15 * MINUTE, limit: 5 }
+  changePasswordPerAccount: { windowMs: 15 * MINUTE, limit: 5 },
+  // Only requests that send an email count (a confirmation, or a notice to the owner
+  // of an existing account): they stop sign-ups from flooding an inbox or burning the
+  // email quota. A request rejected for its data sends nothing.
+  registerPerEmail: { windowMs: HOUR, limit: 3 },
+  registerPerIp: { windowMs: HOUR, limit: 5 },
+  // Only failed attempts (400) count: someone guessing links, or retrying a dead one.
+  accountLinkPerIp: { windowMs: 15 * MINUTE, limit: 10 },
+  // Every invitation or resend sends an email to someone outside the clinic.
+  invitePerAdmin: { windowMs: HOUR, limit: 20 }
 };
 
 const stores = [];
@@ -92,6 +102,42 @@ const resetPasswordIpLimiter = createLimiter({
   countOnlyStatus: 400
 });
 
+const registerMessage = 'Too many sign-up requests.';
+
+// QA mode (EXPOSE_ACCOUNT_LINKS, never on a hosted service) lifts the limits of the
+// sign-up and invitation links, so a test script can run over and over from one machine.
+const registerIpLimiter = createLimiter({
+  ...LIMITS.registerPerIp,
+  message: registerMessage,
+  countOnlyStatus: 202,
+  skip: exposeLinks
+});
+
+const registerEmailLimiter = createLimiter({
+  ...LIMITS.registerPerEmail,
+  message: registerMessage,
+  countOnlyStatus: 202,
+  keyGenerator: normalizedEmail,
+  skip: (req) => exposeLinks() || !normalizedEmail(req)
+});
+
+// Shared by every endpoint that exchanges an emailed link for something (confirm a
+// sign-up, look at or accept an invitation).
+const accountLinkIpLimiter = createLimiter({
+  ...LIMITS.accountLinkPerIp,
+  message: 'Too many attempts with an invalid link.',
+  countOnlyStatus: 400,
+  skip: exposeLinks
+});
+
+// Must run after the auth middleware: it is keyed by the authenticated account.
+const inviteLimiter = createLimiter({
+  ...LIMITS.invitePerAdmin,
+  message: 'Too many invitations sent.',
+  keyGenerator: (req) => req.doctorId,
+  skip: exposeLinks
+});
+
 // Must run after the auth middleware: it is keyed by the authenticated account.
 const changePasswordLimiter = createLimiter({
   ...LIMITS.changePasswordPerAccount,
@@ -119,6 +165,10 @@ module.exports = {
   forgotPasswordEmailLimiter,
   resetPasswordIpLimiter,
   changePasswordLimiter,
+  registerIpLimiter,
+  registerEmailLimiter,
+  accountLinkIpLimiter,
+  inviteLimiter,
   clearLoginAttempts,
   resetRateLimits
 };

@@ -38,16 +38,18 @@ describe('/api/admin/doctors', () => {
   });
 
   describe('POST', () => {
-    const valid = { name: 'Dr. Nuevo', email: 'Nuevo@Example.test', password: 'secret123' };
+    const valid = { name: 'Dr. Nuevo', email: 'Nuevo@Example.test' };
 
-    it('creates an account (admin only), normalises the email and never returns the password', async () => {
+    it('invites a person (admin only) instead of creating the account, and normalises the email', async () => {
       const admin = await createUser({ role: 'admin' });
 
       const res = await api('post', '/api/admin/doctors', admin.token, valid);
 
       expect(res.status).toBe(201);
-      expect(res.body).toMatchObject({ name: 'Dr. Nuevo', email: 'nuevo@example.test', role: 'doctor' });
-      expect(res.body.password).toBeUndefined();
+      expect(res.body).toMatchObject({ name: 'Dr. Nuevo', email: 'nuevo@example.test', role: 'doctor', delivered: true });
+      expect(JSON.stringify(res.body)).not.toMatch(/token|password|devLink/i);
+      expect(await prisma.doctor.count()).toBe(1); // only the admin: the account appears when the invitation is accepted
+      expect(await prisma.invitation.count()).toBe(1);
     });
 
     it.each(['doctor', 'secretary'])('is forbidden for a %s', async (role) => {
@@ -57,12 +59,14 @@ describe('/api/admin/doctors', () => {
 
       expect(res.status).toBe(403);
       expect(await prisma.doctor.count()).toBe(1);
+      expect(await prisma.invitation.count()).toBe(0);
     });
 
     it.each([
       [{ name: '  ' }, /Name is required/],
+      [{ name: 'x'.repeat(101) }, /at most 100 characters/],
       [{ email: 'not-an-email' }, /valid email/],
-      [{ password: '123' }, /at least 6 characters/],
+      [{ password: 'secret123' }, /Passwords are chosen by each person/],
       [{ role: 'superuser' }, /role must be one of/]
     ])('returns 400 for %j', async (override, message) => {
       const admin = await createUser({ role: 'admin' });
@@ -73,13 +77,15 @@ describe('/api/admin/doctors', () => {
       expect(res.body.error).toMatch(message);
     });
 
-    it('rejects an email that is already registered', async () => {
-      const admin = await createUser({ role: 'admin', email: 'nuevo@example.test' });
+    it('answers 409 when the person already has an account in the clinic', async () => {
+      const admin = await createUser({ role: 'admin' });
+      await createUser({ email: 'nuevo@example.test' });
 
       const res = await api('post', '/api/admin/doctors', admin.token, valid);
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Email already registered');
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('This person already has an account in your clinic');
+      expect(await prisma.invitation.count()).toBe(0);
     });
   });
 
@@ -93,6 +99,18 @@ describe('/api/admin/doctors', () => {
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ name: 'Dr. Nuevo', email: doctor.user.email });
       expect(res.body.password).toBeUndefined();
+    });
+
+    it('refuses to set a password: each person chooses their own', async () => {
+      const admin = await createUser({ role: 'admin' });
+      const doctor = await createUser();
+      const before = doctor.user.password;
+
+      const res = await api('put', `/api/admin/doctors/${doctor.user.id}`, admin.token, { password: 'otra-clave-123' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Passwords are chosen by each person/);
+      expect((await prisma.doctor.findUnique({ where: { id: doctor.user.id } })).password).toBe(before);
     });
 
     it('returns 400 for an invalid role and 404 for an unknown account', async () => {
@@ -156,8 +174,9 @@ describe('/api/admin/medicos (old name, kept as an alias)', () => {
   it('still answers on every method, and marks the answers as deprecated', async () => {
     const admin = await createUser({ role: 'admin' });
 
-    const created = await api('post', '/api/admin/medicos', admin.token, { name: 'Dr. Alias', email: 'alias@example.test', password: 'secret123' });
-    const id = created.body.id;
+    const created = await api('post', '/api/admin/medicos', admin.token, { name: 'Dr. Alias', email: 'alias@example.test' });
+    const { user } = await createUser();
+    const id = user.id;
     const listed = await api('get', '/api/admin/medicos', admin.token);
     const updated = await api('put', `/api/admin/medicos/${id}`, admin.token, { name: 'Dr. Alias 2' });
     const deleted = await api('delete', `/api/admin/medicos/${id}`, admin.token);

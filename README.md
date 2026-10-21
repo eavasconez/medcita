@@ -67,6 +67,8 @@ Debes tener dos terminales abiertas:
 | Doctor (2.º consultorio) | `dra.vega@clinicavida.ec` | `demo1234` | Dra. Paula Vega — Ginecología |
 | Operador de la plataforma | `plataforma@medcita.ec` | `admin1234` | Rol `superadmin`: solo `GET /api/platform/clinics` (la lista de consultorios y su tamaño) |
 
+> **Altas e invitaciones (S8-02):** registrarse en `/register` pide el nombre del consultorio y envía un enlace de confirmación por correo; las demás personas se agregan desde **Manage Doctors → Invite User**. Sin proveedor de correo configurado, activa `LOG_PASSWORD_RESET_LINKS=true` en `backend/.env` y el enlace sale en la consola del backend.
+
 > La app en producción tiene su propia copia de estos mismos datos de demo (sembrados en Neon). **Estas contraseñas están en este repositorio, que es público: cámbialas desde Ajustes → Update Password antes de cargar pacientes reales en producción.** También hay un **PDF de guía completa** descargable directo desde la pantalla de login (panel lateral): credenciales, qué probar según el rol, el flujo de una cita con el WhatsApp y el correo que recibe el paciente, y la configuración de WhatsApp con Meta paso a paso. Su fuente está en `docs/guide/` (cómo regenerarlo: `docs/TECHNICAL.md`).
 
 ## 🛠️ Tecnologías Utilizadas
