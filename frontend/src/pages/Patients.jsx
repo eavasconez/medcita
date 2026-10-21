@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import PatientConsentModal from '../components/PatientConsentModal';
 import {
   Users,
   Search,
@@ -18,8 +19,23 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  Download
 } from 'lucide-react';
+
+const CONSENT_BADGE = {
+  none: ['Consent pending', 'bg-amber-50 text-amber-700'],
+  granted: ['Consent given', 'bg-emerald-50 text-emerald-700'],
+  outdated: ['Consent: old text', 'bg-amber-50 text-amber-700'],
+  withdrawn: ['Consent withdrawn', 'bg-red-50 text-red-600']
+};
+
+const ConsentBadge = ({ consent }) => {
+  const key = !consent ? 'none' : consent.status === 'granted' && !consent.upToDate ? 'outdated' : consent.status;
+  const [label, tone] = CONSENT_BADGE[key];
+  return <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${tone}`}>{label}</span>;
+};
 
 const Patients = () => {
   const [patients, setPatients] = useState([]);
@@ -32,7 +48,8 @@ const Patients = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentPatientId, setCurrentPatientId] = useState(null);
   const [toast, setToast] = useState(null);
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
+  const [consentPatient, setConsentPatient] = useState(null);
   const fetchAbortRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
@@ -83,6 +100,26 @@ const Patients = () => {
   const handleSearch = (e) => {
     setSearch(e.target.value);
     fetchPatients(e.target.value, 1);
+  };
+
+  // The whole record of one patient as a file (access and portability); admins only, and
+  // every export is written to the activity log.
+  const handleExport = async (patient) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/patients/${patient.id}/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `patient-${patient.id}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast('Data exported');
+    } catch {
+      showToast('We couldn\'t export the data', 'error');
+    }
   };
 
   const goToPage = (nextPage) => {
@@ -210,6 +247,30 @@ const Patients = () => {
                       <User size={28} />
                     </div>
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConsentPatient(p);
+                        }}
+                        aria-label={`Consent of ${p.name}`}
+                        title="Health data consent"
+                        className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                      >
+                        <ShieldCheck size={18} />
+                      </button>
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExport(p);
+                          }}
+                          aria-label={`Export the data of ${p.name}`}
+                          title="Export this patient's data"
+                          className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                        >
+                          <Download size={18} />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -236,6 +297,7 @@ const Patients = () => {
                   </div>
                   
                   <h3 className="text-xl font-extrabold text-secondary mb-1 truncate">{p.name}</h3>
+                  <ConsentBadge consent={p.consent} />
                   <div className="space-y-2 mt-4">
                     <p className="flex items-center gap-2 text-slate-500 text-sm font-medium">
                       <CreditCard size={14} className="text-primary" /> {p.cedula || 'No ID'}
@@ -370,6 +432,13 @@ const Patients = () => {
             </form>
           </div>
         </div>
+      )}
+    {consentPatient && (
+        <PatientConsentModal
+          patient={consentPatient}
+          onClose={() => setConsentPatient(null)}
+          onChange={() => fetchPatients(search, page)}
+        />
       )}
     </Layout>
   );

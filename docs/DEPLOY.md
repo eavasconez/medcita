@@ -366,8 +366,118 @@ Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma 
 
 - **`main`** es lo que corre en producción (Render despliega de ahí). Solo recibe lo que ya se probó.
 - **`develop`** es la rama de integración del Sprint 8 en adelante: cada ticket sale de `develop` y su PR apunta a `develop`.
-- **S8-01 vive solo en `develop`.** Se fusionó a `main` por error el 21-oct-2026 (PR #103) y se deshizo con el commit `3a61e01` (revert); la base de Neon no llegó a migrarse.
-- **Para llevar `develop` a `main`** (cuando se decida pasar a producción), primero hay que **revertir ese revert** en `main` (`git revert 3a61e01`); si no, git considera S8-01 ya deshecho y lo omite al fusionar. Después se hace el merge de `develop` a `main` y se sigue «Primer despliegue con consultorios».
+- **Historia del 21-oct-2026.** S8-01 se fusionó a `main` por error (PR #103) y se revirtió con `3a61e01`, pero Render alcanzó a aplicar sus migraciones en Neon antes del revert: la base quedó **más adelante que el código** y guardar horarios, citas o pacientes daba `500` (`P2011`, `clinicId` nulo). Se arregló llevando `develop` a `main` (PR #108), con un `git revert` del revert. **Aprendizaje:** deshacer código no deshace migraciones; por eso existe el staging de abajo.
+- **Para llevar `develop` a `main`:** abrir un PR de `develop` a `main` (o de una rama `release/…`), correr antes el checklist de staging y, tras fusionar, llevar `main` de vuelta a `develop` si hubo correcciones directas en `main`. Después seguir «Primer despliegue con consultorios» si hay migraciones nuevas.
+
+## Ambiente de pruebas (staging) (S8-06)
+
+Un segundo despliegue de MedCita, con su propia base y su propia URL, donde se prueba **todo lo que cambia el esquema antes de llevarlo a producción**. El 20-oct y el 21-oct (la migración de consultorios que quedó aplicada con el código revertido) se habrían visto aquí. La regla desde ahora:
+
+> Un PR que agrega una migración se despliega primero en staging, se prueba ahí con el checklist de abajo y **solo entonces** se lleva a `main`.
+
+Se crea una sola vez, en los paneles de Render y Neon (el repositorio no lo puede hacer por ti). Cuesta lo mismo que hoy: los planes gratuitos.
+
+### 1. Base de datos: una rama de Neon que **no** es la de producción
+
+1. Averigua cuál rama usa producción: en Render → `medcita-backend` → *Environment* → `DATABASE_URL`, el host (`ep-…`) corresponde a una rama en Neon → *Branches*. Anótala: esa es **producción** y no se toca. (En este proyecto la rama principal se llama `develop`; el nombre no significa nada, lo que importa es el host.)
+2. Neon → *Branches* → **Create branch**, de nombre `staging`, **a partir de la de producción**. Así tiene el mismo esquema y el mismo historial de migraciones (`_prisma_migrations`), que es lo que hay que probar: aplicar la migración nueva sobre un esquema como el real.
+3. En la rama nueva, copia la cadena de conexión **directa** (sin `-pooler`) y úsala solo para staging.
+4. **Quita los datos reales de staging de inmediato.** Una rama copia también a los pacientes reales y no deben vivir en un ambiente de pruebas (LOPDP). Desde `backend/`:
+
+   ```bash
+   export DATABASE_URL='postgresql://…staging…'
+   SEED_REMOTE_HOST=<el host de esa URL> npx prisma db seed
+   ```
+
+   El seed **borra todo** y carga los consultorios y las cuentas de demostración. Por seguridad se niega a correr contra una base que no sea local salvo que escribas el host en `SEED_REMOTE_HOST`: **compara ese host con el de producción antes de ejecutarlo**. Si alguna vez dudas, no lo corras.
+5. Si necesitas probar con datos parecidos a los reales, usa *Data masking* de Neon sobre la rama de staging en lugar de dejar los datos como están.
+
+### 2. Backend: un Web Service nuevo desde `develop`
+
+Render → **+ New → Web Service**, mismo repositorio, con estos valores distintos a los de producción:
+
+| Campo | Valor |
+|---|---|
+| **Name** | `medcita-backend-staging` |
+| **Branch** | `develop` |
+| **Root Directory / Build / Start / Health Check Path** | iguales a los de producción (sección 3) |
+| `DATABASE_URL` | la de la rama `staging` (paso anterior) |
+| `JWT_SECRET` | **uno nuevo**, distinto al de producción (así una sesión de staging nunca vale en producción) |
+| `FRONTEND_URL` | la URL del sitio de staging (se conoce al crear el Static Site; actualízala después) |
+| `BREVO_*` | Opcional. Sin ellas el correo es *mock* y las invitaciones y altas **no llegan a nadie**: para probarlas, configura Brevo con un remitente de pruebas |
+| `META_WHATSAPP_*` / `TWILIO_*` | **Déjalas vacías.** Así WhatsApp corre en modo *mock* y staging nunca escribe a un paciente real. Si algún día se prueba la plantilla de Meta, que sea solo con tu número de prueba |
+| `EXPOSE_ACCOUNT_LINKS` | **No definir**: el servidor se niega a arrancar con ella en Render |
+| `S3_*` | Opcional: un bucket **propio de staging** (ver «Archivos privados»), nunca el de producción |
+
+### 3. Frontend: un Static Site nuevo desde `develop`
+
+Render → **+ New → Static Site**: `Name` `medcita-frontend-staging`, `Branch` `develop`, `Root Directory` `frontend`, `Build Command` `npm run build`, `Publish Directory` `dist`, más la regla de *rewrite* del SPA (sección 4). Variables:
+
+| Key | Value |
+|---|---|
+| `VITE_API_URL` | la URL del backend de staging |
+| `VITE_APP_ENV` | `staging` |
+
+`VITE_APP_ENV=staging` pone una etiqueta amarilla «STAGING · TEST DATA» en lo alto de cada pantalla y el prefijo `[STAGING]` en la pestaña, para que nadie confunda las dos aplicaciones. Después, vuelve al backend y pon su `FRONTEND_URL` con la URL de este sitio.
+
+### 4. Cómo se usa (cada ticket que cambie el esquema)
+
+1. El PR del ticket se fusiona en `develop` y Render despliega staging (el *Build Command* ejecuta `prisma migrate deploy` sobre la rama `staging`).
+2. En el log del deploy de staging: la migración nueva aparece aplicada y `GET /api/health` responde `200`.
+3. Recorrer el checklist: iniciar sesión, **guardar un horario, agendar una cita con un paciente nuevo**, abrir Activity Log, el detalle de una cita y Analytics, y el flujo propio del ticket. Los logs de Render no deben tener `P2011` ni `P2022`. (Lo que falló el 21-oct era justo guardar datos nuevos.)
+4. Solo si todo está bien, se lleva `develop` a `main` (sección «Ramas»).
+5. Cuando staging se ensucia o queda atrás del esquema, se repite el paso 4 de «Base de datos» (o se borra la rama y se crea otra desde producción).
+
+**Qué staging no prueba:** el rendimiento con datos reales, WhatsApp de verdad y el correo si no configuraste Brevo. Y si la diferencia entre staging y producción es el *contenido* de los datos (como un teléfono repetido en la base real), la migración puede pasar aquí y fallar allá: por eso la rama se crea **desde producción** antes de limpiarla, y por eso la copia de respaldo de Neon antes de migrar producción sigue siendo obligatoria.
+
+## Archivos privados (S8-06)
+
+Los documentos clínicos que vendrán (consentimientos firmados, recetas, imágenes) no pueden vivir en el disco de Render, que se borra en cada despliegue. Van a un **bucket privado compatible con S3** y la aplicación entrega **URLs firmadas de pocos minutos**. Hoy ningún flujo sube archivos: este ticket deja el almacenamiento listo, probado y verificable.
+
+### Cómo se protege
+
+- **El bucket es privado.** Nadie lee ni escribe directo: la lectura sin firma debe dar `401` o `403`. `npm run storage:check` lo comprueba de verdad (ver abajo).
+- **URLs firmadas de 5 minutos** (`S3_URL_TTL_SECONDS`; el tope es de 15 minutos aunque se configure más).
+- **Todo archivo cuelga de `clinics/<id del consultorio>/…`.** El código solo firma llaves del consultorio de quien pregunta, así que no se puede firmar la URL de un archivo de otro consultorio (`backend/src/services/fileStorage.js`, probado en `backend/tests/fileStorage.test.js`).
+- Un bucket **por ambiente**: producción y staging nunca comparten bucket ni llaves.
+
+### Crear el bucket (una sola vez, en el proveedor)
+
+Sirve cualquier servicio con API S3. Cloudflare R2, AWS S3 y Backblaze B2 funcionan igual; lo que cambia es el endpoint y la región. Los pasos comunes:
+
+1. Crear el bucket (por ejemplo `medcita-files` y `medcita-files-staging`) en una región razonable. Anota que los archivos de salud saldrán de Ecuador: es parte de lo que debe revisar un abogado (S8-07).
+2. **Dejarlo privado**: sin acceso público ni dominio público. En AWS, activar *Block all public access*; en R2, no habilitar el acceso público (`r2.dev`) ni dominios personalizados.
+3. Crear una llave de acceso **solo para este bucket** con permiso de leer, escribir y borrar objetos (en AWS: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` sobre `arn:aws:s3:::<bucket>/*`; nada más).
+4. Si algún día el navegador sube directo con la URL firmada, hará falta una regla CORS que permita `PUT` y `GET` desde el origen del frontend. Aún no hace falta.
+
+### Variables (Render → backend → Environment, y `backend/.env` en local)
+
+| Variable | Valor |
+|---|---|
+| `S3_BUCKET` | nombre del bucket |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | la llave del paso 3 (el secreto solo se muestra una vez) |
+| `S3_REGION` | AWS: la región real (`us-east-1`…); Cloudflare R2: `auto` |
+| `S3_ENDPOINT` | AWS: no definir; R2: `https://<id de la cuenta>.r2.cloudflarestorage.com`; Backblaze: el endpoint S3 del bucket |
+| `S3_FORCE_PATH_STYLE` | `true` solo para MinIO y proveedores que lo piden |
+| `S3_URL_TTL_SECONDS` | opcional, 300 por defecto, máximo 900 |
+
+### Verificar
+
+Con las variables en `backend/.env` (o exportadas), desde `backend/`:
+
+```bash
+npm run storage:check
+# OK   upload with a signed URL
+# OK   read it back with a signed URL
+# OK   the same address without the signature is refused
+# OK   remove the test file
+```
+
+Sube un archivo de prueba con una URL firmada, lo lee con otra, comprueba que **la misma dirección sin firma es rechazada** (si alguna vez ves `FAIL … without the signature`, el bucket es público: corrígelo antes de guardar nada) y lo borra. No deja nada. Devuelve código distinto de cero si algo falla, así que sirve como paso de una lista de verificación.
+
+## Textos legales en el frontend (S8-07)
+
+`/privacy` y `/terms` se compilan dentro del frontend a partir de `docs/legal/politica-de-privacidad.md` y `terminos-de-uso.md` (una carpeta **fuera** de `frontend/`). Render clona todo el repositorio, así que el *build* los encuentra, pero con *Root Directory* `frontend` un cambio que solo toque `docs/legal/` puede no disparar un despliegue: en el Static Site, *Settings → Build Filters*, agrega `docs/legal/**`, o lanza un *Manual Deploy* después de cambiar los textos. Cuando un abogado apruebe los textos, cambia `LEGAL_REVIEWED` a `true` en `frontend/src/config/legal.js` para quitar el aviso de borrador.
 
 ## Notas para futuros redeploys
 

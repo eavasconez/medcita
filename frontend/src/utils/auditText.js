@@ -14,7 +14,7 @@ export const ACTION_OPTIONS = [
   { value: 'read', label: 'Viewed' }
 ];
 
-const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation' };
+const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data' };
 const VERB = { create: 'Created', update: 'Updated', cancel: 'Cancelled', delete: 'Deleted', read: 'Viewed' };
 
 const SESSION_TITLES = {
@@ -45,6 +45,8 @@ export function entryTitle(entry) {
     if (entry.action === 'update') return 'Updated an invitation';
     if (entry.action === 'delete') return 'Cancelled an invitation';
   }
+  if (entry.entity === 'patient_export') return 'Exported a patient\'s data';
+  if (entry.entity === 'consent') return entry.changes?.granted?.to === false ? 'Recorded a patient\'s consent withdrawal' : 'Recorded a patient\'s consent';
   return `${VERB[entry.action] || entry.action} ${noun}`;
 }
 

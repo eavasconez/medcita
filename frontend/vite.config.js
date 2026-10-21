@@ -28,6 +28,9 @@ function manualChunks(id) {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // The privacy policy and the terms are read from ../docs/legal (one source for the app and
+  // for the lawyer), which is outside this folder.
+  server: { fs: { allow: ['..'] } },
   build: {
     rollupOptions: {
       output: { manualChunks },
