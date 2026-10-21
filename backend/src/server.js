@@ -11,7 +11,6 @@ const appointmentRoutes = require('./routes/appointments');
 const patientRoutes = require('./routes/patients');
 const availabilityRoutes = require('./routes/availability');
 const adminRoutes = require('./routes/admin');
-const platformRoutes = require('./routes/platform');
 const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
@@ -78,17 +77,15 @@ app.use('/api/appointments', authMiddleware, appointmentRoutes);
 app.use('/api/patients', authMiddleware, patientRoutes);
 app.use('/api/availability', authMiddleware, availabilityRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
-app.use('/api/platform', authMiddleware, platformRoutes);
 
 // Manual trigger for demo purpose - restricted to admin/secretary so any
-// authenticated doctor can't fire off a notification batch. It only covers the
-// caller's own clinic; the hourly cron below covers all of them.
+// authenticated doctor can't fire off a system-wide notification batch.
 app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
   if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
-    await sendReminders({ clinicId: req.clinicId });
+    await sendReminders();
     res.json({ message: 'Reminders task triggered manually' });
   } catch (error) {
     res.status(500).json({ error: 'Reminders task failed' });

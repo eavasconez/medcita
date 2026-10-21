@@ -18,8 +18,7 @@ describe('POST /api/auth/register', () => {
       id: expect.any(String),
       name: 'Dra. Ana Torres',
       email: 'ana@example.test',
-      role: 'doctor',
-      clinic: { id: expect.any(String), name: 'Consultorio de Dra. Ana Torres' }
+      role: 'doctor'
     });
     expect(res.body.user).not.toHaveProperty('password');
 
@@ -28,19 +27,6 @@ describe('POST /api/auth/register', () => {
 
     const stored = await prisma.doctor.findUnique({ where: { email: 'ana@example.test' } });
     expect(stored.password).not.toBe('secret123'); // stored hashed
-  });
-
-  it('puts every new account in a clinic of its own, never in one that already exists', async () => {
-    const existing = await createUser();
-
-    const first = await request(app).post('/api/auth/register').send(valid);
-    const second = await request(app).post('/api/auth/register').send({ ...valid, email: 'otra@example.test' });
-
-    const clinicIds = [existing.user.clinicId, first.body.user.clinic.id, second.body.user.clinic.id];
-    expect(new Set(clinicIds).size).toBe(3);
-    const stored = await prisma.doctor.findUnique({ where: { email: 'ana@example.test' }, include: { clinic: true } });
-    expect(stored.clinicId).toBe(first.body.user.clinic.id);
-    expect(stored.clinic).toMatchObject({ timezone: 'America/Guayaquil', slug: expect.stringMatching(/^dra-ana-torres-[0-9a-f]{6}$/) });
   });
 
   it('trims the name and normalizes the email to lowercase', async () => {
@@ -82,14 +68,7 @@ describe('POST /api/auth/login', () => {
     const res = await request(app).post('/api/auth/login').send({ email: 'login@example.test', password: 'secret123' });
 
     expect(res.status).toBe(200);
-    const clinic = await prisma.clinic.findUnique({ where: { id: user.clinicId } });
-    expect(res.body.user).toEqual({
-      id: user.id,
-      name: user.name,
-      email: 'login@example.test',
-      role: 'doctor',
-      clinic: { id: clinic.id, name: clinic.name }
-    });
+    expect(res.body.user).toEqual({ id: user.id, name: user.name, email: 'login@example.test', role: 'doctor' });
     expect(jwt.verify(res.body.token, process.env.JWT_SECRET)).toMatchObject({ id: user.id, role: 'doctor' });
   });
 

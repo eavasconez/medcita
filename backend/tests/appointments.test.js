@@ -124,7 +124,7 @@ describe('POST /api/appointments', () => {
     const res = await post(token, booking({ patientName: 'María A. Andrade', time: '09:30', patientEmail: '', patientCedula: '' }));
 
     expect(res.status).toBe(201);
-    const patient = await prisma.patient.findFirst({ where: { phone: '+593990000042' } });
+    const patient = await prisma.patient.findUnique({ where: { phone: '+593990000042' } });
     expect(patient).toMatchObject({ name: 'María A. Andrade', email: 'maria@example.test', cedula: '1712345678' });
     expect(await prisma.patient.count()).toBe(1);
   });
@@ -193,7 +193,7 @@ describe('POST /api/appointments', () => {
   describe('doctor availability', () => {
     it('allows bookings inside the doctor schedule and rejects the rest', async () => {
       const { user, token } = await createUser();
-      await prisma.availability.create({ data: { doctorId: user.id, clinicId: user.clinicId, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
+      await prisma.availability.create({ data: { doctorId: user.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
 
       const inside = await post(token, booking({ date: MONDAY, time: '10:00' }));
       const afterHours = await post(token, booking({ date: MONDAY, time: '15:00', patientPhone: '+593990000003' }));
@@ -649,7 +649,7 @@ describe('PUT /api/appointments/:id', () => {
 
     it('rejects a move outside the days and hours the doctor works', async () => {
       const { owner, appointment } = await setup();
-      await prisma.availability.create({ data: { doctorId: owner.user.id, clinicId: owner.user.clinicId, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
+      await prisma.availability.create({ data: { doctorId: owner.user.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
       await prisma.appointment.update({ where: { id: appointment.id }, data: { date: MONDAY, time: '10:00' } });
 
       const afterHours = await put(owner.token, appointment.id, { time: '15:00' });
@@ -711,7 +711,7 @@ describe('PUT /api/appointments/:id', () => {
     it('does not re-check the schedule when only the status or notes change', async () => {
       const { owner, appointment } = await setup();
       // The doctor's schedule changed after this appointment was booked.
-      await prisma.availability.create({ data: { doctorId: owner.user.id, clinicId: owner.user.clinicId, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
+      await prisma.availability.create({ data: { doctorId: owner.user.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00' } });
 
       const res = await put(owner.token, appointment.id, { status: 'confirmed', notes: 'Confirmada por teléfono' });
 

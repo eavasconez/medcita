@@ -150,11 +150,6 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
             <p className="text-xs text-slate-400 mb-1">Active User</p>
             <p className="text-sm font-bold truncate">{user?.name}</p>
             <p className="text-[10px] text-primary font-bold uppercase tracking-widest">{user?.role}</p>
-            {user?.clinic?.name && (
-              <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-white/10 truncate" title={user.clinic.name}>
-                {user.clinic.name}
-              </p>
-            )}
           </div>
 
           <button

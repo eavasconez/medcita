@@ -8,7 +8,6 @@ Este manual contiene los pasos exactos para realizar una demostración de la pla
 | :--- | :--- | :--- |
 | **Administrador** | `admin@medcita.ec` | `admin1234` |
 | **Doctor Demo** | `demo@medcita.ec` | `demo1234` |
-| **Admin de otro consultorio** | `admin@clinicavida.ec` | `admin1234` |
 
 > En producción cambia estas contraseñas antes de cargar pacientes reales: están en un repositorio público. Se cambian en **Settings → Update Password**.
 

@@ -11,7 +11,7 @@ const getAvailability = (token, query = {}) => request(app).get('/api/availabili
 const setAvailability = (token, body) => request(app).post('/api/availability').set(bearer(token)).send(body);
 const getSlots = (token, query) => request(app).get('/api/availability/slots').query(query).set(bearer(token));
 
-const slot = (doctor, dayOfWeek, startTime, endTime) => ({ doctorId: doctor.id, clinicId: doctor.clinicId, dayOfWeek, startTime, endTime });
+const slot = (doctor, dayOfWeek, startTime, endTime) => ({ doctorId: doctor.id, dayOfWeek, startTime, endTime });
 
 describe('GET /api/availability', () => {
   it('returns the default Monday-Friday 08:00-18:00 schedule when none is configured', async () => {

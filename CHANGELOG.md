@@ -1,9 +1,5 @@
 # Cambios de MedCita
 
-## Sprint 8 (en curso)
-
-- **Datos separados por consultorio (S8-01, #96).** Pacientes, citas, horarios y cuentas pertenecen a un consultorio y cada persona solo ve y edita lo del suyo; teléfono y cédula son únicos por consultorio; quien se registra obtiene un consultorio propio; el operador de la plataforma (`superadmin`) ve los consultorios y su tamaño, no su contenido. Migración en dos pasos que pone los datos actuales en `Consultorio principal`: antes de fusionar leer `docs/DEPLOY.md`, «Primer despliegue con consultorios». Detalle: `docs/TECHNICAL.md`, «Consultorios».
-
 ## Sprint 7 — 21-oct-2026
 
 Cierre del Sprint 7: pruebas automatizadas, migraciones, seguridad de acceso, registro de auditoría y WhatsApp con plantillas de Meta, todo comprobado en el sitio desplegado (`docs/qa/S7-12-production-evidence.md`).

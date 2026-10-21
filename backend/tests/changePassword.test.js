@@ -55,13 +55,7 @@ describe('POST /api/auth/change-password', () => {
 
     const res = await changePassword(token, { currentPassword: password, newPassword: NEW_PASSWORD });
 
-    expect(res.body.user).toEqual({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      clinic: { id: user.clinicId, name: 'Consultorio de pruebas' }
-    });
+    expect(res.body.user).toEqual({ id: user.id, name: user.name, email: user.email, role: user.role });
     expect(JSON.stringify(res.body)).not.toMatch(/password"|\$2[aby]\$/);
     expect((await profile(res.body.token)).status).toBe(200);
   });

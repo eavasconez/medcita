@@ -36,19 +36,13 @@ function nextBusinessDays(base, count) {
 
 async function main() {
   // Clear existing data
-  await prisma.auditLog.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.doctor.deleteMany();
-  await prisma.clinic.deleteMany();
 
   const hashedDoctorPass = await bcrypt.hash('demo1234', 10);
   const hashedAdminPass = await bcrypt.hash('admin1234', 10);
-
-  // The main demo clinic holds the 3 pilot doctors below. A second, separate one
-  // (further down) shows that clinics never see each other's data.
-  const clinic = await prisma.clinic.create({ data: { name: 'Consultorio MedCita (demo)', slug: 'medcita-demo' } });
 
   // Create Admin
   const admin = await prisma.doctor.upsert({
@@ -58,8 +52,7 @@ async function main() {
       email: 'admin@medcita.ec',
       name: 'Administrador MedCita',
       password: hashedAdminPass,
-      role: 'admin',
-      clinicId: clinic.id
+      role: 'admin'
     },
   });
 
@@ -81,8 +74,7 @@ async function main() {
         name: d.name,
         password: hashedDoctorPass,
         role: 'doctor',
-        specialty: d.specialty,
-        clinicId: clinic.id
+        specialty: d.specialty
       },
     });
     pilotDoctors.push(doctor);
@@ -98,8 +90,7 @@ async function main() {
         dayOfWeek: day,
         startTime: '08:00',
         endTime: '18:00',
-        doctorId: doc.id,
-        clinicId: doc.clinicId
+        doctorId: doc.id
       }))
     });
   }
@@ -116,12 +107,12 @@ async function main() {
     { name: 'Mateo Villacís', phone: '+593955555555', cedula: '1766554433', email: 'mateo@example.com' }
   ];
 
-  await prisma.patient.createMany({ data: patientsData.map(p => ({ ...p, clinicId: clinic.id })) });
+  const patientsCount = await prisma.patient.count();
+  if (patientsCount === 0) {
+    await prisma.patient.createMany({ data: patientsData });
+  }
 
-  // In the order of patientsData, which the appointment plan below relies on
-  const allPatients = await Promise.all(patientsData.map(p =>
-    prisma.patient.findUniqueOrThrow({ where: { clinicId_phone: { clinicId: clinic.id, phone: p.phone } } })
-  ));
+  const allPatients = await prisma.patient.findMany();
 
   const today = new Date();
   // 3 consecutive business days from today (e.g. Thu/Fri/Mon if today is a
@@ -154,54 +145,13 @@ async function main() {
       time: a.time,
       doctorId: a.doctor.id,
       patientId: a.patient.id,
-      clinicId: clinic.id,
       status: a.status
     }))
-  });
-
-  // A second clinic with its own people and patients: nothing of it is visible
-  // from the clinic above, and nothing above is visible from it.
-  const otherClinic = await prisma.clinic.create({ data: { name: 'Clínica Vida (demo)', slug: 'clinica-vida' } });
-  const otherAdmin = await prisma.doctor.create({
-    data: { email: 'admin@clinicavida.ec', name: 'Administradora Clínica Vida', password: hashedAdminPass, role: 'admin', clinicId: otherClinic.id }
-  });
-  const otherDoctor = await prisma.doctor.create({
-    data: { email: 'dra.vega@clinicavida.ec', name: 'Dra. Paula Vega', password: hashedDoctorPass, role: 'doctor', specialty: 'Ginecología', clinicId: otherClinic.id }
-  });
-  await prisma.availability.createMany({
-    data: [otherAdmin, otherDoctor].flatMap(doc => days.map(day => ({
-      dayOfWeek: day, startTime: '08:00', endTime: '18:00', doctorId: doc.id, clinicId: otherClinic.id
-    })))
-  });
-  const otherPatients = await Promise.all([
-    { name: 'Lucía Ramírez', phone: '+593966000001', cedula: '1788990011', email: 'lucia@example.com' },
-    { name: 'Esteban Cárdenas', phone: '+593966000002', cedula: '1799001122' }
-  ].map(data => prisma.patient.create({ data: { ...data, clinicId: otherClinic.id } })));
-  await prisma.appointment.createMany({
-    data: [
-      { patient: otherPatients[0], dayIndex: 0, time: '10:30', status: 'confirmed' },
-      { patient: otherPatients[1], dayIndex: 1, time: '15:00', status: 'pending_approval' }
-    ].map(a => ({
-      date: dateFor(a.dayIndex),
-      time: a.time,
-      doctorId: otherDoctor.id,
-      patientId: a.patient.id,
-      clinicId: otherClinic.id,
-      status: a.status
-    }))
-  });
-
-  // The operator of the platform itself: sees the clinics and their sizes, no patients
-  const platformClinic = await prisma.clinic.create({ data: { name: 'MedCita (plataforma)', slug: 'plataforma' } });
-  await prisma.doctor.create({
-    data: { email: 'plataforma@medcita.ec', name: 'Operador de la plataforma', password: hashedAdminPass, role: 'superadmin', clinicId: platformClinic.id }
   });
 
   console.log('Seed completed successfully');
   console.log('Admin: admin@medcita.ec / admin1234');
   pilotDoctorsData.forEach(d => console.log(`Doctor (${d.specialty}): ${d.email} / demo1234`));
-  console.log('Second clinic: admin@clinicavida.ec / admin1234 and dra.vega@clinicavida.ec / demo1234');
-  console.log('Platform operator: plataforma@medcita.ec / admin1234');
 }
 
 main()

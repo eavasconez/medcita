@@ -14,7 +14,6 @@ const {
   clearLoginAttempts
 } = require('../middleware/rateLimiters');
 const passwordReset = require('../services/passwordResetService');
-const { randomSlug } = require('../utils/slug');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
@@ -24,9 +23,6 @@ const FORGOT_PASSWORD_MESSAGE = 'If an account exists for that email, we have se
 const INVALID_RESET_LINK_CODE = 'INVALID_RESET_LINK';
 const INVALID_RESET_LINK_MESSAGE = 'This password reset link is invalid or has expired. Please request a new one.';
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-attack-mitigation', 10);
-
-const CLINIC_SELECT = { id: true, name: true };
-const MAX_SLUG_ATTEMPTS = 3;
 
 // Fields safe to expose about the authenticated user (never the password hash)
 const PROFILE_SELECT = {
@@ -38,40 +34,8 @@ const PROFILE_SELECT = {
   bio: true,
   address: true,
   createdAt: true,
-  clinic: { select: CLINIC_SELECT },
   _count: { select: { appointments: true } }
 };
-
-// What the frontend keeps about a signed-in user. `doctor` must carry its clinic.
-const sessionUser = (doctor) => ({
-  id: doctor.id,
-  name: doctor.name,
-  email: doctor.email,
-  role: doctor.role,
-  clinic: doctor.clinic
-});
-
-// Someone who signs up on their own gets a clinic of their own: they must never
-// land inside the data of a clinic that already exists. Both rows are created
-// together, and a slug that happens to collide is retried with another suffix.
-async function createDoctorWithOwnClinic(name, email, passwordHash) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await prisma.doctor.create({
-        data: {
-          name,
-          email,
-          password: passwordHash,
-          clinic: { create: { name: `Consultorio de ${name}`, slug: randomSlug(name) } }
-        },
-        include: { clinic: { select: CLINIC_SELECT } }
-      });
-    } catch (err) {
-      const slugCollision = err.code === 'P2002' && err.meta?.target?.includes('slug');
-      if (!slugCollision || attempt >= MAX_SLUG_ATTEMPTS) throw err;
-    }
-  }
-}
 
 router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -88,10 +52,12 @@ router.post('/register', async (req, res) => {
     if (existingDoctor) return res.status(400).json({ error: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const doctor = await createDoctorWithOwnClinic(normalizedName, normalizedEmail, hashedPassword);
+    const doctor = await prisma.doctor.create({
+      data: { name: normalizedName, email: normalizedEmail, password: hashedPassword }
+    });
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    res.status(201).json({ token, user: sessionUser(doctor) });
+    res.status(201).json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Email already registered' });
     console.error('Register error:', err);
@@ -109,15 +75,12 @@ router.post('/login', loginIpLimiter, loginEmailLimiter, async (req, res) => {
   }
 
   try {
-    const doctor = await prisma.doctor.findUnique({
-      where: { email: normalizedEmail },
-      include: { clinic: { select: CLINIC_SELECT } }
-    });
+    const doctor = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
     const isMatch = await bcrypt.compare(password, doctor ? doctor.password : DUMMY_PASSWORD_HASH);
     if (!doctor || !isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
     const token = jwt.sign({ id: doctor.id, role: doctor.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    res.json({ token, user: sessionUser(doctor) });
+    res.json({ token, user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role } });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
@@ -174,10 +137,7 @@ router.post('/change-password', auth, changePasswordLimiter, async (req, res) =>
   }
 
   try {
-    const doctor = await prisma.doctor.findUnique({
-      where: { id: req.doctorId },
-      include: { clinic: { select: CLINIC_SELECT } }
-    });
+    const doctor = await prisma.doctor.findUnique({ where: { id: req.doctorId } });
     if (!doctor) return res.status(404).json({ error: 'User not found' });
 
     const isMatch = await bcrypt.compare(currentPassword, doctor.password);
@@ -192,7 +152,7 @@ router.post('/change-password', auth, changePasswordLimiter, async (req, res) =>
     res.json({
       message: 'Password updated successfully',
       token,
-      user: sessionUser(doctor)
+      user: { id: doctor.id, name: doctor.name, email: doctor.email, role: doctor.role }
     });
   } catch (err) {
     console.error('Change password error:', err);
