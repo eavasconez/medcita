@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../src/server');
 const { prisma, resetDb } = require('./helpers/db');
-const { createUser, createPatient, createAppointment, bearer } = require('./helpers/factories');
+const { createUser, createPatient, createAppointment, defaultClinic, bearer } = require('./helpers/factories');
 const { stubNotifications } = require('./helpers/notifications');
 const { MONDAY, TUESDAY } = require('./helpers/time');
 const { diffFields, describeCreated, describeRemoved } = require('../src/services/auditLog');
@@ -443,8 +443,10 @@ describe('GET /api/admin/audit-log', () => {
   const read = (token, query = '') => request(app).get(`/api/admin/audit-log${query}`).set(bearer(token));
 
   // entries written straight to the table, so the tests control who/when/what
-  const seed = (rows) =>
-    prisma.auditLog.createMany({
+  // (in the shared test clinic, which is where the admins of these tests work)
+  const seed = async (rows) => {
+    const clinic = await defaultClinic();
+    return prisma.auditLog.createMany({
       data: rows.map((row) => ({
         actorId: 'actor-1',
         actorName: 'Ana Secretaria',
@@ -452,9 +454,11 @@ describe('GET /api/admin/audit-log', () => {
         action: 'update',
         entity: 'appointment',
         entityId: 'entity-1',
+        clinicId: clinic.id,
         ...row
       }))
     });
+  };
 
   describe('who can read it', () => {
     it('is for admins only', async () => {

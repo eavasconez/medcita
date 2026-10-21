@@ -7,31 +7,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Doctor {
-  id             String         @id @default(uuid())
-  name           String
-  email          String         @unique
-  password       String
-  createdAt      DateTime       @default(now())
-  role           String         @default("doctor")
-  specialty      String?
-  bio            String?
-  address        String?
-  // When the password last changed; tokens issued before it stop working
-  passwordChangedAt DateTime?
+// A consultorio: the unit that owns every other record. Staff only ever see the
+// patients, appointments and schedules of their own clinic.
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String
+  // URL-safe name, unique across the platform
+  slug      String   @unique
+  // IANA zone of the clinic. Stored with the clinic; for now the app still reads
+  // CLINIC_UTC_OFFSET_MINUTES (utils/clinicTime.js) for every clinic.
+  timezone  String   @default("America/Guayaquil")
+  createdAt DateTime @default(now())
+
+  doctors        Doctor[]
+  patients       Patient[]
   appointments   Appointment[]
   availabilities Availability[]
+}
+
+model Doctor {
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  password            String
+  createdAt           DateTime             @default(now())
+  role                String               @default("doctor")
+  specialty           String?
+  bio                 String?
+  address             String?
+  // When the password last changed; tokens issued before it stop working
+  passwordChangedAt   DateTime?
+  clinicId            String
+  clinic              Clinic               @relation(fields: [clinicId], references: [id])
+  appointments        Appointment[]
+  availabilities      Availability[]
   passwordResetTokens PasswordResetToken[]
+
+  // Lets Appointment and Availability point at a doctor *of the same clinic*
+  @@unique([id, clinicId])
+  @@index([clinicId])
 }
 
 model Patient {
   id           String        @id @default(uuid())
   name         String
-  phone        String        @unique
+  phone        String
   email        String?
   createdAt    DateTime      @default(now())
-  cedula       String?       @unique
+  cedula       String?
+  clinicId     String
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
+
+  // A phone or a cedula identifies a patient inside one clinic, not across clinics
+  @@unique([clinicId, phone])
+  @@unique([clinicId, cedula])
+  // Lets Appointment point at a patient *of the same clinic*
+  @@unique([id, clinicId])
 }
 
 model Availability {
@@ -40,24 +72,32 @@ model Availability {
   startTime String
   endTime   String
   doctorId  String
-  doctor    Doctor @relation(fields: [doctorId], references: [id])
+  clinicId  String
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
+  // The doctor must belong to the same clinic as the schedule
+  doctor    Doctor @relation(fields: [doctorId, clinicId], references: [id, clinicId])
 
   @@unique([doctorId, dayOfWeek, startTime])
 }
 
 model Appointment {
-  id        String   @id @default(uuid())
-  date      String
-  time      String
-  status    String   @default("pending_approval")
-  notes     String?
-  doctorId  String
-  patientId String
-  createdAt DateTime @default(now())
+  id             String    @id @default(uuid())
+  date           String
+  time           String
+  status         String    @default("pending_approval")
+  notes          String?
+  doctorId       String
+  patientId      String
+  createdAt      DateTime  @default(now())
   // Set when the 24h reminder is claimed/sent; null means it is still owed.
   reminderSentAt DateTime?
-  doctor    Doctor   @relation(fields: [doctorId], references: [id])
-  patient   Patient  @relation(fields: [patientId], references: [id])
+  clinicId       String
+  clinic         Clinic    @relation(fields: [clinicId], references: [id])
+  // The doctor and the patient must belong to the same clinic as the appointment
+  doctor         Doctor    @relation(fields: [doctorId, clinicId], references: [id, clinicId])
+  patient        Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId])
+
+  @@index([clinicId, date])
 }
 
 // One-time password reset links. Only the SHA-256 hash of the token is stored, so
@@ -91,8 +131,11 @@ model AuditLog {
   entity    String
   entityId  String
   doctorId  String?
+  // The clinic the actor belongs to. Entries keep no foreign key, like actorId.
+  clinicId  String
   changes   Json?
 
+  @@index([clinicId, createdAt, seq])
   @@index([createdAt, seq])
   @@index([actorId])
   @@index([entity, entityId])

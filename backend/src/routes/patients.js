@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { upsertPatient } = require('../services/patientUpsert');
 const { recordAudit, diffFields, auditPatientUpsert } = require('../services/auditLog');
+const { inClinic } = require('../utils/clinicScope');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
@@ -13,8 +14,8 @@ const MAX_PAGE_SIZE = 100;
 // All patient routes are protected
 router.use(auth);
 
-// Get patients (optionally search by name/phone/cedula), paginated so a
-// growing patient list doesn't return every row on every load.
+// Get the clinic's patients (optionally search by name/phone/cedula), paginated
+// so a growing patient list doesn't return every row on every load.
 router.get('/', async (req, res) => {
   const { search } = req.query;
 
@@ -22,13 +23,13 @@ router.get('/', async (req, res) => {
   if (paging.error) return res.status(400).json({ error: paging.error });
   const { page, pageSize, skip } = paging;
 
-  const where = search ? {
+  const where = inClinic(req, search ? {
     OR: [
       { name: { contains: search, mode: 'insensitive' } },
       { phone: { contains: search } },
       { cedula: { contains: search } }
     ]
-  } : {};
+  } : {});
 
   try {
     const [patients, total] = await Promise.all([
@@ -79,7 +80,7 @@ router.post('/', async (req, res) => {
   try {
     // The record of what staff did is written in the same transaction as the patient
     const patient = await prisma.$transaction(async (tx) => {
-      const result = await upsertPatient(tx, {
+      const result = await upsertPatient(tx, req.clinicId, {
         name: normalizedName,
         phone: normalizedPhone,
         email: normalizedEmail,
@@ -125,7 +126,7 @@ router.put('/:id', async (req, res) => {
 
   try {
     const patient = await prisma.$transaction(async (tx) => {
-      const previous = await tx.patient.findUnique({ where: { id: req.params.id } });
+      const previous = await tx.patient.findFirst({ where: inClinic(req, { id: req.params.id }) });
       if (!previous) return null;
 
       const updated = await tx.patient.update({
@@ -166,8 +167,8 @@ const ACTIVE_STATUSES = ['scheduled', 'pending_approval', 'confirmed'];
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const patient = await prisma.patient.findUnique({
-      where: { id },
+    const patient = await prisma.patient.findFirst({
+      where: inClinic(req, { id }),
       select: { _count: { select: { appointments: true } } }
     });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
