@@ -56,18 +56,18 @@ Si ninguna credencial de WhatsApp/Email está presente, ambos servicios caen a m
 
 ## 4. Endpoints principales
 
-Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`) requieren header `Authorization: Bearer <token>`. Roles: `doctor` (default), `secretary`, `admin`.
+Todas las rutas bajo `/api/*` (excepto `/api/auth/register` y `/api/auth/login`) requieren header `Authorization: Bearer <token>`. Roles: `doctor` (default), `secretary`, `admin` y `superadmin` (operador de la plataforma, ver «Consultorios»). Todo lo que se lee o se escribe ocurre **dentro del consultorio de quien pregunta** (S8-01, ver «Consultorios»).
 
 ### Auth (`/api/auth`)
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| POST | `/register` | Público | Crea un nuevo médico (rol `doctor` por defecto) |
-| POST | `/login` | Público | Devuelve `{ token, user }`. Limitado: tras 5 intentos fallidos por correo (o 20 por IP) en 15 min responde `429` (ver "Límite de intentos") |
+| POST | `/register` | Público | Crea un nuevo médico (rol `doctor`) **en un consultorio propio** (`Consultorio de <nombre>`): nadie nuevo entra a un consultorio que ya existe |
+| POST | `/login` | Público | Devuelve `{ token, user }` (`user` incluye `clinic: { id, name }`). Limitado: tras 5 intentos fallidos por correo (o 20 por IP) en 15 min responde `429` (ver "Límite de intentos") |
 | POST | `/forgot-password` | Público | Body `{ email }`. Responde siempre `200` con el mismo mensaje, exista o no la cuenta, y envía por email un enlace de recuperación si existe (ver "Recuperación de contraseña"). Limitado |
 | POST | `/reset-password` | Público | Body `{ token, password }`. Cambia la contraseña con el token del enlace (un solo uso, válido 60 min). Token inválido, vencido o ya usado → `400 { error, code: "INVALID_RESET_LINK" }` (un único mensaje para los tres casos) |
 | POST | `/change-password` | Autenticado | Body `{ currentPassword, newPassword }`. Cambia la contraseña de la sesión actual y devuelve `{ message, token, user }` con un token nuevo (las demás sesiones dejan de valer, ver "Sesiones y cambio de contraseña"). `400` si falta la actual, la nueva tiene menos de 6 caracteres o es igual a la actual; `403` si la contraseña actual es incorrecta (no es `401`: el frontend lo toma como sesión vencida). Limitado |
-| GET | `/profile` | Autenticado | Perfil propio (nombre, especialidad, bio, dirección) |
+| GET | `/profile` | Autenticado | Perfil propio (nombre, especialidad, bio, dirección y `clinic: { id, name }`) |
 | PUT | `/profile` | Autenticado | Actualiza el propio perfil |
 
 ### Citas (`/api/appointments`)
@@ -86,8 +86,8 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/` | Autenticado | Lista paginada (`page`, `pageSize`; máx. 100 por página), con búsqueda por `search` (nombre, teléfono, cédula) |
-| POST | `/` | Autenticado | Crea o actualiza (upsert por teléfono) |
+| GET | `/` | Autenticado | Lista paginada **de los pacientes del consultorio** (`page`, `pageSize`; máx. 100 por página), con búsqueda por `search` (nombre, teléfono, cédula) |
+| POST | `/` | Autenticado | Crea o actualiza (upsert por teléfono **dentro del consultorio**: el mismo teléfono en otro consultorio es otro paciente) |
 | PUT | `/:id` | Autenticado | Actualiza datos del paciente |
 | DELETE | `/:id` | Autenticado | Elimina un paciente **sin citas** (pensado para registros creados por error). Con cualquier cita —activa, cancelada o completada— responde `409` y lo conserva, porque ese historial es suyo; el mensaje distingue «tiene citas activas, cancélalas primero» de «tiene historial». `404` si no existe |
 
@@ -95,7 +95,7 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/` | Autenticado | Horario semanal del médico (o `doctorId` dado). Si no hay ninguno configurado, devuelve un fallback de demo (Lun-Vie 8:00-18:00) |
+| GET | `/` | Autenticado | Horario semanal del médico (o `doctorId` dado, que debe ser de tu consultorio: otro responde `404 Doctor not found`, igual que en `/slots` y `POST`). Si no hay ninguno configurado, devuelve un fallback de demo (Lun-Vie 8:00-18:00) |
 | GET | `/slots?date=YYYY-MM-DD` | Autenticado | Slots de 30 min disponibles/ocupados para una fecha |
 | POST | `/` | Autenticado | Reemplaza el horario completo del médico (array de `{ dayOfWeek, startTime, endTime }`) |
 
@@ -103,15 +103,34 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/doctors` | admin, secretary | Lista médicos (filtro opcional `role`) |
-| POST | `/doctors` | admin | Crea médico/secretaria |
+| GET | `/doctors` | admin, secretary | Lista las cuentas del consultorio (filtro opcional `role`) |
+| POST | `/doctors` | admin | Crea médico/secretaria en el consultorio del admin. No puede crear `superadmin` (`400`) |
 | PUT | `/doctors/:id` | admin | Actualiza médico |
 | DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
-| GET | `/audit-log` | admin | Registro de auditoría: lo que hicieron admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
+| GET | `/audit-log` | admin | Registro de auditoría del consultorio: lo que hicieron sus admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
 | GET | `/client-ip` | admin | Diagnóstico de `TRUST_PROXY`: devuelve `{ ip, forwardedFor, trustProxy }`; `ip` debe ser tu IP pública |
 
 `/api/admin/medicos` es el **nombre anterior** de `/api/admin/doctors`. Sigue respondiendo igual (mismos métodos y permisos) como alias temporal para clientes que no se hayan actualizado, por ejemplo un frontend viejo en caché mientras el backend ya está desplegado, y sus respuestas llevan el header `Deprecation: true`. Está pensado para eliminarse más adelante.
+
+### Consultorios (S8-01)
+
+Desde S8-01 los datos pertenecen a un **consultorio** (`Clinic`: nombre, `slug` único y zona horaria). Cada cuenta, paciente, cita, horario y entrada de auditoría lleva su `clinicId`, y una persona solo trabaja dentro del suyo.
+
+- **De dónde sale el consultorio.** El middleware `auth` lo lee de la cuenta (`req.clinicId`), nunca del token ni de la petición: un `clinicId` enviado en el cuerpo o en la URL se ignora. Todas las consultas pasan por `inClinic(req, where)` (`backend/src/utils/clinicScope.js`).
+- **Un id de otro consultorio no existe.** Pedir, editar o borrar un paciente, una cita o una cuenta de otro consultorio responde `404`, igual que uno inexistente. Un `doctorId` ajeno (al agendar o al leer o cambiar horarios) responde `404 Doctor not found`. Los listados solo traen lo propio, y filtrar por un médico o un paciente ajeno devuelve una lista vacía.
+- **Teléfono y cédula** son únicos **por consultorio** (`@@unique([clinicId, phone])` y `[clinicId, cedula]`): el mismo número puede ser un paciente distinto en otro consultorio, y agendar nunca toca al paciente de otro. El **correo** de una cuenta sigue siendo único en toda la plataforma, porque es con lo que se inicia sesión.
+- **La base de datos también lo exige.** `Appointment` y `Availability` apuntan a su médico (y la cita a su paciente) con claves foráneas compuestas `(id, clinicId)`: aunque una ruta futura olvidara filtrar, la base rechaza (`P2003`) una cita entre un médico y un paciente de consultorios distintos. `clinicId` es obligatorio en las cinco tablas.
+- **Registro.** `POST /api/auth/register` le crea a quien se registra un consultorio propio, del que queda como `doctor`. Es un paso provisional: S8-02 lo reemplaza por el alta de un consultorio con correo verificado y un administrador.
+- **Sesión.** `login`, `register` y `change-password` devuelven `user.clinic = { id, name }`, y `GET /api/auth/profile` también. El frontend lo muestra en la tarjeta de usuario de la barra lateral; una sesión guardada antes de S8-01 lo pide una vez al abrir la app.
+- **Zona horaria.** `Clinic.timezone` se guarda (`America/Guayaquil` por defecto) pero todavía no se usa: las horas se siguen interpretando con `CLINIC_UTC_OFFSET_MINUTES` para todos los consultorios (`utils/clinicTime.js`).
+- **Operador de la plataforma.** El rol `superadmin` cuida de MedCita, no de un consultorio. Solo se crea en la base de datos o con el seed (un admin no puede asignarlo) y su cuenta pertenece a un consultorio propio (`plataforma`); en las rutas de un consultorio se comporta como un médico más de ese. Lo único que hace de más:
+
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/api/platform/clinics` | superadmin | Consultorios paginados (`page`, `pageSize`; 50 por defecto, máx. 200) con `{ id, name, slug, timezone, createdAt, _count: { doctors, patients, appointments } }`. Solo tamaños: nunca el contenido de un consultorio |
+
+**Límites actuales.** No hay pantalla para el operador ni forma de crear un consultorio desde la API (llega con S8-02); mientras tanto un consultorio se crea al registrarse o con SQL (`docs/DEPLOY.md`, «Primer despliegue con consultorios»). Un consultorio no se puede borrar ni mover cuentas entre consultorios.
 
 ### Registro de auditoría
 
@@ -130,7 +149,7 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 
 **Garantías.** La entrada se escribe en la **misma transacción** que la acción (`services/auditLog.js`): si no se puede registrar, la acción no ocurre y se responde `500`; y no queda constancia de algo que no sucedió. Las entradas son solo de lectura (no hay ruta para modificarlas o borrarlas) y no tienen claves foráneas, así que sobreviven a la cuenta o al dato al que se refieren. `seq` (serie) fija el orden de inserción: la base le pone la misma hora a todo lo escrito en una transacción, y así se sabe qué ocurrió primero.
 
-**Consulta.** `GET /api/admin/audit-log` (solo admin; secretaria y médico reciben `403`). Más reciente primero, de 50 en 50 por defecto (máx. 200: `page`, `pageSize`). Filtros opcionales: `from` y `to` (fechas `YYYY-MM-DD` de la clínica, ambos extremos incluidos), `actorId` (quién), `entity`, `entityId`, `action` y `doctorId`. Un valor inválido responde `400`. Responde `{ entries, total, page, pageSize, totalPages }`:
+**Consulta.** `GET /api/admin/audit-log` (solo admin; secretaria y médico reciben `403`). Cada entrada guarda el `clinicId` de quien actuó y cada admin solo ve las de su consultorio. Más reciente primero, de 50 en 50 por defecto (máx. 200: `page`, `pageSize`). Filtros opcionales: `from` y `to` (fechas `YYYY-MM-DD` de la clínica, ambos extremos incluidos), `actorId` (quién), `entity`, `entityId`, `action` y `doctorId`. Un valor inválido responde `400`. Responde `{ entries, total, page, pageSize, totalPages }`:
 
 ```json
 {
@@ -156,7 +175,7 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| POST | `/api/tasks/reminders` | admin, secretary | Dispara manualmente el recordatorio de 24h (normalmente corre por cron cada hora). Recuerda una sola vez (`Appointment.reminderSentAt`) a las citas `pending_approval`, `scheduled` o `confirmed` que ocurren en las próximas 24h; si ningún canal entrega, se reintenta en la siguiente corrida |
+| POST | `/api/tasks/reminders` | admin, secretary | Dispara manualmente el recordatorio de 24h **solo para el consultorio de quien lo pide** (el cron de cada hora cubre todos los consultorios). Recuerda una sola vez (`Appointment.reminderSentAt`) a las citas `pending_approval`, `scheduled` o `confirmed` que ocurren en las próximas 24h; si ningún canal entrega, se reintenta en la siguiente corrida |
 
 ### Límite de intentos (rate limiting)
 
@@ -194,18 +213,22 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 
 `backend/prisma/seed.js` (`npx prisma db seed`) crea:
 
-- 1 cuenta **admin**: `admin@medcita.ec` / `admin1234`
-- 3 médicos piloto (rol `doctor`), cada uno con horario Lun-Vie 8:00-18:00 y citas de ejemplo en distintos estados (`scheduled`, `confirmed`, `pending_approval`) repartidas en los próximos días:
-  - `demo@medcita.ec` / `demo1234` — Dr. Santiago Pérez (Medicina General)
-  - `dra.torres@medcita.ec` / `demo1234` — Dra. Camila Torres (Pediatría)
-  - `dr.mendoza@medcita.ec` / `demo1234` — Dr. Andrés Mendoza (Medicina Familiar)
-- Pacientes de ejemplo con teléfono/cédula/email realistas, listos para mostrar el flujo completo (crear cita → confirmación → recordatorio) en una demo.
+- **Dos consultorios de demostración** que no se ven entre sí, y un tercero para el operador de la plataforma.
+- **Consultorio MedCita (demo)** (`medcita-demo`):
+  - 1 cuenta **admin**: `admin@medcita.ec` / `admin1234`
+  - 3 médicos piloto (rol `doctor`), cada uno con horario Lun-Vie 8:00-18:00 y citas de ejemplo en distintos estados (`scheduled`, `confirmed`, `pending_approval`) repartidas en los próximos días:
+    - `demo@medcita.ec` / `demo1234` — Dr. Santiago Pérez (Medicina General)
+    - `dra.torres@medcita.ec` / `demo1234` — Dra. Camila Torres (Pediatría)
+    - `dr.mendoza@medcita.ec` / `demo1234` — Dr. Andrés Mendoza (Medicina Familiar)
+  - Pacientes de ejemplo con teléfono/cédula/email realistas, listos para mostrar el flujo completo (crear cita → confirmación → recordatorio) en una demo.
+- **Clínica Vida (demo)** (`clinica-vida`): `admin@clinicavida.ec` / `admin1234` y la Dra. Paula Vega (`dra.vega@clinicavida.ec` / `demo1234`, Ginecología), con 2 pacientes y 2 citas propias. Sirve para comprobar que cada consultorio solo ve lo suyo.
+- **MedCita (plataforma)** (`plataforma`): el operador `plataforma@medcita.ec` / `admin1234` (rol `superadmin`, sin pacientes).
 
-Volver a correr `npx prisma db seed` **borra y recrea** médicos, pacientes, disponibilidad y citas — no usar contra datos reales.
+Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, pacientes, disponibilidad, citas y el registro de auditoría — no usar contra datos reales.
 
 ## 6. Pruebas automatizadas y CI
 
-**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
+**Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas y con S8-01 llegó a 470 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
