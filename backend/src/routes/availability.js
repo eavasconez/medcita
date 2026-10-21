@@ -3,11 +3,18 @@ const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { getDay, parseISO, addMinutes, format } = require('date-fns');
+const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 router.use(auth);
+
+// A schedule can only be read or changed for a doctor of the caller's own clinic.
+// The caller is always one, so only another id needs looking up; one that is not
+// in the clinic (or does not exist at all) is answered with a 404.
+const isDoctorOfClinic = async (req, doctorId) =>
+  doctorId === req.doctorId || Boolean(await findDoctorInClinic(prisma, req, doctorId));
 
 // Get doctor availability
 router.get('/', async (req, res) => {
@@ -21,8 +28,10 @@ router.get('/', async (req, res) => {
   const targetDoctorId = doctorId || req.doctorId;
 
   try {
+    if (!(await isDoctorOfClinic(req, targetDoctorId))) return res.status(404).json({ error: 'Doctor not found' });
+
     let availabilities = await prisma.availability.findMany({
-      where: { doctorId: targetDoctorId },
+      where: inClinic(req, { doctorId: targetDoctorId }),
       orderBy: [
         { dayOfWeek: 'asc' },
         { startTime: 'asc' }
@@ -63,14 +72,16 @@ router.get('/slots', async (req, res) => {
   }
 
   try {
+    if (!(await isDoctorOfClinic(req, targetDoctorId))) return res.status(404).json({ error: 'Doctor not found' });
+
     const dayOfWeek = getDay(parseISO(date));
     
     // 1. Get doctor's availability for this day
     let availabilities = await prisma.availability.findMany({
-      where: { 
+      where: inClinic(req, {
         doctorId: targetDoctorId,
         dayOfWeek: dayOfWeek
-      }
+      })
     });
 
     // Fallback for demo: a doctor who has NOT configured any schedule works
@@ -78,7 +89,7 @@ router.get('/slots', async (req, res) => {
     // A doctor with a schedule that simply skips this day does not work it, so
     // it must not be offered here just because the day is a weekday.
     if (availabilities.length === 0 && dayOfWeek >= 1 && dayOfWeek <= 5) {
-      const configured = await prisma.availability.count({ where: { doctorId: targetDoctorId } });
+      const configured = await prisma.availability.count({ where: inClinic(req, { doctorId: targetDoctorId }) });
       if (configured === 0) {
         availabilities = [{
           startTime: '08:00',
@@ -93,11 +104,11 @@ router.get('/slots', async (req, res) => {
 
     // 2. Get existing appointments
     const appointments = await prisma.appointment.findMany({
-      where: {
+      where: inClinic(req, {
         doctorId: targetDoctorId,
         date: date,
         status: { not: 'cancelled' }
-      },
+      }),
       select: { time: true }
     });
 
@@ -171,16 +182,19 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    if (!(await isDoctorOfClinic(req, targetDoctorId))) return res.status(404).json({ error: 'Doctor not found' });
+
     // Replace all current availabilities with the new ones atomically, so a
     // failure never leaves the doctor with the old set deleted and nothing in its place
     const newSchedules = await prisma.$transaction(async (tx) => {
-      await tx.availability.deleteMany({ where: { doctorId: targetDoctorId } });
+      await tx.availability.deleteMany({ where: inClinic(req, { doctorId: targetDoctorId }) });
       return tx.availability.createMany({
         data: schedules.map(s => ({
           dayOfWeek: s.dayOfWeek,
           startTime: s.startTime,
           endTime: s.endTime,
-          doctorId: targetDoctorId
+          doctorId: targetDoctorId,
+          clinicId: req.clinicId
         }))
       });
     });

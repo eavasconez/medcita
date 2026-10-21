@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const { addDays, format, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { isValidDate, appointmentInstant } = require('../utils/clinicTime');
+const { inClinic } = require('../utils/clinicScope');
 const {
   AUDIT_ACTIONS,
   AUDIT_ENTITIES,
@@ -34,7 +35,7 @@ router.use('/medicos', (req, res, next) => {
   next();
 });
 
-// List all doctors (Accessible by Admin and Secretary)
+// List the clinic's doctors (Accessible by Admin and Secretary)
 router.get(DOCTORS, async (req, res) => {
   if (req.userRole !== 'admin' && req.userRole !== 'secretary') {
     return res.status(403).json({ error: 'Access denied. Admin or secretary rights required.' });
@@ -43,7 +44,7 @@ router.get(DOCTORS, async (req, res) => {
   const { role } = req.query;
   try {
     const doctors = await prisma.doctor.findMany({
-      where: role ? { role } : {},
+      where: inClinic(req, role ? { role } : {}),
       select: {
         id: true,
         name: true,
@@ -87,6 +88,7 @@ router.post(DOCTORS, async (req, res) => {
   }
 
   try {
+    // An email is unique across all clinics: it is what a person signs in with
     const existing = await prisma.doctor.findUnique({ where: { email: normalizedEmail } });
     if (existing) return res.status(400).json({ error: 'Email already registered' });
 
@@ -94,6 +96,7 @@ router.post(DOCTORS, async (req, res) => {
     const doctor = await prisma.$transaction(async (tx) => {
       const created = await tx.doctor.create({
         data: {
+          clinicId: req.clinicId,
           name: normalizedName,
           email: normalizedEmail,
           password: hashedPassword,
@@ -150,7 +153,7 @@ router.put(DOCTOR, async (req, res) => {
     }
 
     const doctor = await prisma.$transaction(async (tx) => {
-      const previous = await tx.doctor.findUnique({ where: { id: req.params.id } });
+      const previous = await tx.doctor.findFirst({ where: inClinic(req, { id: req.params.id }) });
       if (!previous) return null;
 
       const updated = await tx.doctor.update({ where: { id: previous.id }, data });
@@ -181,7 +184,7 @@ router.delete(DOCTOR, async (req, res) => {
     }
 
     const deleted = await prisma.$transaction(async (tx) => {
-      const previous = await tx.doctor.findUnique({ where: { id: req.params.id } });
+      const previous = await tx.doctor.findFirst({ where: inClinic(req, { id: req.params.id }) });
       if (!previous) return false;
 
       await tx.doctor.delete({ where: { id: previous.id } });
@@ -216,7 +219,7 @@ const isBadId = (value) => value !== undefined && (typeof value !== 'string' || 
 const dayStart = (date) => appointmentInstant(date, '00:00');
 const nextDay = (date) => format(addDays(parseISO(date), 1), 'yyyy-MM-dd');
 
-// What admins and secretaries did, newest first, one page at a time. Filters:
+// What admins and secretaries of the clinic did, newest first, one page at a time. Filters:
 // from/to (clinic-local dates, both ends included), actorId (who did it),
 // entity (appointment, patient or user), entityId, action and doctorId (the doctor
 // whose agenda was affected). Read-only: nothing here updates or deletes entries.
@@ -246,7 +249,7 @@ router.get('/audit-log', async (req, res) => {
     if (isBadId(value)) return res.status(400).json({ error: `${name} must be a non-empty text of at most ${MAX_ID_LENGTH} characters` });
   }
 
-  const where = {
+  const where = inClinic(req, {
     ...(actorId && { actorId }),
     ...(entity && { entity }),
     ...(entityId && { entityId }),
@@ -258,7 +261,7 @@ router.get('/audit-log', async (req, res) => {
         ...(to && { lt: dayStart(nextDay(to)) })
       }
     })
-  };
+  });
 
   try {
     const [rows, total] = await Promise.all([
@@ -276,7 +279,7 @@ router.get('/audit-log', async (req, res) => {
     // Doctors are named from their account when it still exists (entries hold no foreign key)
     const doctorIds = [...new Set(rows.map((row) => row.doctorId).filter(Boolean))];
     const doctors = doctorIds.length
-      ? await prisma.doctor.findMany({ where: { id: { in: doctorIds } }, select: { id: true, name: true } })
+      ? await prisma.doctor.findMany({ where: inClinic(req, { id: { in: doctorIds } }), select: { id: true, name: true } })
       : [];
     const doctorNames = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
 
@@ -314,7 +317,7 @@ router.get('/client-ip', (req, res) => {
 router.get('/reports/appointments-by-doctor', async (req, res) => {
   try {
     const report = await prisma.doctor.findMany({
-      where: { role: 'doctor' },
+      where: inClinic(req, { role: 'doctor' }),
       select: {
         name: true,
         _count: {

@@ -7,6 +7,7 @@ const { parsePagination, pageInfo } = require('../utils/pagination');
 const { DATE_REGEX, isValidDate, appointmentInstant } = require('../utils/clinicTime');
 const { upsertPatient } = require('../services/patientUpsert');
 const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require('../services/auditLog');
+const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
@@ -86,12 +87,13 @@ async function assertSlotBookable(tx, { doctorId, date, time, excludeId, occupie
   }
 }
 
-// Which doctors' appointments the caller may see: doctors only their own,
-// admin/secretary every doctor or the one named in ?doctorId.
+// Which appointments the caller may see, always inside their own clinic: doctors
+// only their own, admin/secretary every doctor of the clinic or the one named in
+// ?doctorId (a doctor of another clinic matches nothing).
 const doctorScope = (req) => {
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
   const { doctorId } = req.query;
-  return isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId };
+  return inClinic(req, isSpecialRole ? (doctorId ? { doctorId } : {}) : { doctorId: req.doctorId });
 };
 
 // List appointments for the doctor, one page at a time. Dates are "YYYY-MM-DD"
@@ -198,6 +200,11 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // The agenda being booked must be a doctor of the caller's own clinic
+    if (!(await findDoctorInClinic(prisma, req, targetDoctorId))) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+
     // Availability + conflict check + patient upsert + creation all run inside a
     // single Serializable transaction, so two concurrent requests for the same
     // doctor/date/time can never both pass the conflict check and double-book
@@ -208,7 +215,7 @@ router.post('/', async (req, res) => {
 
       // 2. Find or update the patient (a booking made by staff also leaves a
       // record of the patient it created or changed)
-      const { patient, previous } = await upsertPatient(tx, {
+      const { patient, previous } = await upsertPatient(tx, req.clinicId, {
         name: normalizedPatientName,
         phone: normalizedPatientPhone,
         email: normalizedPatientEmail,
@@ -219,6 +226,7 @@ router.post('/', async (req, res) => {
       // 3. Create Appointment
       const created = await tx.appointment.create({
         data: {
+          clinicId: req.clinicId,
           date,
           time,
           notes,
@@ -254,8 +262,10 @@ router.post('/', async (req, res) => {
     if (err.code === 'P2002') {
       // Appointment itself has no unique constraints, so this can only come
       // from the Patient upsert above - map its known unique fields to a
-      // clear message, and fall back to a generic one for anything else.
-      const target = Array.isArray(err.meta?.target) ? err.meta.target[0] : null;
+      // clear message, and fall back to a generic one for anything else. The
+      // constraints are per clinic ([clinicId, cedula]), so look for the field
+      // among the columns instead of taking the first one.
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.find((field) => field !== 'clinicId') : null;
       const fieldMessages = {
         cedula: 'A patient with this cedula already exists',
         phone: 'A patient with this phone already exists'
@@ -292,10 +302,10 @@ router.put('/:id', async (req, res) => {
     // two moves into the same slot cannot both get through.
     const appointment = await runSerializableTransaction(async (tx) => {
       const current = await tx.appointment.findFirst({
-        where: {
+        where: inClinic(req, {
           id: req.params.id,
           ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-        }
+        })
       });
       if (!current) return null;
 
@@ -375,10 +385,10 @@ router.delete('/:id', async (req, res) => {
     // cancellations cannot both leave a record of the same cancellation.
     const appointment = await runSerializableTransaction(async (tx) => {
       const current = await tx.appointment.findFirst({
-        where: {
+        where: inClinic(req, {
           id: req.params.id,
           ...(isSpecialRole ? {} : { doctorId: req.doctorId })
-        }
+        })
       });
       if (!current) return null;
 
