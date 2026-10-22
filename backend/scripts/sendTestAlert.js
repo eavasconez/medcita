@@ -25,8 +25,18 @@ async function main(env = process.env, out = console.log) {
     return detail;
   };
 
-  const alerts = createErrorAlerts({ env, send });
-  await alerts.report({ method: 'GET', route: '/api/alerts-test', status: 500, error: { name: 'TestAlert' } });
+  const alerts = createErrorAlerts({ env, send, findClinic: async () => ({ name: 'Consultorio de ejemplo', slug: 'ejemplo' }) });
+  // The sample has the shape of a real one: the route, the error and the line of the code
+  await alerts.report({
+    method: 'GET',
+    route: '/api/alerts-test',
+    status: 500,
+    requestId: 'a1b2c3d4e5f6',
+    clinicId: 'ejemplo',
+    origin: 'https://consultorio-ejemplo.medcita.ec',
+    apiOrigin: 'https://medcita-backend.onrender.com',
+    error: { name: 'TestAlert', location: 'src/routes/example.js:42:7', fn: 'exampleHandler', frames: [{ where: 'src/routes/example.js:42:7', fn: 'exampleHandler' }, { where: 'src/middleware/auth.js:38:5', fn: null }], details: [] }
+  });
   return failed ? 1 : 0;
 }
 

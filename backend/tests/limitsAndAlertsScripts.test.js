@@ -70,7 +70,10 @@ describe('npm run alerts:test', () => {
 
     expect(code).toBe(0);
     expect(lines).toEqual(['OK -> ops@example.test (brevo)', 'OK -> dev@example.test (brevo)']);
-    expect(emailService.deliverEmail.mock.calls[0][1]).toBe('[MedCita] Error 500 en GET /api/alerts-test');
+    expect(emailService.deliverEmail.mock.calls[0][1]).toBe('[MedCita · Consultorio de ejemplo] Error 500 en GET /api/alerts-test (src/routes/example.js:42)');
+    expect(emailService.deliverEmail.mock.calls[0][2]).toContain('Línea del código: src/routes/example.js:42:7 (en exampleHandler)');
+    expect(emailService.deliverEmail.mock.calls[0][2]).toContain('Consultorio: Consultorio de ejemplo (ejemplo) · id ejemplo');
+    expect(emailService.deliverEmail.mock.calls[0][2]).toContain('Dominio desde el que se usó la app: https://consultorio-ejemplo.medcita.ec');
   });
 
   it('says when nothing was really sent because no email provider is configured', async () => {
