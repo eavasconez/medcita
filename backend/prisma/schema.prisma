@@ -276,14 +276,18 @@ model NotificationLog {
   createdAt         DateTime @default(now())
   clinicId          String?
   appointmentId     String?
-  // appointment_confirmation, appointment_reminder, doctor_new_appointment,
-  // password_reset, signup_confirmation, account_exists, invitation
+  // appointment_confirmation, appointment_reminder, appointment_second_reminder,
+  // doctor_new_appointment, password_reset, signup_confirmation, account_exists, invitation;
+  // and what the patient did with the buttons of the WhatsApp reminder (S9-02):
+  // patient_confirmed, patient_cancelled, patient_reschedule_request, patient_reply_ignored
+  // (received), patient_reply_answer (our answer), reschedule_request_notice (email to staff)
   kind              String
   channel           String
   provider          String
   // patient, doctor or user: who the message was for
   recipient         String
-  // sent, failed, or simulated (no provider is configured: nothing really left)
+  // sent, failed, or simulated (no provider is configured: nothing really left);
+  // received: a message that came IN from the patient (S9-02), not one we sent
   status            String
   errorCode         String?
   error             String?
