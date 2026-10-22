@@ -10,7 +10,8 @@
     "whatsapp:test": "node scripts/sendTestWhatsApp.js",
     "storage:check": "node scripts/checkStorage.js",
     "limits:reset": "node scripts/resetRateLimits.js",
-    "alerts:test": "node scripts/sendTestAlert.js"
+    "alerts:test": "node scripts/sendTestAlert.js",
+    "whatsapp:reply": "node scripts/simulateWhatsAppReply.js"
   },
   "keywords": [],
   "author": "",
