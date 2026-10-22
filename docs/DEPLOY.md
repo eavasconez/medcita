@@ -532,6 +532,21 @@ S10-02 agrega la migración `20261027100000_add_patient_record_fields`, que solo
 - [ ] Con un paciente de prueba menor de 18 años y sin representante, aparece el aviso; al registrarlo, desaparece.
 - [ ] Con la cuenta de una secretaria: la ficha abre y las citas **no** muestran notas.
 
+## Despliegue de antecedentes y alergias (S10-03)
+
+S10-03 agrega la migración `20261028100000_add_clinical_background`, que solo **crea tres tablas** (`PatientAllergy`, `PatientMedication`, `PatientBackground`): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/clinicalBackgroundMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-03`).
+
+**Desde este ticket hay datos clínicos en la base.** Un paciente con alergias, medicación o antecedentes ya no se puede borrar; y volver atrás con una versión anterior del código no los borra, solo deja de mostrarlos.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico o el admin: abrir un paciente de prueba, registrar una alergia (aparece el aviso rojo arriba), un medicamento y un antecedente.
+- [ ] Abrir la cita de ese paciente en la agenda: el aviso de alergias aparece.
+- [ ] Con una secretaria: la ficha abre **sin** esas secciones ni el aviso.
+- [ ] En *Activity Log*: aparecen las lecturas y los cambios, sin el texto de lo escrito.
+- [ ] Borrar los datos de prueba (el paciente de prueba no se puede borrar hasta quitar sus entradas).
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:

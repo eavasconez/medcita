@@ -7735,7 +7735,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user, invitation, consent, patient_export, appointment_type, schedule_block, reminder_settings, clinical_record'));"
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user, invitation, consent, patient_export, appointment_type, schedule_block, reminder_settings, clinical_record, patient_allergy, patient_medication, patient_background'));"
                 ],
                 "type": "text/javascript"
               }
@@ -18596,6 +18596,897 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S10-03 - Antecedentes y alergias (/patients/:id/clinical)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s1003AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login de un médico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@medcita.ec\",\n  \"password\": \"demo1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s1003DoctorToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s1003OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - crear un paciente de prueba (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Clinico\",\n  \"phone\": \"{{s1003Phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s1003Phone', '+5939' + Math.floor(10000000 + Math.random() * 89999999));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s1003PatientId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - registrar una alergia (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"substance\": \"Penicilina\",\n  \"reaction\": \"Urticaria\",\n  \"severity\": \"severe\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s1003AllergyId', pm.response.json().id);",
+                  "pm.test('Stored', () => { const b = pm.response.json(); pm.expect(b.substance).to.eql('Penicilina'); pm.expect(b.active).to.eql(true); pm.expect(b.severity).to.eql('severe'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - registrar un medicamento de uso crónico (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/medications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "medications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Metformina\",\n  \"dose\": \"850 mg\",\n  \"frequency\": \"cada 12 horas\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s1003MedId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - registrar un antecedente quirúrgico (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/backgrounds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "backgrounds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"surgical\",\n  \"description\": \"Apendicectom\\u00eda\",\n  \"noted\": \"2019\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('s1003BackgroundId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - el resumen trae las tres listas (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "summary"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Three lists', () => { pm.expect(b.allergies).to.have.length(1); pm.expect(b.medications).to.have.length(1); pm.expect(b.backgrounds).to.have.length(1); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - marcar la alergia como resuelta se conserva (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies/{{s1003AllergyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies",
+                "{{s1003AllergyId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Kept, inactive', () => { const b = pm.response.json(); pm.expect(b.active).to.eql(false); pm.expect(b.substance).to.eql('Penicilina'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - severidad inválida (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"substance\": \"X\",\n  \"severity\": \"deadly\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Lists the options', () => pm.expect(pm.response.json().error).to.include('mild, moderate, severe'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - categoría inválida (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/backgrounds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "backgrounds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"other\",\n  \"description\": \"X\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - falta el nombre del medicamento (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/medications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "medications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dose\": \"1 mg\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el admin de otro consultorio no lee el resumen (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "summary"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el admin de otro consultorio no escribe (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"substance\": \"Hack\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - el admin de otro consultorio no borra (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies/{{s1003AllergyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies",
+                "{{s1003AllergyId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "summary"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falla - un paciente con datos clínicos no se borra (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Says why', () => pm.expect(pm.response.json().error).to.include('clinical data'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Éxito - la auditoría guarda el cambio sin el contenido (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?entity=patient_allergy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log?entity=patient_allergy"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const entries = pm.response.json().entries;",
+                  "pm.test('Recorded for the doctor and the admin', () => pm.expect(entries.length).to.be.at.least(2));",
+                  "pm.test('Never the content', () => pm.expect(JSON.stringify(entries)).to.not.include('Penicilina'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limpieza - borrar la alergia (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/allergies/{{s1003AllergyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "allergies",
+                "{{s1003AllergyId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limpieza - borrar el medicamento (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/medications/{{s1003MedId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "medications",
+                "{{s1003MedId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limpieza - borrar el antecedente (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}/clinical/backgrounds/{{s1003BackgroundId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}",
+                "clinical",
+                "backgrounds",
+                "{{s1003BackgroundId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limpieza - ahora sí se borra el paciente (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1003AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1003PatientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1003PatientId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -19317,6 +20208,38 @@
     },
     {
       "key": "s1002Phone",
+      "value": ""
+    },
+    {
+      "key": "s1003AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s1003DoctorToken",
+      "value": ""
+    },
+    {
+      "key": "s1003OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s1003PatientId",
+      "value": ""
+    },
+    {
+      "key": "s1003Phone",
+      "value": ""
+    },
+    {
+      "key": "s1003AllergyId",
+      "value": ""
+    },
+    {
+      "key": "s1003MedId",
+      "value": ""
+    },
+    {
+      "key": "s1003BackgroundId",
       "value": ""
     }
   ]
