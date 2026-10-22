@@ -6,6 +6,7 @@ Guía completa, paso a paso, para que el equipo configure el envío de WhatsApp 
 - **Referencia técnica.** [DEPLOY.md, sección 7](DEPLOY.md): variables de entorno y tabla de errores. Si algo difiere entre los dos documentos, manda el que se haya actualizado después; los textos de las plantillas están en ambos y un test comprueba que coincidan con el código.
 - **Sin Meta no se rompe nada.** Si no hay credenciales de Meta, el backend usa Twilio y, si tampoco hay, el modo mock (solo registra en el log). Para decidir entre Meta y Twilio, con la tabla comparativa y cómo cambiar de uno a otro, ver [DEPLOY.md, sección 7.0](DEPLOY.md). Esta guía es solo para quien elige **Meta**.
 - **Estado verificado (21-oct-2026).** Con esta configuración, una cita agendada desde el sitio desplegado envió la plantilla `cita_confirmada` y llegó al teléfono de prueba. Evidencia en [`qa/S7-12-production-evidence.md`](qa/S7-12-production-evidence.md).
+- **Respuestas con botones (S9-02).** El recordatorio puede llevar tres botones («Confirmo», «Cancelar», «Cambiar hora») y la agenda se actualiza sola. Es opcional y se activa al final: plantillas 4 y 5 (paso 5) y el webhook (paso 12). **Todavía no se probó con Meta de verdad**: la lista de comprobación del paso 12 es lo que falta.
 - **Nombres de menús.** Meta los cambia con frecuencia y los traduce de forma distinta según el idioma de la cuenta. Aquí van en español con el nombre en inglés entre paréntesis. Si no encuentras uno, búscalo por su nombre en el buscador del panel.
 
 ## Índice
@@ -22,6 +23,7 @@ Guía completa, paso a paso, para que el equipo configure el envío de WhatsApp 
 9. [Comprobar que funciona](#9-comprobar-que-funciona)
 10. [Pasar a un número real](#10-pasar-a-un-número-real-producción)
 11. [Problemas frecuentes](#11-problemas-frecuentes)
+12. [Respuestas con botones (webhook)](#12-respuestas-con-botones-webhook)
 
 ---
 
@@ -99,7 +101,7 @@ Para comprobar que la configuración básica funciona, en el mismo **Paso 1. Pru
 
 ## 5. Crear las plantillas
 
-MedCita usa dos plantillas. **Se crean desde el principio en español**, y se crean **ahora** porque la revisión de Meta es la parte más lenta.
+MedCita usa dos plantillas obligatorias (1 y 2) y tres opcionales (3, 4 y 5). **Se crean desde el principio en español**, y se crean **ahora** porque la revisión de Meta es la parte más lenta.
 
 ### Cómo abrir el creador de plantillas
 
@@ -108,13 +110,14 @@ Hay dos rutas, equivalentes:
 - **Desde el panel de la app:** caso de uso de WhatsApp → **Plantillas de mensajes** (*Message templates*) → **Crear plantilla**.
 - **Desde WhatsApp Manager:** [business.facebook.com/wa/manage/message-templates](https://business.facebook.com/wa/manage/message-templates/) (o el menú de herramientas del negocio → **Administrador de WhatsApp** → **Plantillas de mensajes**). Si Meta te pide elegir la cuenta, selecciona la de prueba.
 
-### Datos comunes a las dos plantillas
+### Datos comunes a todas las plantillas
 
 | Campo | Valor |
 |---|---|
 | **Categoría** (*Category*) | **Utilidad** (*Utility*) |
 | **Idioma** (*Language*) | **Español** (código `es`). No «Español (México)» ni «Inglés». |
-| Encabezado, pie y botones | Ninguno |
+| Encabezado y pie | Ninguno |
+| Botones | Ninguno, salvo en las plantillas 4 y 5 (tres botones de **Respuesta rápida**, ver abajo) |
 | Tipo de variable | Número (`{{1}}`, `{{2}}`…), no nombre |
 
 ### Plantilla 1: confirmación de cita
@@ -154,6 +157,28 @@ Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. 
 Ejemplos de las variables: `{{1}}` Consultorio MedCita · `{{2}}` María Andrade · `{{3}}` mañana 2026-10-21 · `{{4}}` 10:00 · `{{5}}` Dr. Santiago Pérez · `{{6}}` Av. Amazonas N34-12, Quito. Llegar 10 minutos antes y traer la cédula
 
 La usan los consultorios que escribieron una dirección o indicaciones en **Settings → Reminders**. No se usa hasta que esté aprobada **y** definas `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED=recordatorio_cita_consultorio` en Render; mientras tanto se envía la plantilla 2 y la dirección va solo por correo. Tiene 6 variables, así que Meta puede rechazarla por «demasiadas variables»: si pasa, acorta lo que va en `{{6}}` o alarga el texto (y cambia el mismo texto en `whatsappTemplates.js`).
+
+### Plantillas 4 y 5 (opcionales): el recordatorio con botones
+
+Son el recordatorio sencillo y el recordatorio con dirección, **más tres botones** para que el paciente confirme, cancele o pida otro horario con un toque. No las crees hasta tener claro el paso 12: se usan solo cuando el webhook ya funciona.
+
+Plantilla 4. Nombre: `recordatorio_cita_botones`
+
+```
+Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!
+```
+
+Ejemplos de las variables: los mismos de la plantilla 2.
+
+Plantilla 5. Nombre: `recordatorio_cita_consultorio_botones`
+
+```
+Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!
+```
+
+Ejemplos de las variables: los mismos de la plantilla 3.
+
+**Botones (en las dos).** En el creador, sección **Botones** (*Buttons*) → **Respuesta rápida** (*Quick reply*), tres veces, con estos textos exactos y en este orden: `Confirmo`, `Cancelar`, `Cambiar hora`. El orden importa: MedCita manda un identificador distinto a cada uno según su posición (0, 1 y 2). No uses botones de «Llamar» ni de enlace. Cada botón lleva, además, un identificador firmado de la cita que MedCita agrega al enviar: nada de eso se escribe en Meta.
 
 ### Pasos en el creador (para cada plantilla)
 
@@ -251,6 +276,14 @@ Si sigue igual, revisa en el panel de la app, **Casos de uso → Personalizar �
 | igual | `META_WHATSAPP_PHONE_NUMBER_ID` | El Phone Number ID del paso 3 |
 | igual (opcionales) | `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER`, `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED` (solo cuando la plantilla 3 esté aprobada), `META_WHATSAPP_TEMPLATE_LANGUAGE` | Solo si usaste otros nombres de plantilla o idioma. Por defecto: `cita_confirmada`, `recordatorio_cita` y `es`. |
 
+**Respuestas con botones (S9-02), todas opcionales** (el orden de activación está en el paso 12):
+
+| Dónde | Variable | Valor |
+|---|---|---|
+| Render y `backend/.env` | `META_APP_SECRET` | El *App secret* de la app (panel de la app → **Configuración de la app → Básica**, botón «Mostrar»). Es una credencial |
+| igual | `META_WEBHOOK_VERIFY_TOKEN` | Un texto largo y al azar que tú inventas (por ejemplo, `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`). Lo escribes igual en el panel de Meta (paso 12) |
+| igual | `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS`, `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED_BUTTONS` | `recordatorio_cita_botones` y `recordatorio_cita_consultorio_botones`. **Solo cuando la plantilla esté aprobada y el webhook verificado.** Sin definir, el recordatorio sale sin botones |
+
 En Render: servicio del backend → **Environment** → agrega las variables → guarda (se redespliega solo).
 
 Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio, borra las variables `TWILIO_*`.
@@ -308,4 +341,45 @@ El número de prueba sirve para validar, no para pacientes (solo 5 destinatarios
 | «No hay permisos disponibles» al generar el token | App fuera del portfolio o sin cuenta de WhatsApp asignada | Ver el final del paso 7 |
 | La plantilla se queda «En revisión» | Revisión de Meta (minutos a 24 h) | Esperar; si pasan 24 h, revisar «Acciones requeridas» en el panel |
 | Se envió «aceptado» pero no llegó nada | El número no está en la lista, o el teléfono no recibió la notificación | Revisar el paso 4 y el teléfono |
+| Meta dice que no pudo verificar la URL o el token del webhook | `META_WEBHOOK_VERIFY_TOKEN` distinto al del panel, sin definir o sin redesplegar; o la URL no termina en `/api/webhooks/whatsapp` | Paso 12. Una respuesta `503` de esa URL significa que falta la variable en Render |
+| El paciente toca un botón y no pasa nada | El campo `messages` no está suscrito; `META_APP_SECRET` mal copiado (los logs no muestran la llamada: responde `403`); o el recordatorio ya pasó, se movió o vino de otro número | Paso 12; mira el historial de mensajes de la cita: ahí queda anotado por qué no se cambió nada |
+| El recordatorio sale sin botones | Falta `META_APP_SECRET`, o la variable de la plantilla con botones, o el nombre no coincide | Paso 12 y la tabla del paso 8 |
 | Los envíos fallan y no llega nada en producción | El backend **no** cae a Twilio cuando Meta responde con error | Revisar los logs del backend: guardan el código de Meta y una pista, sin el número completo |
+
+## 12. Respuestas con botones (webhook)
+
+Con la plantilla con botones, el paciente responde el recordatorio con un toque y MedCita actúa:
+
+| Botón | Qué hace MedCita | Qué le dice al paciente |
+|---|---|---|
+| **Confirmo** | La cita pasa a *confirmed* | «…quedó confirmada. Te esperamos.» |
+| **Cancelar** | La cita se cancela y el horario queda libre | «Cancelamos tu cita… Si quieres agendar otra, comunícate con el consultorio.» |
+| **Cambiar hora** | La cita **no se mueve**: se avisa por correo a los administradores y secretarias del consultorio para que contacten al paciente | «Recibimos tu solicitud… Hasta entonces, tu cita sigue el…» |
+
+La respuesta al paciente es un mensaje de texto libre, que Meta entrega porque el paciente acaba de escribir (ventana de 24 h). No se hace nada, y solo queda anotado en el historial de la cita, cuando la cita ya no admite el cambio: está cancelada o cerrada, ya pasó, se movió después del recordatorio, el toque vino de **otro número** (un recordatorio reenviado) o es un repetido. Un texto libre que escriba el paciente no se interpreta.
+
+**Cómo funciona por dentro.** Meta llama a `POST https://<tu-backend>/api/webhooks/whatsapp` con cada mensaje que recibe el número. Esa llamada viene firmada con el *App secret* (`X-Hub-Signature-256`) y MedCita **rechaza con 403 toda llamada cuya firma no coincida**. Cada botón lleva dentro un identificador firmado de **una cita** (no el teléfono: el mismo número puede ser paciente de dos consultorios) y de su fecha y hora, así que un botón de un recordatorio viejo no actúa sobre una cita que se movió.
+
+### Orden para activarlo
+
+1. **Variables.** En Render pon `META_APP_SECRET` y `META_WEBHOOK_VERIFY_TOKEN` (paso 8) y espera el redespliegue.
+2. **El webhook en Meta.** En el panel de la app: **WhatsApp → Configuración** (*Configuration*) → **Webhook** → **Editar**:
+   - **URL de devolución de llamada** (*Callback URL*): `https://<tu-backend>.onrender.com/api/webhooks/whatsapp`
+   - **Token de verificación** (*Verify token*): el mismo valor de `META_WEBHOOK_VERIFY_TOKEN`.
+   - **Verificar y guardar.** Meta llama a la URL en ese momento: si dice que no pudo verificarla, mira la tabla del paso 11.
+3. **Suscribir el campo.** En **Campos del webhook** (*Webhook fields*) suscribe **`messages`** (es el que trae las respuestas de los botones). Los demás no hacen falta.
+4. **La plantilla con botones.** Crea la 4 (y la 5, si usas direcciones) del paso 5 y espera a que quede **Aprobada**.
+5. **Activarla.** En Render pon `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS`). Desde el **siguiente** recordatorio de cada cita sale con botones.
+
+### Probar con el número de prueba
+
+1. Agrega tu teléfono a la lista de destinatarios (paso 4) y agenda una cita **a tu nombre y con tu número** para dentro de unas 20 horas, en un consultorio de pruebas.
+2. Dispara el recordatorio sin esperar la hora: como administrador, `POST /api/tasks/reminders` (con Postman o curl; si no, el cron de cada hora lo hace cuando la cita entre en la ventana).
+3. En tu teléfono debe llegar el recordatorio **con tres botones**. Toca cada uno (agenda otra cita para el siguiente) y comprueba el efecto y la respuesta.
+4. En la cita → **Messages** se ven las respuestas del paciente, y en **Audit log** aparece «Patient (WhatsApp)».
+
+En local, sin Meta, el mismo flujo se prueba con `npm run whatsapp:reply -- <id de la cita> confirm` (ver [qa/S9-02-guia-de-pruebas.md](qa/S9-02-guia-de-pruebas.md)).
+
+### Lo que NO se sabe todavía
+
+Se verificó con llamadas simuladas, firmadas como Meta. **No se ha probado** con Meta de verdad: que acepte las plantillas con botones (puede pedir ajustes de texto, como pasó con la de 6 variables), el nombre exacto de los menús del panel y el formato final de la llamada con el número de prueba. Si algo difiere, corrige este documento.

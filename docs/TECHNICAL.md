@@ -46,6 +46,9 @@ El frontend asume que el backend corre en `http://localhost:5000` (la URL está 
 | `TEST_DATABASE_URL` | Solo para `npm test` | Base de datos **exclusiva para pruebas**. Su nombre debe terminar en `_test` o la suite se niega a correr (borra todas las tablas entre pruebas). Nunca se usa `DATABASE_URL`. Ver sección 6 |
 | `META_WHATSAPP_TOKEN` / `META_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp vía Meta Cloud API (proveedor preferido si están presentes). La confirmación y el recordatorio se envían como **plantillas aprobadas** (guía completa en `docs/DEPLOY.md`, sección 7) |
 | `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | No (defaults `cita_confirmada` / `recordatorio_cita`) | Nombres de las plantillas registradas en Meta |
+| `META_APP_SECRET` | No (S9-02) | *App secret* de la app de Meta. Con él el webhook de WhatsApp comprueba la firma `X-Hub-Signature-256` de cada llamada; **sin él el webhook responde `503` y no acepta nada**, y los recordatorios salen sin botones. Es una credencial |
+| `META_WEBHOOK_VERIFY_TOKEN` | No (S9-02) | Texto al azar, inventado por quien opera la plataforma, que se escribe igual en Render y en el panel de Meta; solo sirve para la verificación inicial de la URL del webhook (`GET`) |
+| `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` / `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED_BUTTONS` | No (S9-02; defaults `recordatorio_cita_botones` / `recordatorio_cita_consultorio_botones`) | Nombre de las plantillas de recordatorio **con botones**. Una plantilla se usa solo cuando su variable está definida y hay `META_APP_SECRET`. Ver «Respuestas de los pacientes por WhatsApp» |
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | No (default `es`) | Código de idioma de las plantillas |
 | `META_GRAPH_VERSION` | No (default `v21.0`) | Versión de la Graph API de Meta |
 | `META_GRAPH_BASE_URL` | No (default `https://graph.facebook.com`) | Solo para pruebas locales contra una Graph API falsa |
@@ -224,7 +227,7 @@ Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/
 
 ### Registro de auditoría
 
-Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes.
+Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes. Desde S9-02 también queda escrito lo que **el paciente** hace con los botones del recordatorio de WhatsApp (confirmar o cancelar su cita): `actor.role` = `patient`, nombre «Patient (WhatsApp)» y su id (nunca su nombre ni su teléfono).
 
 **Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type` o `schedule_block`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
 
@@ -276,9 +279,9 @@ Cada WhatsApp y cada correo que MedCita intenta enviar deja una fila en `Notific
 
 | Campo | Qué guarda |
 |---|---|
-| `kind` | Para qué era: `appointment_confirmation`, `appointment_reminder`, `doctor_new_appointment`, `password_reset`, `invitation`, `signup_confirmation`, `account_exists` |
+| `kind` | Para qué era: `appointment_confirmation`, `appointment_reminder`, `appointment_second_reminder`, `doctor_new_appointment`, `password_reset`, `invitation`, `signup_confirmation`, `account_exists`; y, desde S9-02, lo que pasó con los botones del recordatorio: `patient_confirmed`, `patient_cancelled`, `patient_reschedule_request`, `patient_reply_ignored` (mensajes **recibidos**), `patient_reply_answer` (la respuesta al paciente) y `reschedule_request_notice` (el correo a la secretaría) |
 | `channel`, `provider`, `recipient` | `whatsapp` o `email`; quién lo manejó (`meta`, `twilio`, `brevo`, `sendgrid` o `mock`); a quién iba (`patient`, `doctor`, `user`) |
-| `status` | `sent`, `failed` o `simulated` (no hay proveedor configurado: no salió nada de verdad) |
+| `status` | `sent`, `failed` o `simulated` (no hay proveedor configurado: no salió nada de verdad); y `received` (S9-02): un mensaje que **llegó** del paciente, no uno enviado |
 | `errorCode`, `error` | Si falló: código del proveedor (`meta_190`, `brevo_unauthorized`, `sendgrid_401`, `twilio_21211`, `timeout`, `network`…) y su mensaje, con correos y números tapados y 300 caracteres como máximo. Los errores de Meta con pista conocida añaden dónde arreglarlo (token vencido, plantilla sin aprobar…) |
 | `providerMessageId` | El id que devolvió el proveedor (`wamid…`, el de Brevo), para buscarlo en su panel |
 | `destination` | El destino **enmascarado** (`+593***042`, `pa******@gmail.com`) |
@@ -305,6 +308,52 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 |---|---|---|---|
 | POST | `/api/tasks/reminders` | admin, secretary | Dispara manualmente los recordatorios **solo para el consultorio de quien lo pide** (el cron de cada hora cubre todos los consultorios), con la configuración de ese consultorio (ver «Recordatorios configurables»). Recuerda una sola vez cada ronda (`Appointment.reminderSentAt` y, en el segundo recordatorio, `secondReminderSentAt`) a las citas `pending_approval`, `scheduled` o `confirmed` que entran en la ventana; si ningún canal entrega, se reintenta en la siguiente corrida |
 
+### Respuestas de los pacientes por WhatsApp (S9-02)
+
+El recordatorio de WhatsApp puede llevar tres botones de respuesta rápida: **«Confirmo»**, **«Cancelar»** y **«Cambiar hora»**. Al tocar uno, Meta llama al **webhook** y la agenda se actualiza sola. Cómo configurarlo en Meta: `docs/WHATSAPP_META_SETUP.md`, paso 12; cómo activarlo en producción: `docs/DEPLOY.md`, «Despliegue de las respuestas por WhatsApp»; cómo probarlo: `docs/qa/S9-02-guia-de-pruebas.md`. **No hay migración.**
+
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/api/webhooks/whatsapp` | Público (lo llama Meta) | Verificación inicial: con `hub.mode=subscribe` y `hub.verify_token` igual a `META_WEBHOOK_VERIFY_TOKEN`, responde el `hub.challenge` como `text/plain`. Token o modo incorrectos: `403`; un `hub.challenge` con algo que no sean letras, números, `_` o `-` (no se devuelve tal cual): `400`; sin `META_WEBHOOK_VERIFY_TOKEN`: `503` |
+| POST | `/api/webhooks/whatsapp` | Público (lo llama Meta) | Cada mensaje que recibe el número de WhatsApp de MedCita y cada acuse de entrega. **Sin firma válida no se hace nada**: `403`. `200 { received: true }` cuando se guardó lo que correspondía; `500` si no se pudo guardar, para que Meta lo reenvíe |
+
+**Es el primer endpoint abierto a internet sin login**, así que nada se acepta hasta que prueba venir de Meta (`routes/webhooks.js`):
+
+- **Firma.** Meta firma el **cuerpo exacto** con el *App secret* (`X-Hub-Signature-256: sha256=<HMAC-SHA256 hex>`). El cuerpo se lee crudo (`express.raw`, máximo 256 kB; el router va **antes** de `express.json()`) y la firma se compara en tiempo constante; recién después se interpreta como JSON. Sin `META_APP_SECRET` responde `503` a todo: sin secreto no hay nada que comprobar, así que no se acepta nada.
+- **Límite.** Solo cuentan las llamadas que Meta nunca haría (token o firma incorrectos, `403`): **30 cada 15 minutos por IP**. Las llamadas válidas no cuentan nunca.
+- **Solo el número de MedCita.** Si `META_WHATSAPP_PHONE_NUMBER_ID` está definido, se ignoran los mensajes de cualquier otro número de la misma app.
+
+**A qué cita se refiere un toque** (`services/whatsappButtons.js`). No por el teléfono (único solo dentro de un consultorio: el mismo número puede ser paciente de dos), sino por el **identificador que lleva el botón**, que MedCita escribe al enviar el recordatorio (la plantilla de Meta solo define el texto del botón):
+
+```
+<acción>.<id de la cita>.<fecha y hora de la cita, 12 dígitos>.<firma>      p. ej.  x.0b9f3a52-….203001151000.Kq1…
+```
+
+La firma es un HMAC con `JWT_SECRET` (con una etiqueta aparte, así que no hay otro secreto que configurar; **cambiar `JWT_SECRET` deja sin efecto los botones de los recordatorios ya enviados**). Inventar o alterar un identificador es imposible sin ese secreto. Incluir la fecha y la hora hace que un botón de un recordatorio sobre un horario **anterior** no actúe sobre la cita movida después. Mide 74 caracteres (Meta permite 128).
+
+**Qué se hace con cada toque** (`services/patientReplies.js`; todo en una transacción *Serializable*, como agendar):
+
+| Si… | Resultado | Respuesta al paciente |
+|---|---|---|
+| «Confirmo» y la cita está `pending_approval` o `scheduled` | Pasa a `confirmed`; auditoría (`update`) | «…quedó confirmada» |
+| «Confirmo» y ya está `confirmed` | Nada | «…ya estaba confirmada» |
+| «Cancelar» y la cita está abierta (`pending_approval`, `scheduled`, `confirmed`) | Pasa a `cancelled` (el horario queda libre); auditoría (`cancel`) | «Cancelamos tu cita…» |
+| «Cancelar» y ya está cancelada | Nada | «…ya estaba cancelada» |
+| «Cambiar hora» y la cita está abierta | **La cita no cambia.** Correo a los administradores y secretarias del consultorio (`reschedule_request_notice`); un segundo toque en 24 h no manda otro correo | «Recibimos tu solicitud…» |
+| La cita ya pasó, está cancelada (salvo «Cancelar») o cerrada (`arrived`, `in_progress`, `completed`, `no_show`) | Nada | «Esta cita ya no admite cambios por WhatsApp…» |
+| El botón es de un horario anterior de la cita | Nada | «Este mensaje corresponde a un horario anterior…» |
+| El toque viene de **otro número** (un recordatorio reenviado) | Nada | Ninguna (no es el paciente) |
+| Mensaje repetido (Meta lo reenvía, o el mismo `id`) | Nada | Ninguna |
+| Texto libre, foto, o un botón que no es nuestro o está mal firmado | Nada | Ninguna: no se responde a desconocidos (evita bucles con otros robots). Solo queda una línea en el log del servidor, con el número enmascarado y **sin el texto** |
+
+**Dónde queda registrado.** Todo toque que corresponde a una cita deja una fila en `NotificationLog` (`channel: whatsapp`, `provider: meta`, `status: received`): `patient_confirmed`, `patient_cancelled`, `patient_reschedule_request` o `patient_reply_ignored` (con `errorCode`: `already_confirmed`, `already_cancelled`, `repeated`, `past`, `closed`, `cancelled`, `stale`, `other_number`). `providerMessageId` guarda el `wamid` del mensaje del paciente: así se reconocen los reenvíos de Meta (se busca dentro de las filas de esa cita, que tienen índice). Las respuestas al paciente son filas `patient_reply_answer` y el aviso a la secretaría `reschedule_request_notice`. El estado `received` no cuenta como éxito ni como fallo en el aviso del administrador. Se ven en el bloque «Messages» de la cita («The patient confirmed the appointment by WhatsApp»). Confirmar y cancelar también escriben en la **auditoría** como `actorRole: patient`, `actorName: "Patient (WhatsApp)"` y `actorId` = el id del paciente (nunca su nombre ni su teléfono); la IP es la de Meta.
+
+**Cómo se responde.** Primero se decide y se guarda; solo entonces se responde `200` a Meta; recién después se manda la respuesta al paciente (texto libre, dentro de la ventana de 24 h que abre su toque) y el correo a la secretaría, para no hacer esperar a Meta por otros proveedores. Si lo que falla es esa respuesta, la decisión ya está guardada y Meta recibe `200`. Si falla guardar, Meta recibe `500` y reenvía; lo ya guardado se reconoce como repetido.
+
+**Qué no hace (todavía).** No interpreta texto libre. No avisa al médico cuando un paciente confirma o cancela (la cita cambia en la agenda). No hay un interruptor por consultorio para apagar los botones: la plantilla es global. «Cambiar hora» no mueve la cita ni muestra un marcador en la agenda; avisa por correo.
+
+**Probar sin Meta.** `npm run whatsapp:reply -- <id de la cita> confirm|cancel|reschedule [--from <número>]` arma el botón de esa cita, lo firma con `META_APP_SECRET` como lo hace Meta y llama al servidor local; se niega a hablarle a un servidor que no sea local.
+
 ### Límite de intentos (rate limiting)
 
 | Endpoint | Qué cuenta | Límite |
@@ -319,6 +368,7 @@ Al arrancar el servidor hace la misma comprobación y deja el resultado en el lo
 | `POST /api/auth/register` | Solo las que envían correo (202), por IP | 5 por hora |
 | `verify-email`, `invitation-preview`, `accept-invitation` | Intentos con enlace inválido (400), por IP, compartido | 10 cada 15 min |
 | `POST /api/admin/doctors` y `/invitations/:id/resend` | Todas, por admin | 20 por hora |
+| `GET` y `POST /api/webhooks/whatsapp` | Solo las que Meta nunca haría (token o firma incorrectos, 403), por IP | 30 cada 15 min |
 
 - En el login solo cuentan las credenciales incorrectas: los logins exitosos y las peticiones mal formadas (400) no gastan intentos. En `forgot-password` cuenta toda solicitud, porque cada una puede enviar un correo (el límite evita inundar la bandeja de alguien o gastar la cuota del proveedor).
 - Al superar el límite responde `429 { error, retryAfterSeconds }` con los headers `Retry-After` y `RateLimit-*`, **incluso con la contraseña correcta**. El mensaje es el mismo para cuentas que existen y que no.
@@ -409,6 +459,7 @@ Detalles útiles:
 - Hoy no hay ningún caso marcado `it.failing`. Si hace falta documentar un bug conocido se usa esa marca: el caso pasa en verde mientras el bug exista y empezará a fallar cuando se corrija (entonces hay que volverlo `it`).
 - `tests/migrations.test.js` comprueba que lo que construyen las migraciones coincide con `schema.prisma` (y falla, mostrando el SQL que falta, si alguien cambió un modelo sin crear su migración).
 - **S9-08 (límites persistentes y alertas):** como los contadores de los límites viven en la base de datos, `resetDb()` también los borra entre pruebas; fuera de las pruebas, `npm run limits:reset` (o volver a sembrar) los borra. Las alertas de error no envían correos reales en la suite: `serverErrorAlert.test.js` sustituye `emailService.deliverEmail`. La guía para probarlo a mano, con correos reales, está en `docs/qa/S9-08-guia-de-pruebas.md`.
+- **S9-02 (respuestas por WhatsApp):** las pruebas del webhook (`whatsappWebhook.test.js`) firman cada llamada con el mismo HMAC que usa Meta y esperan, con una espera acotada, lo que el servidor manda **después** de contestar (la respuesta al paciente y el correo a la secretaría); ambos pasan por los proveedores simulados, no por uno real. `reminderButtons.test.js` cubre el identificador de los botones y qué plantilla elige `reminderTemplateKey`, `patientReplies.test.js` las decisiones puras (teléfonos, estados, hora local) y `whatsappReplyScript.test.js` el script `npm run whatsapp:reply`. `setupEnv.js` deja vacías las variables del webhook para que un `.env` local no entre a las pruebas.
 - **CI** (`.github/workflows/ci.yml`): en cada Pull Request y en cada push a `main` corre `npm test` (con un PostgreSQL de servicio) y `npm run lint`.
 
 ### Guía en PDF (`frontend/public/medcita-demo-guide.pdf`)

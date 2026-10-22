@@ -83,11 +83,12 @@ Debes tener dos terminales abiertas:
 
 ## 📱 Notificaciones de WhatsApp
 
-**En producción** los mensajes salen por la **API de WhatsApp Cloud de Meta**, con dos plantillas aprobadas en español (`cita_confirmada` y `recordatorio_cita`). Meta solo deja que un negocio inicie una conversación con una plantilla aprobada, y así el paciente recibe el mensaje sin haberle escrito antes al número.
+**En producción** los mensajes salen por la **API de WhatsApp Cloud de Meta**, con dos plantillas aprobadas en español (`cita_confirmada` y `recordatorio_cita`; las de recordatorio con botones, opcionales, se explican más abajo). Meta solo deja que un negocio inicie una conversación con una plantilla aprobada, y así el paciente recibe el mensaje sin haberle escrito antes al número.
 
 - **Número de prueba.** Hoy se usa el número de prueba gratuito de Meta, que solo entrega a **5 destinatarios registrados** en el panel de Meta. Para pacientes reales hace falta un número propio y la verificación del negocio (`docs/DEPLOY.md`, sección 7.7).
 - **Token.** El token de usuario del sistema dura 60 días mientras el negocio no esté verificado; el actual vence el **19-dic-2026**. Al vencer, los envíos fallan con el error 190.
 - **Probar un envío:** desde `backend/`, `npm run whatsapp:test -- +593XXXXXXXXX` (confirmación) o `... reminder` (recordatorio).
+- **Responder el recordatorio con un toque (S9-02):** con la plantilla con botones y el webhook configurados (`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`), el paciente confirma, cancela o pide otra hora desde el recordatorio y la agenda se actualiza sola; «Cambiar hora» avisa por correo a la secretaría. Sin esas variables todo sigue como antes. `npm run whatsapp:reply -- <id de la cita> confirm|cancel|reschedule` simula el toque en local. Todavía no se probó con Meta de verdad. Guía de pruebas: `docs/qa/S9-02-guia-de-pruebas.md`; configuración: `docs/WHATSAPP_META_SETUP.md`, paso 12.
 - **Alertas de errores del servidor (S9-08):** si `ERROR_ALERT_EMAILS` (en `backend/.env` o en Render) tiene los correos de los desarrolladores, un error 500 les manda un aviso con la ruta, el consultorio y la línea del código. `npm run alerts:test` manda uno de ejemplo; `npm run limits:reset` borra los contadores de los límites de intentos (solo en bases locales). Guía de pruebas: `docs/qa/S9-08-guia-de-pruebas.md`; despliegue: `docs/DEPLOY.md`.
 - **Guía paso a paso** para crear la cuenta, la app, las plantillas y el token: `docs/WHATSAPP_META_SETUP.md`. Variables de entorno y tabla de errores: `docs/DEPLOY.md`, sección 7.
 
