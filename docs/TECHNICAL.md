@@ -408,6 +408,7 @@ Detalles útiles:
 - `server.js` exporta `app`; el cron y el puerto solo se activan al ejecutar `node src/server.js`, no al importarlo.
 - Hoy no hay ningún caso marcado `it.failing`. Si hace falta documentar un bug conocido se usa esa marca: el caso pasa en verde mientras el bug exista y empezará a fallar cuando se corrija (entonces hay que volverlo `it`).
 - `tests/migrations.test.js` comprueba que lo que construyen las migraciones coincide con `schema.prisma` (y falla, mostrando el SQL que falta, si alguien cambió un modelo sin crear su migración).
+- **S9-08 (límites persistentes y alertas):** como los contadores de los límites viven en la base de datos, `resetDb()` también los borra entre pruebas; fuera de las pruebas, `npm run limits:reset` (o volver a sembrar) los borra. Las alertas de error no envían correos reales en la suite: `serverErrorAlert.test.js` sustituye `emailService.deliverEmail`. La guía para probarlo a mano, con correos reales, está en `docs/qa/S9-08-guia-de-pruebas.md`.
 - **CI** (`.github/workflows/ci.yml`): en cada Pull Request y en cada push a `main` corre `npm test` (con un PostgreSQL de servicio) y `npm run lint`.
 
 ### Guía en PDF (`frontend/public/medcita-demo-guide.pdf`)

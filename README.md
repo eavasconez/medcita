@@ -88,6 +88,7 @@ Debes tener dos terminales abiertas:
 - **Número de prueba.** Hoy se usa el número de prueba gratuito de Meta, que solo entrega a **5 destinatarios registrados** en el panel de Meta. Para pacientes reales hace falta un número propio y la verificación del negocio (`docs/DEPLOY.md`, sección 7.7).
 - **Token.** El token de usuario del sistema dura 60 días mientras el negocio no esté verificado; el actual vence el **19-dic-2026**. Al vencer, los envíos fallan con el error 190.
 - **Probar un envío:** desde `backend/`, `npm run whatsapp:test -- +593XXXXXXXXX` (confirmación) o `... reminder` (recordatorio).
+- **Alertas de errores del servidor (S9-08):** si `ERROR_ALERT_EMAILS` (en `backend/.env` o en Render) tiene los correos de los desarrolladores, un error 500 les manda un aviso con la ruta, el consultorio y la línea del código. `npm run alerts:test` manda uno de ejemplo; `npm run limits:reset` borra los contadores de los límites de intentos (solo en bases locales). Guía de pruebas: `docs/qa/S9-08-guia-de-pruebas.md`; despliegue: `docs/DEPLOY.md`.
 - **Guía paso a paso** para crear la cuenta, la app, las plantillas y el token: `docs/WHATSAPP_META_SETUP.md`. Variables de entorno y tabla de errores: `docs/DEPLOY.md`, sección 7.
 
 **Orden de proveedores:** Meta (si hay `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID`) → Twilio (si hay `TWILIO_*`) → mock. Solo se elige uno: si Meta responde con error, **no se intenta con Twilio**.

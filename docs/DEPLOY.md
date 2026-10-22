@@ -94,6 +94,7 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `DATABASE_URL` | La misma connection string de Neon usada en el paso 2 |
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
+   | `ERROR_ALERT_EMAILS` | Opcional pero recomendada. Correos de los **desarrolladores / del equipo de MedCita** (uno o varios, separados por comas) que reciben un aviso cuando el servidor responde un error 500. Nunca la dirección de un consultorio. Ver «Despliegue de los límites persistentes y las alertas de errores» |
    | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
    | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para elegir entre WhatsApp con Meta (plantillas, número de prueba gratuito) y Twilio ver la sección 7 |
 
@@ -380,26 +381,58 @@ S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica
 
 ## Despliegue de los límites persistentes y las alertas de errores (S9-08)
 
-S9-08 agrega la migración `20261026100000_add_rate_limit_counters`, que solo **crea la tabla `RateLimitCounter`** (los contadores de los límites de intentos). No toca ninguna fila existente y la versión anterior, que cuenta en memoria, nunca la lee: seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/rateLimitCountersMigration.test.js`. Por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-08`).
+S9-08 hace dos cosas: los contadores de los límites de intentos (login, recuperación de contraseña, registro, invitaciones) pasan de la memoria del servidor a la base de datos, y un error del servidor (5xx) manda un correo **al equipo de desarrollo de MedCita**. Cómo probarlo antes y después: [`docs/qa/S9-08-guia-de-pruebas.md`](qa/S9-08-guia-de-pruebas.md).
 
-**Qué cambia al desplegar:** los intentos fallidos de login, de recuperación de contraseña y de registro ya no se pierden con cada despliegue: quien está bloqueado sigue bloqueado hasta que termine su ventana (15 minutos a 1 hora). Cada intento cuenta con una escritura en Neon (también despierta la base si estaba dormida; el login ya la necesitaba).
+### Antes de fusionar a `main`
 
-**Activar las alertas de errores:**
+- [ ] **Rama de respaldo en Neon** (por ejemplo `antes-de-s9-08`), como en «Primer despliegue con consultorios». La migración `20261026100000_add_rate_limit_counters` solo **crea la tabla `RateLimitCounter`**: no toca ninguna fila existente y la versión anterior, que cuenta en memoria, nunca la lee, así que seguir con ella o volver atrás es seguro. Se aplica sola con el `prisma migrate deploy` del Build Command y se probó sobre datos existentes (`backend/tests/rateLimitCountersMigration.test.js`).
+- [ ] **Decidir los correos que recibirán las alertas**: los de los desarrolladores / del equipo que opera MedCita, **nunca** los de un cliente o consultorio.
+- [ ] **Brevo y la lista de IPs autorizadas.** Si en Brevo está activa la lista de IPs (app.brevo.com → *Security → Authorised IPs*), Brevo **rechaza con 401** («unrecognised IP address») las llamadas desde cualquier IP que no esté en ella, y manda un correo «Verify a new IP» a la cuenta. Eso bloquea **todos** los correos de MedCita (invitaciones, altas, recuperación de contraseña, recordatorios por correo y estas alertas). Autoriza las **IPs de salida de Render** de la región del servicio (Render las muestra en el panel del servicio —busca «Outbound» en *Connect*— y en su documentación, «Outbound IP Addresses»; son compartidas por la región y pueden cambiar) o desactiva la restricción. Para probar desde una computadora local también hay que autorizar la IP de esa computadora (puede ser IPv6 y cambiar).
 
-1. En Render → `medcita-backend` → **Environment**, agrega `ERROR_ALERT_EMAILS` con una o más direcciones separadas por comas. **Deben ser los correos de los desarrolladores / del equipo que opera MedCita**: uno o varios (`dev1@…,dev2@…`; cada aviso llega a todos). Una dirección compartida como `soporte@…` también sirve y no depende de una sola persona. **Nunca** la de un cliente o la de un consultorio: el aviso nombra al consultorio afectado y es solo para quien opera la plataforma. Necesita el correo funcionando (Brevo, sección 3).
-> **Si Brevo responde 401 «unrecognised IP address»** (lo que pasó probando `alerts:test` desde una computadora local): Brevo tiene una lista de **IPs autorizadas** para su API (app.brevo.com → *Seguridad → Authorised IPs*) y rechaza las llamadas desde cualquier otra. Hay que autorizar la IP desde la que se envía (la de tu computadora para probar en local, y las **IPs de salida de Render** de la región del servicio para producción) o desactivar esa restricción. Mientras tanto ningún correo de MedCita sale (invitaciones, recordatorios por correo, esta alerta). El error aparece en el log como `[BREVO EMAIL ERROR] 401`.
+### Variables de entorno (Render → `medcita-backend` → *Environment*)
 
-2. Desde `backend/` con el `.env` de producción (o en la *Shell* de Render): `npm run alerts:test`. Debe imprimir `OK -> tu@correo.com (brevo)` y llegar un correo «[MedCita · Consultorio de ejemplo] Error 500 en GET /api/alerts-test (src/routes/example.js:42)», con el consultorio, el dominio y la línea del código de ejemplo. Si dice *simulated*, falta configurar el proveedor de correo.
-3. Sin `ERROR_ALERT_EMAILS` no se envía nada y todo sigue como antes.
+| Key | Value |
+|---|---|
+| `ERROR_ALERT_EMAILS` | Correos de los **desarrolladores o del equipo de soporte de MedCita**, uno o varios separados por comas (`dev1@…,dev2@…`); cada aviso llega a todos. Una dirección compartida (`soporte@…`) también sirve y no depende de una persona. **Nunca** la de un consultorio: el aviso nombra al consultorio afectado y es solo para quien opera la plataforma. Sin definir no se envía nada y todo sigue como antes. Necesita el correo funcionando (`BREVO_*`, sección 3). Render redespliega solo al guardar |
 
-**Verificar producción después de desplegar:**
+Nada más cambia: los límites siguen siendo los mismos (`docs/TECHNICAL.md`, «Límite de intentos»).
 
-- [ ] `GET /api/health` responde `200`.
-- [ ] Iniciar sesión funciona. En el SQL Editor de Neon, `SELECT count(*) FROM "RateLimitCounter";` devuelve un número (la tabla existe y se va llenando solo con intentos **fallidos** y solicitudes de registro o de recuperación).
-- [ ] `npm run alerts:test` llega a la bandeja.
-- [ ] Opcional: provocar a propósito 6 intentos de login con una cuenta de prueba que no exista y comprobar el `429`; reiniciar el servicio en Render y comprobar que sigue en `429`.
+### Qué cambia al desplegar
 
-**Si alguien se bloquea por error** (o tras una prueba), los contadores se pueden borrar: `RATE_LIMIT_RESET_HOST=<host de Neon> npm run limits:reset` desde `backend/` (solo toca los contadores; sin esa variable se niega a correr contra una base que no sea local).
+- Los intentos fallidos ya **no se pierden con cada despliegue**: quien está bloqueado sigue bloqueado hasta que termine su ventana (de 15 minutos a 1 hora).
+- Cada intento contado hace una escritura en Neon (también despierta la base si estaba dormida; el login ya la necesitaba). Las filas vencidas se borran cada hora.
+- Si la base no responde al contar, la petición **pasa** (lo que sigue, un login o un alta, también necesita la base y falla por su cuenta).
+- A partir de ahora **reiniciar el servicio ya no borra los límites**. Para pruebas y soporte existe `npm run limits:reset` (ver abajo).
+
+### Probar las alertas en producción
+
+La *Shell* de Render depende del plan (en el gratuito normalmente no está; compruébalo en tu panel), así que no cuentes con correr `npm run alerts:test` allí. Alternativas, de la más simple a la más completa:
+
+1. **Probar el proveedor y los destinatarios desde tu computadora**, con las mismas `BREVO_*` y `ERROR_ALERT_EMAILS` de producción en tu `backend/.env`: `npm run alerts:test` debe imprimir `OK -> tu@correo.com (brevo)` y llegar «[MedCita · Consultorio de ejemplo] Error 500 en GET /api/alerts-test (src/routes/example.js:42)». Prueba la clave de Brevo y la dirección, **no** las IPs de Render.
+2. **Probar que Render puede enviar correo** (las IPs): provoca un correo desde producción, por ejemplo «Forgot password» con una cuenta tuya, y mira en los *Logs* de Render: `[BREVO EMAIL] Email sent successfully` (bien) o `[BREVO EMAIL ERROR] 401` (falta autorizar las IPs de Render).
+3. **Un error real en un ambiente de pruebas** (staging, o local con una base aparte): la receta paso a paso está en la guía de pruebas, sección 4.
+
+No se recomienda provocar un 500 a propósito en producción.
+
+### Verificar producción después de desplegar
+
+- [ ] `GET /api/health` responde `200` y el despliegue terminó sin errores de migración.
+- [ ] Iniciar sesión funciona. En el SQL Editor de Neon, `SELECT count(*) FROM "RateLimitCounter";` devuelve un número (la tabla existe; se llena solo con intentos **fallidos** y con solicitudes de registro o de recuperación).
+- [ ] Los *Logs* de Render no muestran `Could not purge the rate limit counters` ni `[BREVO EMAIL ERROR]`.
+- [ ] `ERROR_ALERT_EMAILS` está definida (Render → *Environment*) con las direcciones correctas y el punto 1 o 2 de arriba funcionó.
+- [ ] Opcional: 6 intentos de login con una cuenta de prueba que no exista dan `429` en el sexto; reiniciar el servicio en Render y comprobar que sigue en `429`.
+
+### Cuando llegue la primera alerta real
+
+El correo trae la ruta, el consultorio (nombre, nombre corto e id), el dominio, el archivo y la línea del código, el tipo de error y un **id de la petición**. Para ver el mensaje completo: Render → *Logs* del servicio → busca ese id (`[request a602c1203971]`). El aviso no incluye el mensaje porque puede citar datos de pacientes. No se repite para la misma ruta y consultorio durante 15 minutos (el siguiente cuenta los que se callaron) y salen 10 como máximo por hora; si hay una tormenta de errores el resto está en los logs.
+
+### Si alguien se bloquea por error, o tras una prueba
+
+Los contadores se borran con `npm run limits:reset` desde `backend/`: **solo toca los contadores** y se niega a correr contra una base que no sea local, porque borrarlos en producción le daría intentos nuevos a quien adivina contraseñas. Para hacerlo a propósito en producción: `RATE_LIMIT_RESET_HOST=<host de Neon> npm run limits:reset` con la `DATABASE_URL` de Neon en el entorno. Esperar a que termine la ventana (hasta una hora) también funciona.
+
+### Volver atrás
+
+Revertir el código es seguro: la versión anterior vuelve a contar en memoria y la tabla `RateLimitCounter` queda sin uso. Quitar `ERROR_ALERT_EMAILS` apaga las alertas sin tocar el código.
 
 ## Despliegue de los recordatorios configurables (S9-03)
 
