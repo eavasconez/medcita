@@ -7735,7 +7735,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user, invitation, consent, patient_export, appointment_type, schedule_block'));"
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('entity must be one of: appointment, patient, user, invitation, consent, patient_export, appointment_type, schedule_block, reminder_settings'));"
                 ],
                 "type": "text/javascript"
               }
@@ -15883,6 +15883,496 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S9-03 - Recordatorios configurables (/admin/reminder-settings)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s903AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login de un médico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@medcita.ec\",\n  \"password\": \"demo1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s903DoctorToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s903OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El admin ve los recordatorios de su consultorio, con opciones, consumo y vista previa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Valores de siempre por defecto', () => { pm.expect(r.enabled).to.eql(true); pm.expect(r.hours).to.eql(24); pm.expect(r.secondHours).to.eql(null); pm.expect(r.whatsapp).to.eql(true); pm.expect(r.email).to.eql(true); });",
+                  "pm.test('Opciones de anticipación', () => pm.expect(r.options.hours).to.eql([2, 24, 48]));",
+                  "pm.test('Consumo del mes', () => { pm.expect(r.usage.month).to.match(/^\\d{4}-\\d{2}$/); pm.expect(r.usage.whatsapp.total).to.be.a('number'); pm.expect(r.usage.email.reminders).to.be.a('number'); });",
+                  "pm.test('Vista previa del WhatsApp', () => { pm.expect(r.preview.text).to.include('Recordatorio'); pm.expect(r.preview.template).to.be.a('string'); });",
+                  "pm.collectionVariables.set('s903AddressJson', JSON.stringify(r.address));",
+                  "pm.collectionVariables.set('s903IndicationsJson', JSON.stringify(r.indications));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El admin elige 48 h, un segundo recordatorio a las 2 h, dirección e indicaciones",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 48,\n  \"secondHours\": 2,\n  \"address\": \"Calle de Prueba S903 y Avenida Central\",\n  \"indications\": \"Llegar 10 minutos antes\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Guardado', () => { pm.expect(r.hours).to.eql(48); pm.expect(r.secondHours).to.eql(2); pm.expect(r.address).to.eql('Calle de Prueba S903 y Avenida Central'); });",
+                  "pm.test('La vista previa dice si la dirección va en el WhatsApp', () => { const r = pm.response.json(); pm.expect(r.preview.detailsInWhatsapp).to.be.a('boolean'); if (r.preview.detailsInWhatsapp) pm.expect(r.preview.text).to.include('Calle de Prueba S903 y Avenida Central'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Una anticipación que no se ofrece se rechaza (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 12\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.eql('hours must be one of: 2, 24, 48'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un segundo recordatorio igual o más lejano que el primero se rechaza (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 2,\n  \"secondHours\": 2\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.include('closer to the appointment'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin ningún canal se rechaza (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"whatsapp\": false,\n  \"email\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje', () => pm.expect(pm.response.json().error).to.include('at least one channel'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un médico no puede ver ni cambiar los recordatorios (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otro consultorio conserva sus valores (aislamiento)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sin tocar', () => { const r = pm.response.json(); pm.expect(r.hours).to.eql(24); pm.expect(r.secondHours).to.eql(null); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El cambio queda en el Activity Log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/audit-log?entity=reminder_settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "entity",
+                  "value": "reminder_settings"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Hay una entrada reminder_settings', () => pm.expect(pm.response.json().entries.some(e => e.entity === 'reminder_settings' && e.action === 'update')).to.eql(true));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup - volver a 24 h, sin segundo recordatorio y con los datos de antes",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s903AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reminder-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reminder-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 24,\n  \"secondHours\": null,\n  \"address\": {{s903AddressJson}},\n  \"indications\": {{s903IndicationsJson}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Restaurado', () => { const r = pm.response.json(); pm.expect(r.hours).to.eql(24); pm.expect(r.secondHours).to.eql(null); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -16496,6 +16986,26 @@
     },
     {
       "key": "s906DoctorTotal",
+      "value": ""
+    },
+    {
+      "key": "s903AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s903DoctorToken",
+      "value": ""
+    },
+    {
+      "key": "s903OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s903AddressJson",
+      "value": ""
+    },
+    {
+      "key": "s903IndicationsJson",
       "value": ""
     }
   ]
