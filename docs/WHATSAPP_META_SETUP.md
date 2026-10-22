@@ -372,17 +372,21 @@ La respuesta al paciente es un mensaje de texto libre, que Meta entrega porque e
 ### Orden para activarlo
 
 1. **Variables.** En Render pon `META_APP_SECRET` y `META_WEBHOOK_VERIFY_TOKEN` (paso 8) y espera el redespliegue.
-2. **El webhook en Meta.** En el panel de la app: **WhatsApp → Configuración** (*Configuration*) → **Webhook** → **Editar**:
+2. **El webhook en Meta** (recorrido verificado el 22-oct-2026 en el panel en español):
+   - Panel de la app → menú izquierdo **Casos de uso** → en «Conectarte con los clientes a través de WhatsApp», **Personalizar**.
+   - En el menú de ese caso, bajo **Configuración básica**, **Paso 2: Configuración de producción** → bloque **Configurar webhooks**. (El «Paso 1. Pruébalo» y «Permisos y funciones» no son: no toques «Generar token» ni «Agregar» permisos.)
    - **URL de devolución de llamada** (*Callback URL*): `https://<tu-backend>.onrender.com/api/webhooks/whatsapp`
-   - **Token de verificación** (*Verify token*): el mismo valor de `META_WEBHOOK_VERIFY_TOKEN`.
-   - **Verificar y guardar.** Meta llama a la URL en ese momento: si dice que no pudo verificarla, mira la tabla del paso 11.
-3. **Suscribir el campo.** En **Campos del webhook** (*Webhook fields*) suscribe **`messages`** (es el que trae las respuestas de los botones). Los demás no hacen falta.
+   - **Token de verificación** (*Verify token*): el mismo valor de `META_WEBHOOK_VERIFY_TOKEN`. Antes de pegarlo, compruébalo abriendo en el navegador `https://<tu-backend>.onrender.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=<TOKEN>&hub.challenge=12345`: debe mostrar solo `12345` (403: el token no coincide; 503: falta una variable en Render).
+   - Deja apagado el interruptor del certificado de cliente y pulsa **Verificar y guardar**. Al guardarse, «Configurar webhooks» muestra un **tick verde**. Si dice que no pudo validar la URL, mira la tabla del paso 11.
+3. **Suscribir el campo.** Más abajo, en **Campos del webhook**, todos aparecen «No suscritos». Activa **solo `messages`** (el que trae las respuestas de los botones; la lista es larga y está en orden alfabético). Meta avisa «Se suscribió correctamente al campo del webhook messages». Los demás no hacen falta. Opcional: **Probar** en esa fila → «Enviar al servidor»: Meta debe mostrar «Se probó correctamente», y MedCita responde 200 sin hacer nada (es un mensaje de ejemplo).
 4. **La plantilla con botones.** Crea la 4 (y la 5, si usas direcciones) del paso 5 y espera a que quede **Aprobada**.
 5. **Activarla.** En Render pon `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS`). Desde el **siguiente** recordatorio de cada cita sale con botones.
 
+> **Aviso de Meta: la app sin publicar.** En esa misma pantalla, un aviso naranja dice que mientras la app esté **sin publicar** (*Publicar: Sin publicar*), solo recibirá webhooks de **prueba** enviados desde el panel, y que **no se entregarán datos de producción**, ni los de administradores, desarrolladores o evaluadores de la app. Eso significa que **un toque real de un botón puede no llegar a MedCita hasta que se publique la app** (modo *live*). La verificación y la suscripción del webhook funcionan igual. **Pendiente de comprobar** con la primera plantilla con botones aprobada; si el toque no llega, es esto. Publicar una app pide requisitos de Meta (política de privacidad, etc.) y no se ha revisado si tiene costo: confírmalo antes de decidir.
+
 ### Probar con el número de prueba
 
-1. Agrega tu teléfono a la lista de destinatarios (paso 4) y agenda una cita **a tu nombre y con tu número** para dentro de unas 20 horas, en un consultorio de pruebas.
+1. Agrega tu teléfono a la lista de destinatarios (paso 4) y agenda una cita **a tu nombre y con tu número en formato internacional (`+593985…`, sin el 0 inicial)** para dentro de unas 20 horas, en un consultorio de pruebas.
 2. Dispara el recordatorio sin esperar la hora: como administrador, `POST /api/tasks/reminders` (con Postman o curl; si no, el cron de cada hora lo hace cuando la cita entre en la ventana).
 3. En tu teléfono debe llegar el recordatorio **con tres botones**. Toca cada uno (agenda otra cita para el siguiente) y comprueba el efecto y la respuesta.
 4. En la cita → **Messages** se ven las respuestas del paciente, y en **Audit log** aparece «Patient (WhatsApp)».

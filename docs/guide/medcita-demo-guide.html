@@ -86,6 +86,7 @@
     <tr><td>1.5</td><td>Lo que recibe el paciente: WhatsApp y correo</td></tr>
     <tr><td>1.6</td><td>Otras pantallas: pacientes, disponibilidad, administración</td></tr>
     <tr><td>1.7</td><td>Contraseña: cambiarla o recuperarla</td></tr>
+    <tr><td>1.8</td><td>Ajustes del consultorio y respuestas del paciente (Sprint 9)</td></tr>
   </table>
   <p style="margin-top:14px"><strong>Parte 2 — Configurar WhatsApp con Meta</strong> (para el equipo técnico o el cliente que pone MedCita en marcha).</p>
   <table class="toc">
@@ -98,6 +99,7 @@
     <tr><td>2.7</td><td>Comprobar que funciona</td></tr>
     <tr><td>2.8</td><td>Problemas frecuentes</td></tr>
     <tr><td>2.9</td><td>Pasar a un número real y mantenimiento</td></tr>
+    <tr><td>2.10</td><td>Respuestas con botones: plantilla y webhook</td></tr>
   </table>
   <div class="note" style="margin-top:18px">Los textos de los menús y botones de la aplicación están en inglés (<em>My Schedule</em>, <em>Patients</em>, <em>Availability</em>, <em>Settings</em>…); los mensajes que reciben los pacientes por WhatsApp y correo están en español.</div>
 </section>
@@ -122,7 +124,6 @@
   <p>Cuando el negocio use un número propio verificado, esta limitación desaparece (sección 2.9).</p>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
-
 <section class="page">
   <p class="part">Parte 1 · Probar MedCita</p>
   <h1>1.2 Credenciales de prueba</h1>
@@ -230,6 +231,31 @@
   <h2>Qué hacer con lo que encuentres</h2>
   <p>Esto es una versión piloto — cualquier cosa que te parezca confusa, lenta, o que simplemente no funcione, es información valiosa. Cuéntanoslo directamente al equipo (WhatsApp o email de contacto), con el detalle de en qué pantalla y qué paso exacto pasó.</p>
   <div class="note">¿Probando esto como parte de una sesión de demo en vivo con el equipo de MedCita? Al final se comparte un formulario corto de feedback (NPS + usabilidad) — no hace falta que lo busques, se comparte contigo directamente.</div>
+  <div class="foot">MedCita — Guía completa · Parte 1</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 1 · Probar MedCita</p>
+  <h1>1.8 Ajustes del consultorio y respuestas del paciente</h1>
+  <p>Lo que se agregó en el Sprint 9. Todo lo de abajo lo ve y lo cambia el <strong>administrador</strong>, salvo donde se indica.</p>
+  <table>
+    <tr><th>Dónde</th><th>Qué hace</th></tr>
+    <tr><td><em>Settings → Clinic → Timezone</em></td><td>La zona horaria del consultorio (por defecto <span class="mono">America/Guayaquil</span>). Los horarios libres, los recordatorios y «hoy» se calculan en esa hora. Cambiarla no mueve las citas ya agendadas.</td></tr>
+    <tr><td><em>Settings → Appointment types</em></td><td>Los tipos de visita que ofrece el consultorio («Primera vez, 40 min», «Control, 20 min»): nombre, duración de 5 a 240 minutos y color. Siempre existe «Consultation, 30 min» como tipo por defecto. Un tipo se archiva, no se borra. Al agendar se elige el tipo y el calendario dibuja la cita con su duración; dos visitas no pueden pisarse.</td></tr>
+    <tr><td><em>Availability → Time off</em></td><td>Vacaciones, congresos y feriados: un médico bloquea sus propios días y el administrador o la secretaría, los de cualquier médico o de todo el consultorio. Un día bloqueado no ofrece horarios. Si ya había citas ese día, MedCita las lista pero <strong>no las cancela</strong>: hay que moverlas o cancelarlas. El botón <em>Ecuador holidays</em> propone los feriados nacionales (hay que revisar las fechas: no es el calendario oficial).</td></tr>
+    <tr><td><em>Settings → Reminders</em></td><td>Si el consultorio recuerda a sus pacientes, cuánto antes (2, 24 o 48 horas), un segundo recordatorio opcional, los canales (WhatsApp, correo) y la dirección e indicaciones que se agregan al mensaje. Muestra una vista previa de lo que recibirá el paciente.</td></tr>
+    <tr><td><em>Analytics</em></td><td>El control de inasistencias por periodo (este mes, mes pasado, últimos 30 días, este año o fechas libres) y por médico, con el detalle por médico y por tipo de visita, y <em>Export CSV</em> para llevarlo a una hoja de cálculo.</td></tr>
+  </table>
+  <h2>El recordatorio con botones</h2>
+  <p>Cuando la plantilla con botones esté aprobada y el servicio configurado (parte 2, 2.10), el recordatorio de WhatsApp trae tres botones. El paciente responde con un toque:</p>
+  <table>
+    <tr><th>Botón</th><th>Qué pasa</th></tr>
+    <tr><td><strong>Confirmo</strong></td><td>La cita pasa a <em>Confirmed</em> y el paciente recibe «quedó confirmada».</td></tr>
+    <tr><td><strong>Cancelar</strong></td><td>La cita se cancela y el horario queda libre.</td></tr>
+    <tr><td><strong>Cambiar hora</strong></td><td>La cita <strong>no se mueve sola</strong>: MedCita avisa por correo a los administradores y secretarias para que contacten al paciente y la muevan desde la agenda.</td></tr>
+  </table>
+  <p>Todo lo que hace el paciente queda en el detalle de la cita (bloque <em>Messages</em>) y, si cambió la cita, en <em>Activity Log</em> como «Patient (WhatsApp)». Si el toque no corresponde (la cita ya pasó, ya estaba cancelada, se movió después del recordatorio o viene de otro número, por ejemplo un recordatorio reenviado), no cambia nada y solo queda anotado. Un mensaje de texto libre del paciente no se interpreta.</p>
+  <div class="note">Para probarlo en tu computadora sin Meta, el equipo técnico usa <span class="mono">npm run whatsapp:reply</span> (ver <span class="mono">docs/qa/S9-02-guia-de-pruebas.md</span>).</div>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
 
@@ -446,6 +472,34 @@ npm run whatsapp:test -- +593XXXXXXXXX reminder    # recordatorio</pre>
     <li><strong>Cambios en los textos</strong> de los mensajes: se cambian a la vez en el código y en la plantilla de Meta, que se vuelve a revisar.</li>
   </ul>
   <div class="ok">Documentación completa del proyecto: <span class="mono">docs/WHATSAPP_META_SETUP.md</span> (esta parte con más detalle) y <span class="mono">docs/DEPLOY.md</span>, sección 7, en el repositorio.</div>
+  <div class="foot">MedCita — Guía completa · Parte 2</div>
+</section>
+
+<section class="page">
+  <p class="part">Parte 2 · Configurar WhatsApp con Meta</p>
+  <h1>2.10 Respuestas con botones: plantilla y webhook</h1>
+  <p>Opcional. Permite que el paciente confirme, cancele o pida otra hora con un toque (ver 1.8). Hacen falta <strong>dos cosas independientes</strong>: una plantilla con botones aprobada por Meta, y un <em>webhook</em> (la dirección de MedCita a la que Meta avisa cuando alguien toca un botón). Se pueden hacer en cualquier orden; conviene dejar el webhook listo antes de que se apruebe la plantilla.</p>
+  <h2>Paso A — La plantilla con botones</h2>
+  <ol>
+    <li>WhatsApp Manager → <em>Plantillas de mensajes</em> → <em>Crear plantilla</em>. Categoría <strong>Utilidad</strong>, nombre <span class="mono">recordatorio_cita_botones</span>, idioma <strong>Spanish</strong>.</li>
+    <li>Cuerpo (se pega tal cual): <pre>Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!</pre></li>
+    <li>Variables <strong>numéricas</strong> (<span class="mono">{{1}}</span> a <span class="mono">{{4}}</span>). Si Meta dice «parámetros variables con formato incorrecto», el tipo de variable está en «Nombre»: cámbialo a <strong>Número</strong> y usa <em>Agregar variable</em>. Rellena las cuatro muestras (María Andrade · mañana 2026-10-21 · 10:00 · Dr. Santiago Pérez).</li>
+    <li>Encabezado y pie vacíos, multimedia en «Ninguna».</li>
+    <li><em>Botones → Agregar botón → <strong>Personalizado</strong></em> (es la respuesta rápida), tres veces y en este orden: <strong>Confirmo</strong>, <strong>Cancelar</strong>, <strong>Cambiar hora</strong>.</li>
+    <li><em>Enviar para revisión</em>. La revisión tarda de minutos a 24 h; no pulses «Editar» mientras tanto. Si no la ves en la lista, marca todos los estados del filtro: una plantilla que no se envió no queda ni como borrador.</li>
+  </ol>
+  <h2>Paso B — El webhook</h2>
+  <ol>
+    <li>En Render, variables <span class="mono">META_APP_SECRET</span> (en el panel de la app: <em>Configuración de la app → Básica → Clave secreta de la app</em>) y <span class="mono">META_WEBHOOK_VERIFY_TOKEN</span> (un texto largo y al azar que tú inventas). Son credenciales: nunca en el repositorio ni en un chat.</li>
+    <li>Comprueba que responde: abre en el navegador <span class="mono">https://TU-BACKEND.onrender.com/api/webhooks/whatsapp?hub.mode=subscribe&amp;hub.verify_token=TU_TOKEN&amp;hub.challenge=12345</span>. Debe mostrar solo <span class="mono">12345</span>.</li>
+    <li>Panel de la app → <em>Casos de uso → Personalizar</em> (WhatsApp) → <em>Configuración básica → Paso 2: Configuración de producción → Configurar webhooks</em>.</li>
+    <li><em>URL de devolución de llamada</em>: <span class="mono">https://TU-BACKEND.onrender.com/api/webhooks/whatsapp</span>. <em>Token de verificación</em>: el mismo valor. Certificado de cliente apagado. <em>Verificar y guardar</em>: aparece un tick verde.</li>
+    <li>En <em>Campos del webhook</em>, activa <strong>solo</strong> <span class="mono">messages</span>. (Opcional: <em>Probar → Enviar al servidor</em> debe decir «Se probó correctamente».)</li>
+  </ol>
+  <h2>Paso C — Activarlo</h2>
+  <p>Cuando la plantilla esté <strong>Aprobada</strong> y el webhook verificado, en Render define <span class="mono">META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS</span> con el valor <span class="mono">recordatorio_cita_botones</span>. <strong>No la definas antes</strong>: con la plantilla sin aprobar, los recordatorios de WhatsApp fallan (error 132001). Los recordatorios salen con botones desde el siguiente de cada cita.</p>
+  <div class="note"><strong>Aviso de Meta.</strong> Mientras la app esté <em>Sin publicar</em>, Meta solo entrega webhooks de prueba y <strong>no entrega datos de producción</strong>, ni los de administradores o desarrolladores de la app. Un toque real puede no llegar a MedCita hasta publicar la app. Está por comprobar; publicar una app pide requisitos de Meta (por ejemplo, política de privacidad).</div>
+  <div class="ok">Detalle completo: <span class="mono">docs/WHATSAPP_META_SETUP.md</span>, paso 12.</div>
   <div class="foot">MedCita — Guía completa · Parte 2</div>
 </section>
 

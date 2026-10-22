@@ -465,7 +465,7 @@ S9-02 deja que el paciente responda el recordatorio con un toque —«Confirmo»
 
 1. **Fusionar y desplegar.** Nada cambia para los pacientes: sin las variables, el webhook responde `503` y los recordatorios salen como siempre.
 2. **Definir en Render** `META_APP_SECRET` y `META_WEBHOOK_VERIFY_TOKEN` (7.5). Redespliega solo.
-3. **Configurar el webhook en Meta** (WHATSAPP_META_SETUP.md, paso 12): URL `https://<tu-backend>.onrender.com/api/webhooks/whatsapp` y el mismo token. Meta hace la verificación en ese momento: tiene que decir que se verificó. Luego, suscribir el campo `messages`.
+3. **Configurar el webhook en Meta** (WHATSAPP_META_SETUP.md, paso 12: *Casos de uso → Personalizar → Paso 2: Configuración de producción → Configurar webhooks*): URL `https://<tu-backend>.onrender.com/api/webhooks/whatsapp` y el mismo token. Meta hace la verificación en ese momento: tiene que decir que se verificó (tick verde). Luego, suscribir **solo** el campo `messages`. Hecho y probado el 22-oct-2026 con «Probar → Enviar al servidor». **Ojo:** con la app de Meta sin publicar, Meta advierte que no entrega datos de producción; si un toque real no llega a MedCita, hay que publicar la app (ver el aviso en WHATSAPP_META_SETUP.md, paso 12).
 4. **Registrar la plantilla con botones** (7.4) y esperar a que esté **APPROVED**.
 5. **Recién entonces** definir `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS` si registraste la de la dirección). Desde el **siguiente recordatorio** de cada cita salen los botones. Los recordatorios ya enviados no cambian.
 

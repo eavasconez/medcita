@@ -1,6 +1,8 @@
 # Cambios de MedCita
 
-## Sprint 9 — en curso
+## Sprint 9 — 22-oct-2026 (v0.9.0)
+
+El ciclo de la cita: cada consultorio con su zona horaria, tipos de cita con duración, días bloqueados, recordatorios configurables, reportes de asistencia exportables, límites de intentos persistentes con alertas de error, y el recordatorio de WhatsApp que el paciente puede responder con un toque. Cuatro migraciones (todas añaden tablas o columnas). **Pendiente de comprobar en producción:** que Meta apruebe la plantilla con botones y que entregue los toques reales con la app sin publicar. Quedan fuera del sprint, a la espera del abogado, la retención de registros (S9-07) y la aceptación de términos (S9-10).
 
 - **Lista de verificación para producción (S9-09, #128).** Sección nueva en `docs/DEPLOY.md`, «Producción lista para cobrar»: qué se pierde hoy con los planes gratuitos (el backend se duerme, la base de Neon solo permite deshacer unas 6 horas), los planes a contratar, una **restauración de Neon ensayada sobre una rama** con sus tiempos anotados, una copia `pg_dump` fuera de Neon, monitoreo y avisos, secretos y accesos, una guía corta de incidentes y lo que debe estar listo antes de cobrar. Es documentación: no cambia código ni esquema. Las cifras de los planes se consultaron el 22-oct-2026 y hay que confirmarlas antes de contratar.
 
