@@ -178,7 +178,7 @@ Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. 
 
 Ejemplos de las variables: los mismos de la plantilla 3.
 
-**Botones (en las dos).** En el creador, sección **Botones** (*Buttons*) → **Respuesta rápida** (*Quick reply*), tres veces, con estos textos exactos y en este orden: `Confirmo`, `Cancelar`, `Cambiar hora`. El orden importa: MedCita manda un identificador distinto a cada uno según su posición (0, 1 y 2). No uses botones de «Llamar» ni de enlace. Cada botón lleva, además, un identificador firmado de la cita que MedCita agrega al enviar: nada de eso se escribe en Meta.
+**Botones (en las dos).** En el creador, sección **Botones** (*Buttons*) → **Agregar botón**. En el panel en español, la respuesta rápida se llama **«Personalizado»** (las otras opciones son «Ir al sitio web», «Llamar a WhatsApp», «Llamar a número de teléfono» y «Compartir info. de contacto», y no sirven). Agrégalo tres veces, con estos textos exactos y en este orden: `Confirmo`, `Cancelar`, `Cambiar hora`. El orden importa: MedCita manda un identificador distinto a cada uno según su posición (0, 1 y 2). No uses botones de «Llamar» ni de enlace. Cada botón lleva, además, un identificador firmado de la cita que MedCita agrega al enviar: nada de eso se escribe en Meta.
 
 ### Pasos en el creador (para cada plantilla)
 
@@ -199,6 +199,15 @@ Ejemplos de las variables: los mismos de la plantilla 3.
 6. **El estado «Activa: calidad pendiente» es el de una plantilla aprobada** que todavía no tiene envíos con los que medir su calidad. No requiere ninguna acción.
 7. **No pulses «Editar plantilla» mientras está en revisión:** cada edición reinicia la revisión.
 8. **El recordatorio de prueba mostraba un guion** («tienes una cita - a las 10:00») porque `npm run whatsapp:test` no armaba el día y la fecha como un solo valor. Corregido en el PR #93; el envío real de recordatorios nunca tuvo ese defecto.
+
+### Lo que pasó al registrar la plantilla 4 (22-oct-2026)
+
+Registrada y enviada a revisión el 22-oct-2026; el resultado se anota aquí cuando Meta responda.
+
+1. **«La plantilla contiene parámetros variables con formato incorrecto».** El cuerpo con `{{1}}` en rojo y ese error significa que el editor espera variables **con nombre** (`{{customer_name}}`) y nosotros usamos **numéricas**. Cambia el *tipo de parámetro variable* a **Número** (más arriba en el mismo formulario) y vuelve a pegar el texto; si sigue, borra el cuerpo y usa **Agregar variable** en cada posición. Al hacerlo aparece «Muestras de variables» con `{{1}}` a `{{4}}`: rellena las cuatro.
+2. **El botón se llama «Personalizado»**, no «Respuesta rápida». Tras agregarlo, la sección se titula «Respuesta rápida» y la vista previa muestra los botones bajo el mensaje.
+3. **Un aviso sobre el encabezado y la plantilla no se creó.** Al enviar, Meta mostró un mensaje diciendo que faltaba el encabezado y la plantilla **no quedó ni como borrador** (se comprobó marcando los 11 estados del filtro). Hay que volver a crearla. El encabezado y el pie son opcionales: se enviaron vacíos y con «Muestra de contenido multimedia: Ninguna» y a la segunda salió «En revisión». No se anotó el texto exacto del aviso; si vuelve a aparecer, cópialo aquí.
+4. **La lista oculta las plantillas por filtro** (estado y «Últimos 7 días»). Para comprobar que existe una, marca todos los estados del filtro y busca por nombre.
 
 ### Ver el estado por línea de comandos
 
