@@ -25,7 +25,15 @@ const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent
 // never copied into the log.
 const FIELDS = {
   appointment: { shown: ['date', 'time', 'status'], hidden: ['notes', 'typeId'] },
-  patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
+  patient: {
+    shown: [],
+    // Personal and family data: only that it changed, never its value
+    hidden: [
+      'name', 'phone', 'email', 'cedula',
+      'birthDate', 'sex', 'address', 'occupation', 'emergencyContactName', 'emergencyContactPhone',
+      'insuranceProvider', 'insuranceNumber', 'guardianName', 'guardianCedula', 'guardianPhone', 'guardianRelationship'
+    ]
+  },
   user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
   // An invitation to join the clinic; the account itself is created by its owner later
   invitation: { shown: ['role'], hidden: ['name', 'email'] },

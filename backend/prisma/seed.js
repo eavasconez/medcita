@@ -122,16 +122,25 @@ async function main() {
     });
   }
 
-  // Create Patients
+  // Create Patients. Birth dates are relative to today so the demo ages (and who is a minor) hold.
+  const birthYearsAgo = (years, monthDay = '03-09') => `${new Date().getFullYear() - years}-${monthDay}`;
   const patientsData = [
     { name: 'Juan Carlos Cevallos', phone: '+593987654321', cedula: '1723456789', email: 'juan@example.com' },
-    { name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com' },
+    {
+      name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com',
+      birthDate: birthYearsAgo(41, '06-15'), sex: 'female', address: 'Av. Amazonas N24-03, Quito', occupation: 'Ingeniera civil',
+      emergencyContactName: 'Luis Lasso', emergencyContactPhone: '+593 99 123 4567', insuranceProvider: 'IESS', insuranceNumber: 'A-123456'
+    },
     { name: 'Ricardo Andrade', phone: '+593985729425', cedula: '1755667788', email: 'ricardo@example.com' },
     { name: 'Hugo Paez', phone: '+593911111111', cedula: '1799999999' },
-    { name: 'Valentina Salazar', phone: '+593922222222', cedula: '1733445566', email: 'valentina@example.com' },
+    {
+      name: 'Valentina Salazar', phone: '+593922222222', cedula: '1733445566', email: 'valentina@example.com',
+      birthDate: birthYearsAgo(7), sex: 'female', address: 'Calle Los Pinos 12, Cumbayá', occupation: 'Estudiante',
+      guardianName: 'Carolina Salazar', guardianRelationship: 'Madre', guardianCedula: '1711223344', guardianPhone: '+593 98 555 0101'
+    },
     { name: 'Diego Fernando Ortiz', phone: '+593933333333', cedula: '1744556677', email: 'diego@example.com' },
     { name: 'Gabriela Noboa', phone: '+593944444444', cedula: '1755443322', email: 'gabriela@example.com' },
-    { name: 'Mateo Villacís', phone: '+593955555555', cedula: '1766554433', email: 'mateo@example.com' }
+    { name: 'Mateo Villacís', phone: '+593955555555', cedula: '1766554433', email: 'mateo@example.com', birthDate: birthYearsAgo(3, '11-20'), sex: 'male' }
   ];
 
   await prisma.patient.createMany({ data: patientsData.map(p => ({ ...p, clinicId: clinic.id })) });

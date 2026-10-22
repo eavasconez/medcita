@@ -10,23 +10,31 @@ const CLINICAL_ROLES = ['doctor', 'admin'];
 // hours. For clinical data that is too long: a doctor moved to the front desk, or an
 // account that was just deleted, must lose access at once. So the role is read again
 // from the account on every clinical request (one lookup by primary key).
-module.exports = async (req, res, next) => {
-  let account;
+// -> the account's current role when it may see clinical data, otherwise null
+async function clinicalRoleOf(req) {
+  const account = await prisma.doctor.findFirst({
+    where: { id: req.doctorId, clinicId: req.clinicId },
+    select: { role: true }
+  });
+  return account && CLINICAL_ROLES.includes(account.role) ? account.role : null;
+}
+
+const clinicalAccess = async (req, res, next) => {
+  let role;
   try {
-    account = await prisma.doctor.findFirst({
-      where: { id: req.doctorId, clinicId: req.clinicId },
-      select: { role: true }
-    });
+    role = await clinicalRoleOf(req);
   } catch (err) {
     console.error('Clinical access lookup error:', err);
     return res.status(500).json({ error: 'An unexpected error occurred' });
   }
 
-  if (!account || !CLINICAL_ROLES.includes(account.role)) {
+  if (!role) {
     return res.status(403).json({ error: 'Access denied. Clinical data is not available to your role.' });
   }
-  req.userRole = account.role;
+  req.userRole = role;
   next();
 };
 
+module.exports = clinicalAccess;
 module.exports.CLINICAL_ROLES = CLINICAL_ROLES;
+module.exports.clinicalRoleOf = clinicalRoleOf;
