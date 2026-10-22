@@ -1,6 +1,7 @@
 const twilio = require('twilio');
 const emailService = require('./emailService');
-const { buildTemplate } = require('./whatsappTemplates');
+const { buildTemplate, TEMPLATES } = require('./whatsappTemplates');
+const { detailsOf } = require('./reminderSettings');
 const { recordNotification } = require('./notificationLog');
 const { maskPhone } = require('../utils/mask');
 
@@ -10,6 +11,16 @@ const GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.faceboo
 
 const hasMetaCreds = () =>
   !!(process.env.META_WHATSAPP_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
+// A clinic with an address or indications gets the detailed reminder. Meta only sends templates it
+// approved, and that one is registered by whoever runs the platform: until it is (its name is
+// set in META_WHATSAPP_TEMPLATE_REMINDER_DETAILED) Meta sends the plain reminder, and the details
+// reach the patient by email. Twilio and the mock send free text, which needs no approval.
+const reminderTemplateKey = (details) => {
+  if (!details) return 'appointmentReminder';
+  const registered = Boolean(process.env[TEMPLATES.appointmentReminderDetailed.nameEnvVar]);
+  return !hasMetaCreds() || registered ? 'appointmentReminderDetailed' : 'appointmentReminder';
+};
+
 const hasTwilioCreds = () =>
   !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
 
@@ -236,37 +247,66 @@ const notificationService = {
   },
 
   /**
-   * Send a reminder (WhatsApp + Email). `dayLabel` is 'hoy' or 'mañana'
-   * depending on when the appointment is. Resolves to true if at least one
-   * channel delivered, so callers can retry when nothing went out.
+   * Send a reminder (WhatsApp + Email). `dayLabel` says when the appointment is ("hoy", "mañana",
+   * "pasado mañana" or "el"). `clinic` carries the clinic's reminder settings (S9-03): the channels
+   * it uses and the address and indications to add; without it both channels are used and nothing
+   * is added. `kind` tells the first reminder from the second in the message history. Resolves to
+   * true if at least one channel delivered, so callers can retry when nothing went out.
    */
-  sendReminder: async (appointment, { dayLabel = 'mañana' } = {}) => {
+  sendReminder: async (appointment, { dayLabel = 'mañana', clinic = null, kind = 'appointment_reminder' } = {}) => {
     const { patient, doctor, date, time } = appointment;
-    const whatsapp = buildTemplate('appointmentReminder', {
-      patientName: patient.name,
-      whenText: `${dayLabel} ${date}`,
-      time,
-      doctorName: doctor.name
-    });
-    const msg = whatsapp.text;
-    const about = { clinicId: appointment.clinicId, appointmentId: appointment.id, kind: 'appointment_reminder', recipient: 'patient' };
+    const useWhatsapp = clinic ? clinic.reminderWhatsapp : true;
+    const useEmail = clinic ? clinic.reminderEmail : true;
+    const details = clinic ? detailsOf(clinic) : '';
+    const about = { clinicId: appointment.clinicId, appointmentId: appointment.id, kind, recipient: 'patient' };
 
     // Each channel is independent: one failing must not suppress the other.
-    const tasks = [notificationService.sendWhatsApp(patient.phone, msg, whatsapp, about)];
+    const tasks = [];
+    let msg = '';
 
-    if (patient.email && patient.email.includes('@')) {
+    if (useWhatsapp || (useEmail && patient.email)) {
+      const key = reminderTemplateKey(details);
+      const whatsapp = buildTemplate(key, {
+        clinicName: clinic?.name,
+        patientName: patient.name,
+        whenText: `${dayLabel} ${date}`,
+        time,
+        doctorName: doctor.name,
+        details
+      });
+      msg = whatsapp.text;
+      if (useWhatsapp) tasks.push(notificationService.sendWhatsApp(patient.phone, msg, whatsapp, about));
+    }
+
+    if (useEmail && patient.email && patient.email.includes('@')) {
       const html = emailService.templates.reminderHtml({
         patientName: patient.name,
         doctorName: doctor.name,
         date,
         time,
-        dayLabel
+        dayLabel,
+        clinicName: clinic?.name,
+        address: clinic?.address,
+        indications: clinic?.reminderIndications
       });
       tasks.push(notificationService.sendEmail(patient.email, 'Recordatorio de Cita - MedCita', msg, html, about));
     }
 
     const results = await Promise.allSettled(tasks);
     return results.some((result) => result.status === 'fulfilled' && result.value === true);
+  },
+
+  /**
+   * What a reminder looks like for a clinic with these settings, for the settings screen: the
+   * message the patient would get on WhatsApp ("text"), the template it comes from, and whether the
+   * clinic's address and indications are in it ("detailsInWhatsapp": not while Meta only has the
+   * plain template, in which case they still go in the email).
+   */
+  reminderPreview: (clinic, { patientName = 'María Andrade', doctorName = 'Dr. Santiago Pérez', whenText, time = '10:00' } = {}) => {
+    const details = detailsOf(clinic);
+    const key = reminderTemplateKey(details);
+    const template = buildTemplate(key, { clinicName: clinic.name, patientName, whenText, time, doctorName, details });
+    return { text: template.text, template: template.name, detailsInWhatsapp: Boolean(details) && key === 'appointmentReminderDetailed' };
   },
 
   /**

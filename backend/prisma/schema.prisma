@@ -19,6 +19,19 @@ model Clinic {
   timezone  String   @default("America/Guayaquil")
   createdAt DateTime @default(now())
 
+  // Where the clinic is, for the reminders ("Dirección")
+  address   String?
+  // Appointment reminders (S9-03). The defaults are what every clinic did before they were
+  // configurable: one WhatsApp and one email, 24 hours before.
+  reminderEnabled     Boolean @default(true)
+  // Hours before the appointment of the first and, optionally, a second reminder
+  reminderHours       Int     @default(24)
+  secondReminderHours Int?
+  reminderWhatsapp    Boolean @default(true)
+  reminderEmail       Boolean @default(true)
+  // Free text added to the reminders ("Llegar 10 minutos antes y traer la cédula")
+  reminderIndications String?
+
   doctors        Doctor[]
   patients       Patient[]
   appointments   Appointment[]
@@ -97,6 +110,9 @@ model Appointment {
   createdAt      DateTime  @default(now())
   // Set when the 24h reminder is claimed/sent; null means it is still owed.
   reminderSentAt DateTime?
+  // The same for the second reminder, when the clinic sends one. A second reminder that was
+  // no longer owed (the first one already went out inside its window) is dated too.
+  secondReminderSentAt DateTime?
   // How long the visit lasts, copied from its type when it is booked: editing the
   // type later does not move or overlap the appointments already in the agenda.
   durationMinutes Int      @default(30)

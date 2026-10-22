@@ -282,11 +282,14 @@ router.get('/:id/notifications', async (req, res) => {
       select: { id: true, status: true, date: true, time: true, reminderSentAt: true }
     });
     if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.clinicId }, select: { reminderEnabled: true, reminderWhatsapp: true, reminderEmail: true } });
 
     res.json({
       notifications: await notificationLog.forAppointment(req.clinicId, appointment.id),
-      // Whether the 24h reminder is still owed (see tasks/reminderTask.js)
-      reminderPending: !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
+      // Whether the first reminder is still owed (see tasks/reminderTask.js): not when the clinic
+      // turned its reminders off or left them no channel
+      reminderPending: clinic.reminderEnabled && (clinic.reminderWhatsapp || clinic.reminderEmail) &&
+        !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
     });
   } catch (err) {
     console.error('Appointment notifications error:', err);

@@ -90,6 +90,42 @@ describe('buildTemplate', () => {
   });
 });
 
+describe('sendReminder with a clinic\'s details through Meta', () => {
+  const clinic = { name: 'Consultorio Torres', address: 'Av. Amazonas N34-12', reminderIndications: 'Llegar 10 minutos antes', reminderWhatsapp: true, reminderEmail: true };
+  beforeEach(() => setEnv({ ...META_ENV, META_WHATSAPP_TEMPLATE_REMINDER_DETAILED: '' }));
+
+  it('sends the approved plain template while the detailed one is not registered, details or not', async () => {
+    await notificationService.sendReminder({ ...appointment, id: 'a1', clinicId: 'c1' }, { dayLabel: 'mañana', clinic });
+
+    expect(sentBody().template.name).toBe('recordatorio_cita');
+    expect(sentBody().template.components[0].parameters).toHaveLength(4);
+  });
+
+  it('sends the detailed template, with the clinic first and the details last, once it is registered', async () => {
+    setEnv({ META_WHATSAPP_TEMPLATE_REMINDER_DETAILED: 'recordatorio_cita_consultorio' });
+
+    await notificationService.sendReminder({ ...appointment, id: 'a1', clinicId: 'c1' }, { dayLabel: 'mañana', clinic });
+
+    expect(sentBody().template.name).toBe('recordatorio_cita_consultorio');
+    expect(sentBody().template.components[0].parameters.map((p) => p.text)).toEqual([
+      'Consultorio Torres',
+      'María Andrade',
+      'mañana 2030-01-15',
+      '10:00',
+      'Dra. Camila Torres',
+      'Av. Amazonas N34-12. Llegar 10 minutos antes'
+    ]);
+  });
+
+  it('keeps to the plain template for a clinic with no details, even when the detailed one is registered', async () => {
+    setEnv({ META_WHATSAPP_TEMPLATE_REMINDER_DETAILED: 'recordatorio_cita_consultorio' });
+
+    await notificationService.sendReminder({ ...appointment, id: 'a1', clinicId: 'c1' }, { dayLabel: 'mañana', clinic: { ...clinic, address: null, reminderIndications: null } });
+
+    expect(sentBody().template.name).toBe('recordatorio_cita');
+  });
+});
+
 describe('sendWhatsApp through Meta', () => {
   beforeEach(() => setEnv(META_ENV));
 
