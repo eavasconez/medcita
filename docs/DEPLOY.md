@@ -386,8 +386,8 @@ S9-08 agrega la migración `20261026100000_add_rate_limit_counters`, que solo **
 
 **Activar las alertas de errores:**
 
-1. En Render → `medcita-backend` → **Environment**, agrega `ERROR_ALERT_EMAILS` con una o más direcciones separadas por comas (por ejemplo la tuya). Necesita el correo funcionando (Brevo, sección 3).
-2. Desde `backend/` con el `.env` de producción (o en la *Shell* de Render): `npm run alerts:test`. Debe imprimir `OK -> tu@correo.com (brevo)` y llegar un correo «[MedCita] Error 500 en GET /api/alerts-test». Si dice *simulated*, falta configurar el proveedor de correo.
+1. En Render → `medcita-backend` → **Environment**, agrega `ERROR_ALERT_EMAILS` con una o más direcciones separadas por comas. **Deben ser direcciones del equipo de soporte de MedCita** (de preferencia un alias compartido, como `soporte@…`, para que no dependa de una sola persona), **nunca** la de un cliente o la de un consultorio: el aviso nombra al consultorio afectado y es solo para quien opera la plataforma. Necesita el correo funcionando (Brevo, sección 3).
+2. Desde `backend/` con el `.env` de producción (o en la *Shell* de Render): `npm run alerts:test`. Debe imprimir `OK -> tu@correo.com (brevo)` y llegar un correo «[MedCita · Consultorio de ejemplo] Error 500 en GET /api/alerts-test (src/routes/example.js:42)», con el consultorio, el dominio y la línea del código de ejemplo. Si dice *simulated*, falta configurar el proveedor de correo.
 3. Sin `ERROR_ALERT_EMAILS` no se envía nada y todo sigue como antes.
 
 **Verificar producción después de desplegar:**
