@@ -12,13 +12,13 @@ function stubNotifications() {
     sendEmail: notificationService.sendEmail
   };
 
-  notificationService.sendWhatsApp = async (to, message, template) => {
+  notificationService.sendWhatsApp = async (to, message, template, context) => {
     if (failPhones.has(to)) return false;
-    sent.push({ channel: 'whatsapp', to, message, template });
+    sent.push({ channel: 'whatsapp', to, message, template, context });
     return true;
   };
-  notificationService.sendEmail = async (to, subject, text, html) => {
-    sent.push({ channel: 'email', to, subject, text, html });
+  notificationService.sendEmail = async (to, subject, text, html, context) => {
+    sent.push({ channel: 'email', to, subject, text, html, context });
     return true;
   };
 

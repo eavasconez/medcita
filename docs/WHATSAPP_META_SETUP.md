@@ -129,7 +129,7 @@ MedCita: Hola {{1}}, tu cita con {{2}} ha sido agendada para el {{3}} a las {{4}
 
 Ejemplos de las variables (Meta los pide para revisar): `{{1}}` María Andrade · `{{2}}` Dr. Santiago Pérez · `{{3}}` 2026-10-21 · `{{4}}` 10:00
 
-### Plantilla 2: recordatorio de 24 h
+### Plantilla 2: recordatorio
 
 Nombre: `recordatorio_cita`
 
@@ -140,6 +140,20 @@ Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. S
 ```
 
 Ejemplos de las variables: `{{1}}` María Andrade · `{{2}}` mañana 2026-10-21 · `{{3}}` 10:00 · `{{4}}` Dr. Santiago Pérez
+
+### Plantilla 3 (opcional): recordatorio con la dirección y las indicaciones
+
+Nombre: `recordatorio_cita_consultorio`
+
+Cuerpo (se pega tal cual):
+
+```
+Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
+```
+
+Ejemplos de las variables: `{{1}}` Consultorio MedCita · `{{2}}` María Andrade · `{{3}}` mañana 2026-10-21 · `{{4}}` 10:00 · `{{5}}` Dr. Santiago Pérez · `{{6}}` Av. Amazonas N34-12, Quito. Llegar 10 minutos antes y traer la cédula
+
+La usan los consultorios que escribieron una dirección o indicaciones en **Settings → Reminders**. No se usa hasta que esté aprobada **y** definas `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED=recordatorio_cita_consultorio` en Render; mientras tanto se envía la plantilla 2 y la dirección va solo por correo. Tiene 6 variables, así que Meta puede rechazarla por «demasiadas variables»: si pasa, acorta lo que va en `{{6}}` o alarga el texto (y cambia el mismo texto en `whatsappTemplates.js`).
 
 ### Pasos en el creador (para cada plantilla)
 
@@ -235,7 +249,7 @@ Si sigue igual, revisa en el panel de la app, **Casos de uso → Personalizar �
 |---|---|---|
 | Render (servicio backend) y, para probar en local, `backend/.env` | `META_WHATSAPP_TOKEN` | El token del paso 7 (sin comillas ni espacios) |
 | igual | `META_WHATSAPP_PHONE_NUMBER_ID` | El Phone Number ID del paso 3 |
-| igual (opcionales) | `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER`, `META_WHATSAPP_TEMPLATE_LANGUAGE` | Solo si usaste otros nombres de plantilla o idioma. Por defecto: `cita_confirmada`, `recordatorio_cita` y `es`. |
+| igual (opcionales) | `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER`, `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED` (solo cuando la plantilla 3 esté aprobada), `META_WHATSAPP_TEMPLATE_LANGUAGE` | Solo si usaste otros nombres de plantilla o idioma. Por defecto: `cita_confirmada`, `recordatorio_cita` y `es`. |
 
 En Render: servicio del backend → **Environment** → agrega las variables → guarda (se redespliega solo).
 

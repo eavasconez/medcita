@@ -132,10 +132,15 @@ function appointmentConfirmationHtml({ patientName, doctorName, date, time, addr
   `);
 }
 
-function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana' }) {
+function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana', clinicName, address, indications }) {
+  const extras = [
+    address ? `<li><strong>Dirección:</strong> ${escapeHtml(address)}</li>` : '',
+    indications ? `<li><strong>Indicaciones:</strong> ${escapeHtml(indications)}</li>` : ''
+  ].join('');
   return baseLayout('Recordatorio de cita', `
     <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
-    <p>Tienes una cita ${escapeHtml(dayLabel)} <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>.</p>
+    <p>Tienes una cita ${escapeHtml(dayLabel)} <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>${clinicName ? ` en <strong>${escapeHtml(clinicName)}</strong>` : ''}.</p>
+    ${extras ? `<ul>${extras}</ul>` : ''}
   `);
 }
 

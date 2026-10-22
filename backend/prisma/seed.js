@@ -57,7 +57,14 @@ async function main() {
 
   // The main demo clinic holds the 3 pilot doctors below. A second, separate one
   // (further down) shows that clinics never see each other's data.
-  const clinic = await prisma.clinic.create({ data: { name: 'Consultorio MedCita (demo)', slug: 'medcita-demo' } });
+  const clinic = await prisma.clinic.create({
+    data: {
+      name: 'Consultorio MedCita (demo)',
+      slug: 'medcita-demo',
+      address: 'Av. Amazonas N34-12 y Atahualpa, Quito',
+      reminderIndications: 'Llegar 10 minutos antes y traer la cédula'
+    }
+  });
 
   // Create Admin
   const admin = await prisma.doctor.upsert({

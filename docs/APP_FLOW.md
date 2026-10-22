@@ -61,7 +61,7 @@ The system uses a "Block & Slot" logic:
 
 ## 🔔 Reminders
 
-A cron job runs every hour and reminds, once (`reminderSentAt`), the `pending_approval`, `scheduled` and `confirmed` appointments that start within the next 24 hours, using each clinic's own timezone (`Clinic.timezone`, default `America/Guayaquil`, UTC-5; an admin changes it in Settings).
+A cron job runs every hour and, for each clinic that has reminders on, reminds once (`reminderSentAt`) the `pending_approval`, `scheduled` and `confirmed` appointments that are about to start, using each clinic's own timezone (`Clinic.timezone`, default `America/Guayaquil`, UTC-5; an admin changes it in Settings). Each clinic chooses in *Settings → Reminders* how long before (2, 24 or 48 hours; 24 by default), an optional **second reminder** closer to the appointment (`secondReminderSentAt`; skipped when the first one already went out inside its window), the channels (WhatsApp, email) and the address and indications added to the message. The WhatsApp wording stays the template approved by Meta.
 
 ---
 *Created by Antigravity for the MedCita project.*

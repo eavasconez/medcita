@@ -8,6 +8,8 @@ const { parsePagination, pageInfo } = require('../utils/pagination');
 const { isValidDate, isValidTimezone, appointmentInstant, clinicDateString } = require('../utils/clinicTime');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 const attendance = require('../services/attendanceReport');
+const reminderSettings = require('../services/reminderSettings');
+const notificationService = require('../services/notificationService');
 const { inviteLimiter } = require('../middleware/rateLimiters');
 const invitations = require('../services/invitationService');
 const notificationLog = require('../services/notificationLog');
@@ -404,6 +406,52 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
     res.json(formatted);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Reminder settings (S9-03) as the screen needs them: the settings, what each option can be, the
+// messages the clinic sent this month (each costs, on WhatsApp) and how a reminder would look.
+async function reminderSettingsResponse(clinic) {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return {
+    ...reminderSettings.present(clinic),
+    options: { hours: reminderSettings.REMINDER_HOURS },
+    usage: await reminderSettings.monthlyUsage(prisma, clinic),
+    preview: notificationService.reminderPreview(clinic, { whenText: `mañana ${clinicDateString(tomorrow, clinic.timezone)}` })
+  };
+}
+
+// How the clinic reminds its patients
+router.get('/reminder-settings', async (req, res) => {
+  try {
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.clinicId }, select: reminderSettings.SETTINGS_SELECT });
+    res.json(await reminderSettingsResponse(clinic));
+  } catch (err) {
+    console.error('Reminder settings error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Change them: any of enabled, hours (2, 24 or 48 before), secondHours (null for none, or earlier
+// than the first), whatsapp, email, address and indications. The change applies from the next
+// hourly run; appointments already reminded are not reminded again.
+router.put('/reminder-settings', async (req, res) => {
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.clinic.findUnique({ where: { id: req.clinicId }, select: reminderSettings.SETTINGS_SELECT });
+      const { data, error } = reminderSettings.validateChange(req.body, current);
+      if (error) return { error };
+
+      const updated = await tx.clinic.update({ where: { id: current.id }, data, select: reminderSettings.SETTINGS_SELECT });
+      const changes = diffFields('reminder_settings', current, updated);
+      if (changes) await recordAudit(tx, req, { action: 'update', entity: 'reminder_settings', entityId: current.id, changes });
+      return { updated };
+    });
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json(await reminderSettingsResponse(result.updated));
+  } catch (err) {
+    console.error('Update reminder settings error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

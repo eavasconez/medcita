@@ -237,12 +237,21 @@ MedCita: Hola {{1}}, tu cita con {{2}} ha sido agendada para el {{3}} a las {{4}
 ```
 Ejemplos: `{{1}}` María Andrade · `{{2}}` Dr. Santiago Pérez · `{{3}}` 2026-10-21 · `{{4}}` 10:00
 
-**Recordatorio de 24 h** — nombre `recordatorio_cita`:
+**Recordatorio** (a las 2, 24 o 48 h, según lo que elija cada consultorio) — nombre `recordatorio_cita`:
 
 ```
 Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
 ```
 Ejemplos: `{{1}}` María Andrade · `{{2}}` mañana 2026-10-21 · `{{3}}` 10:00 · `{{4}}` Dr. Santiago Pérez
+
+**Recordatorio con la dirección y las indicaciones del consultorio** (opcional) — nombre `recordatorio_cita_consultorio`:
+
+```
+Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
+```
+Ejemplos: `{{1}}` Consultorio MedCita · `{{2}}` María Andrade · `{{3}}` mañana 2026-10-21 · `{{4}}` 10:00 · `{{5}}` Dr. Santiago Pérez · `{{6}}` Av. Amazonas N34-12, Quito. Llegar 10 minutos antes y traer la cédula
+
+Es la que usa un consultorio que escribió una dirección o indicaciones en Settings → Reminders. **No se usa hasta que la registras y la apruebas**: después define en Render `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED=recordatorio_cita_consultorio`. Mientras tanto Meta envía el recordatorio sencillo de arriba y la dirección y las indicaciones llegan solo por correo (Twilio y el modo simulado, que envían texto libre, sí las incluyen). Meta puede rechazarla por tener 6 variables: si pasa, acorta lo que va en `{{6}}` o alarga el texto, y cambia el mismo texto en `whatsappTemplates.js`.
 
 > Meta rechaza una plantilla con demasiadas variables para lo corto que es el texto («demasiadas variables en relación con su longitud»), y no admite una variable al principio ni al final. Por eso el día y la fecha viajan juntos en `{{2}}` y el texto cierra con una frase.
 
@@ -257,6 +266,7 @@ Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar tambi�
 | `META_WHATSAPP_TOKEN` | El token de usuario del sistema del paso 7.3 (vence a los 60 días si el negocio no está verificado) |
 | `META_WHATSAPP_PHONE_NUMBER_ID` | El *Phone number ID* del paso 7.1 |
 | `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | Opcionales. Nombres de las plantillas (por defecto `cita_confirmada` y `recordatorio_cita`) |
+| `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED` | Opcional. **Actívala solo cuando la plantilla `recordatorio_cita_consultorio` esté aprobada**: con ella los consultorios con dirección o indicaciones las mandan por WhatsApp. Sin definir, usan el recordatorio sencillo |
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | Opcional. Idioma de las plantillas (por defecto `es`) |
 
 Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio (recomendado en producción), borra las variables `TWILIO_*`; elegir entre Meta y Twilio se explica en la sección 7.0.
@@ -367,6 +377,19 @@ S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica
 - [ ] En Settings, «Appointment types» muestra «Consultation · 30 minutes · Default».
 - [ ] En el SQL Editor de Neon: `SELECT count(*) FROM "Appointment" WHERE "typeId" IS NULL;` devuelve `0` (salvo citas que haya creado la versión anterior durante el despliegue; la aplicación las trata como del tipo predeterminado) y `SELECT "clinicId", count(*) FROM "AppointmentType" WHERE "isDefault" GROUP BY 1 HAVING count(*) > 1;` no devuelve filas.
 - [ ] Agendar una cita de prueba con otro tipo (por ejemplo, 40 min) y comprobar que el calendario la dibuja más larga; cancelarla después.
+
+## Despliegue de los recordatorios configurables (S9-03)
+
+S9-03 agrega la migración `20261025100000_add_reminder_settings`, que solo **agrega columnas** (`Clinic`: `address`, `reminderEnabled`, `reminderHours`, `secondReminderHours`, `reminderWhatsapp`, `reminderEmail`, `reminderIndications`; `Appointment`: `secondReminderSentAt`), todas opcionales o con el valor que ya tenía el comportamiento: recordatorios activos, 24 horas, WhatsApp y correo. Ningún consultorio ni cita cambia y la versión anterior ignora las columnas, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/reminderSettingsMigration.test.js`. Por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-03`).
+
+**Nada cambia para los pacientes hasta que un administrador toque los ajustes.** Los consultorios con dirección o indicaciones llevan esos datos por correo de inmediato; por WhatsApp solo cuando la plantilla `recordatorio_cita_consultorio` esté aprobada (7.4) y definas `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED`.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Settings → Reminders* aparecen los valores de siempre («24 hours before», sin segundo recordatorio, WhatsApp y Email marcados) y «Messages sent this month».
+- [ ] El recordatorio de la próxima hora llega como siempre (revisar el historial de mensajes de una cita).
+- [ ] Opcional: poner una dirección de prueba y comprobar la vista previa; borrarla después si no se quiere.
 
 ## Despliegue de los bloqueos de agenda (S9-05)
 

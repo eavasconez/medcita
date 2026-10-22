@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../AuthContext';
 import AppointmentTypesCard from '../components/AppointmentTypesCard';
+import ReminderSettingsCard from '../components/ReminderSettingsCard';
 import {
   User,
   Mail,
@@ -301,6 +302,8 @@ const Settings = () => {
             </div>
 
             {displayRole === 'admin' && <AppointmentTypesCard onMessage={showToast} />}
+
+            {displayRole === 'admin' && <ReminderSettingsCard onMessage={showToast} />}
 
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">

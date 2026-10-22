@@ -26,6 +26,16 @@ const TEMPLATES = {
     // and the text has a closing sentence.
     body: 'Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!',
     fields: ['patientName', 'whenText', 'time', 'doctorName']
+  },
+  // The reminder for a clinic that set an address or indications (S9-03): the same text plus the
+  // clinic's name and those details. A template of its own, so it has to be registered and
+  // approved in Meta before it is used: until META_WHATSAPP_TEMPLATE_REMINDER_DETAILED is set,
+  // Meta sends the plain reminder above (see reminderTemplateKey in notificationService.js).
+  appointmentReminderDetailed: {
+    nameEnvVar: 'META_WHATSAPP_TEMPLATE_REMINDER_DETAILED',
+    defaultName: 'recordatorio_cita_consultorio',
+    body: 'Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!',
+    fields: ['clinicName', 'patientName', 'whenText', 'time', 'doctorName', 'details']
   }
 };
 
