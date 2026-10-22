@@ -96,7 +96,7 @@ Debes tener dos terminales abiertas:
 
 ### Funciones incluidas
 - **Confirmación:** mensaje automático (WhatsApp + Email) al crear una cita.
-- **Recordatorio 24h:** cron que corre cada hora y avisa una sola vez (`reminderSentAt`) de las citas `pending_approval`, `scheduled` y `confirmed` que ocurren en las próximas 24 horas, con la hora del consultorio (su zona horaria, `Clinic.timezone`).
+- **Recordatorios configurables:** cron que corre cada hora y avisa una sola vez (`reminderSentAt`) de las citas `pending_approval`, `scheduled` y `confirmed` que están por empezar. Cada consultorio decide en *Settings → Reminders* si recuerda, cuánto antes (2, 24 o 48 horas), si manda un segundo recordatorio más cerca de la cita, por qué canal (WhatsApp, correo) y qué dirección e indicaciones se añaden; por defecto, uno por WhatsApp y correo a las 24 h. Usa la hora del consultorio (`Clinic.timezone`).
 - **Disparo manual:** `POST /api/tasks/reminders` (requiere rol admin/secretaria) — endpoint de backend para forzar el proceso de recordatorios sin esperar al cron; no tiene un botón dedicado en la interfaz todavía.
 
 ## 🔐 Seguridad y trazabilidad
