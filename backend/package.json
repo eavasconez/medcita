@@ -8,7 +8,9 @@
     "dev": "nodemon src/server.js",
     "test": "jest --runInBand",
     "whatsapp:test": "node scripts/sendTestWhatsApp.js",
-    "storage:check": "node scripts/checkStorage.js"
+    "storage:check": "node scripts/checkStorage.js",
+    "limits:reset": "node scripts/resetRateLimits.js",
+    "alerts:test": "node scripts/sendTestAlert.js"
   },
   "keywords": [],
   "author": "",

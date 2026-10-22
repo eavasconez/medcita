@@ -42,6 +42,8 @@ async function main() {
 
   // Clear existing data
   await prisma.auditLog.deleteMany();
+  // Limits counted so far (failed logins...) would lock out the demo accounts that were just recreated
+  await prisma.rateLimitCounter.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
   await prisma.appointment.deleteMany();
