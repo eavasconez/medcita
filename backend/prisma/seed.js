@@ -175,6 +175,35 @@ async function main() {
     }))
   });
 
+  // The last few weeks, already closed, so that the attendance report has something to show:
+  // each pilot doctor saw two patients on each of the previous 8 business days, and some missed
+  // or cancelled. Deterministic (the same every time the seed runs).
+  const closedStatuses = ['completed', 'completed', 'no_show', 'completed', 'completed', 'cancelled', 'completed', 'no_show', 'completed', 'completed', 'completed', 'no_show'];
+  const pastDays = [];
+  for (let d = addDays(today, -1); pastDays.length < 8; d = addDays(d, -1)) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) pastDays.push(d);
+  }
+  const history = [];
+  pastDays.forEach((pastDay, dayIndex) => {
+    pilotDoctors.forEach((doctor, doctorIndex) => {
+      ['09:00', '11:00'].forEach((time, slot) => {
+        const n = dayIndex * 6 + doctorIndex * 2 + slot;
+        const type = [defaultType, firstVisit, checkUp][n % 3];
+        history.push({
+          date: toLocalDateStr(pastDay),
+          time,
+          status: closedStatuses[n % closedStatuses.length],
+          doctorId: doctor.id,
+          patientId: allPatients[n % allPatients.length].id,
+          clinicId: clinic.id,
+          typeId: type.id,
+          durationMinutes: type.durationMinutes
+        });
+      });
+    });
+  });
+  await prisma.appointment.createMany({ data: history });
+
   // A vacation of one of the doctors, two weeks from now: the blocked days show in the calendar
   // and nobody can book them
   await prisma.scheduleBlock.create({
