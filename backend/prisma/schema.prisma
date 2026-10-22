@@ -171,6 +171,19 @@ model ScheduleBlock {
   @@index([clinicId, startDate, endDate])
 }
 
+// How many times a client hit a rate limit (failed logins, password resets, sign-ups...)
+// inside its current window (S9-08). It lives in the database so the counts survive a deploy
+// and are shared by every instance of the backend. `key` is "<limiter>:<sha256 of the client>"
+// (the client is an email or an IP, which are not kept in the clear); a row is dead once
+// `resetAt` has passed and a cleanup removes it.
+model RateLimitCounter {
+  key     String   @id
+  hits    Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
 // One-time password reset links. Only the SHA-256 hash of the token is stored, so
 // a database leak does not expose usable links. A link is deleted when it is used.
 model PasswordResetToken {

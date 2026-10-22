@@ -1,12 +1,14 @@
-const { rateLimit, MemoryStore } = require('express-rate-limit');
+const { rateLimit } = require('express-rate-limit');
+const prisma = require('../config/prisma');
+const { PostgresStore } = require('../services/rateLimitStore');
 const { exposeLinks } = require('../utils/tokens');
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
-// Counters live in memory: right for the single instance the app runs on today
-// (they reset on restart). A second instance would need a shared store (Redis,
-// Postgres) so each one doesn't keep its own count.
+// The counters live in the database (services/rateLimitStore.js), so a deploy does not start
+// every count from zero and several instances of the backend share them. Each limiter below
+// has its own name, which prefixes its keys.
 const LIMITS = {
   // Only FAILED logins (401) count. The per-email limit is the real brute-force
   // defence because it doesn't depend on detecting the client IP; the per-IP one
@@ -33,8 +35,6 @@ const LIMITS = {
   invitePerAdmin: { windowMs: HOUR, limit: 20 }
 };
 
-const stores = [];
-
 const normalizedEmail = (req) => {
   const email = req.body?.email;
   return typeof email === 'string' ? email.trim().toLowerCase().slice(0, 254) : '';
@@ -45,14 +45,16 @@ const waitText = (seconds) => {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 };
 
-function createLimiter({ windowMs, limit, message, keyGenerator, skip, countOnlyStatus }) {
-  const store = new MemoryStore();
-  stores.push(store);
+function createLimiter({ name, windowMs, limit, message, keyGenerator, skip, countOnlyStatus }) {
+  const store = new PostgresStore({ prefix: name });
 
   return rateLimit({
     windowMs,
     limit,
     store,
+    // If the database cannot be reached for a count, let the request through: whatever it
+    // needs (a login, a sign-up) needs the database too and fails there on its own
+    passOnStoreError: true,
     standardHeaders: true,
     legacyHeaders: false,
     ...(keyGenerator && { keyGenerator }),
@@ -73,11 +75,12 @@ function createLimiter({ windowMs, limit, message, keyGenerator, skip, countOnly
 const loginMessage = 'Too many failed login attempts.';
 
 // Per client IP (express-rate-limit's default key, with IPv6 subnets grouped).
-const loginIpLimiter = createLimiter({ ...LIMITS.loginPerIp, message: loginMessage, countOnlyStatus: 401 });
+const loginIpLimiter = createLimiter({ name: 'login-ip', ...LIMITS.loginPerIp, message: loginMessage, countOnlyStatus: 401 });
 
 // Per account, whatever IP the attempts come from. Skipped when the request has
 // no usable email (the IP limiter still applies).
 const loginEmailLimiter = createLimiter({
+  name: 'login-email',
   ...LIMITS.loginPerEmail,
   message: loginMessage,
   countOnlyStatus: 401,
@@ -87,9 +90,10 @@ const loginEmailLimiter = createLimiter({
 
 const forgotPasswordMessage = 'Too many password reset requests.';
 
-const forgotPasswordIpLimiter = createLimiter({ ...LIMITS.forgotPasswordPerIp, message: forgotPasswordMessage });
+const forgotPasswordIpLimiter = createLimiter({ name: 'forgot-ip', ...LIMITS.forgotPasswordPerIp, message: forgotPasswordMessage });
 
 const forgotPasswordEmailLimiter = createLimiter({
+  name: 'forgot-email',
   ...LIMITS.forgotPasswordPerEmail,
   message: forgotPasswordMessage,
   keyGenerator: normalizedEmail,
@@ -97,6 +101,7 @@ const forgotPasswordEmailLimiter = createLimiter({
 });
 
 const resetPasswordIpLimiter = createLimiter({
+  name: 'reset-ip',
   ...LIMITS.resetPasswordPerIp,
   message: 'Too many attempts to reset the password.',
   countOnlyStatus: 400
@@ -107,6 +112,7 @@ const registerMessage = 'Too many sign-up requests.';
 // QA mode (EXPOSE_ACCOUNT_LINKS, never on a hosted service) lifts the limits of the
 // sign-up and invitation links, so a test script can run over and over from one machine.
 const registerIpLimiter = createLimiter({
+  name: 'register-ip',
   ...LIMITS.registerPerIp,
   message: registerMessage,
   countOnlyStatus: 202,
@@ -114,6 +120,7 @@ const registerIpLimiter = createLimiter({
 });
 
 const registerEmailLimiter = createLimiter({
+  name: 'register-email',
   ...LIMITS.registerPerEmail,
   message: registerMessage,
   countOnlyStatus: 202,
@@ -124,6 +131,7 @@ const registerEmailLimiter = createLimiter({
 // Shared by every endpoint that exchanges an emailed link for something (confirm a
 // sign-up, look at or accept an invitation).
 const accountLinkIpLimiter = createLimiter({
+  name: 'account-link-ip',
   ...LIMITS.accountLinkPerIp,
   message: 'Too many attempts with an invalid link.',
   countOnlyStatus: 400,
@@ -132,6 +140,7 @@ const accountLinkIpLimiter = createLimiter({
 
 // Must run after the auth middleware: it is keyed by the authenticated account.
 const inviteLimiter = createLimiter({
+  name: 'invite-admin',
   ...LIMITS.invitePerAdmin,
   message: 'Too many invitations sent.',
   keyGenerator: (req) => req.doctorId,
@@ -140,6 +149,7 @@ const inviteLimiter = createLimiter({
 
 // Must run after the auth middleware: it is keyed by the authenticated account.
 const changePasswordLimiter = createLimiter({
+  name: 'change-password',
   ...LIMITS.changePasswordPerAccount,
   message: 'Too many incorrect attempts to change the password.',
   countOnlyStatus: 403,
@@ -152,9 +162,10 @@ async function clearLoginAttempts(email) {
   await loginEmailLimiter.resetKey(String(email).trim().toLowerCase());
 }
 
-// For tests: forget every counter so one test can't affect the next.
+// Forget every counter: for tests (so one cannot lock out the next), and for QA after running a
+// script of failed logins over and over (`npm run limits:reset`).
 async function resetRateLimits() {
-  await Promise.all(stores.map((store) => store.resetAll()));
+  await prisma.rateLimitCounter.deleteMany();
 }
 
 module.exports = {
