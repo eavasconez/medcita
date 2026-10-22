@@ -122,6 +122,16 @@ const ReminderSettingsCard = ({ onMessage }) => {
         <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">What the patient gets on WhatsApp</p>
           <p className="text-secondary text-sm font-medium leading-relaxed" data-testid="reminder-preview">{preview.text}</p>
+          {preview.buttons?.length > 0 && (
+            <div className="mt-3" data-testid="reminder-buttons">
+              <div className="flex flex-wrap gap-2">
+                {preview.buttons.map((label) => (
+                  <span key={label} className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-primary">{label}</span>
+                ))}
+              </div>
+              <p className="text-slate-400 text-xs font-medium mt-2">The patient answers with one tap: the agenda updates by itself, and «Cambiar hora» tells your admins and secretaries by email.</p>
+            </div>
+          )}
           <p className="text-slate-400 text-xs font-medium mt-3">
             The wording is a template approved by Meta (<span className="font-bold">{preview.template}</span>); only the details above change.
             {(settings.address || settings.indications) && !preview.detailsInWhatsapp && ' The address and indications go in the email until the detailed template is approved in Meta.'}
