@@ -7,6 +7,9 @@ import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import ConsentBadge from '../components/ConsentBadge';
 import PatientConsentModal from '../components/PatientConsentModal';
+import ClinicalAlert from '../components/ClinicalAlert';
+import ClinicalBackground from '../components/ClinicalBackground';
+import useClinicalSummary from '../utils/useClinicalSummary';
 import { statusLabel, statusColor } from '../utils/appointmentStatus';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
 import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays } from 'lucide-react';
@@ -94,6 +97,8 @@ const PatientRecord = () => {
   };
 
   const patient = data?.patient;
+  // Allergies, medication and history: only for the roles that may read clinical data
+  const clinical = useClinicalSummary(id, data?.canViewClinical === true);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -143,6 +148,8 @@ const PatientRecord = () => {
                 )}
               </div>
             </header>
+
+            {data.canViewClinical && clinical.summary && <div className="mb-6"><ClinicalAlert summary={clinical.summary} /></div>}
 
             {patient.missingGuardian && (
               <div role="alert" className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
@@ -225,6 +232,19 @@ const PatientRecord = () => {
                   </Card>
                 )}
               </div>
+            )}
+
+            {data.canViewClinical && (
+              <section className="mt-8">
+                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Clinical background</h3>
+                {clinical.summary ? (
+                  <ClinicalBackground patientId={id} summary={clinical.summary} onChange={clinical.reload} onError={(message) => showToast(message, 'error')} />
+                ) : clinical.error ? (
+                  <LoadError message="We couldn't load the clinical background." onRetry={clinical.reload} />
+                ) : (
+                  <p className="text-slate-300 font-semibold animate-pulse">Loading...</p>
+                )}
+              </section>
             )}
 
             <section className="mt-8">
