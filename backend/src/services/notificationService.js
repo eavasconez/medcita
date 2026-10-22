@@ -11,14 +11,23 @@ const GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.faceboo
 
 const hasMetaCreds = () =>
   !!(process.env.META_WHATSAPP_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
-// A clinic with an address or indications gets the detailed reminder. Meta only sends templates it
-// approved, and that one is registered by whoever runs the platform: until it is (its name is
-// set in META_WHATSAPP_TEMPLATE_REMINDER_DETAILED) Meta sends the plain reminder, and the details
-// reach the patient by email. Twilio and the mock send free text, which needs no approval.
+// The reminder that goes out through Meta. Meta only sends templates it approved, and the ones
+// beyond the plain reminder are registered by whoever runs the platform: each is used once its name
+// is set (META_WHATSAPP_TEMPLATE_REMINDER_DETAILED, _BUTTONS, _DETAILED_BUTTONS), and until then Meta
+// sends a simpler one. Twilio and the mock send free text, which needs no approval.
+//
+// - Buttons («Confirmo», «Cancelar», «Cambiar hora», S9-02) also need the webhook that receives the
+//   taps (META_APP_SECRET): without it a tap would go nowhere, so the template without buttons is sent.
+// - A clinic with an address or indications gets the detailed wording. When only the buttons template
+//   exists, the buttons win and the details reach the patient by email.
+const registered = (key) => Boolean(process.env[TEMPLATES[key].nameEnvVar]);
+const repliesEnabled = () => Boolean(process.env.META_APP_SECRET);
 const reminderTemplateKey = (details) => {
-  if (!details) return 'appointmentReminder';
-  const registered = Boolean(process.env[TEMPLATES.appointmentReminderDetailed.nameEnvVar]);
-  return !hasMetaCreds() || registered ? 'appointmentReminderDetailed' : 'appointmentReminder';
+  if (!hasMetaCreds()) return details ? 'appointmentReminderDetailed' : 'appointmentReminder';
+  const buttons = repliesEnabled();
+  if (details && buttons && registered('appointmentReminderDetailedButtons')) return 'appointmentReminderDetailedButtons';
+  if (buttons && registered('appointmentReminderButtons')) return 'appointmentReminderButtons';
+  return details && registered('appointmentReminderDetailed') ? 'appointmentReminderDetailed' : 'appointmentReminder';
 };
 
 const hasTwilioCreds = () =>
@@ -75,10 +84,20 @@ function metaFailure(status, raw) {
   };
 }
 
+// One component per quick-reply button of a template that has them, each carrying the payload
+// Meta hands back to the webhook when the patient taps it.
+const buttonComponents = (template) =>
+  (template.buttons ?? []).filter((button) => button.payload).map((button, index) => ({
+    type: 'button',
+    sub_type: 'quick_reply',
+    index: String(index),
+    parameters: [{ type: 'payload', payload: button.payload }]
+  }));
+
 // Body of the Cloud API request. A business can only open a conversation with an
 // approved template (type "template"); free-form text (type "text") is accepted
-// only within 24 hours of the patient's last message, so it is kept just for
-// callers that have no template.
+// only within 24 hours of the patient's last message, so it is kept for callers
+// that have no template and for the answer to a patient who just tapped a button.
 function metaPayload(recipient, message, template) {
   if (!template) {
     return { messaging_product: 'whatsapp', to: recipient, type: 'text', text: { preview_url: false, body: message } };
@@ -90,7 +109,7 @@ function metaPayload(recipient, message, template) {
     template: {
       name: template.name,
       language: { code: template.language },
-      components: [{ type: 'body', parameters: template.params.map((text) => ({ type: 'text', text })) }]
+      components: [{ type: 'body', parameters: template.params.map((text) => ({ type: 'text', text })) }, ...buttonComponents(template)]
     }
   };
 }
@@ -272,7 +291,8 @@ const notificationService = {
         whenText: `${dayLabel} ${date}`,
         time,
         doctorName: doctor.name,
-        details
+        details,
+        appointment: { id: appointment.id, date, time }
       });
       msg = whatsapp.text;
       if (useWhatsapp) tasks.push(notificationService.sendWhatsApp(patient.phone, msg, whatsapp, about));
@@ -300,13 +320,19 @@ const notificationService = {
    * What a reminder looks like for a clinic with these settings, for the settings screen: the
    * message the patient would get on WhatsApp ("text"), the template it comes from, and whether the
    * clinic's address and indications are in it ("detailsInWhatsapp": not while Meta only has the
-   * plain template, in which case they still go in the email).
+   * plain template, in which case they still go in the email), and the labels of the reply buttons
+   * it carries (none for the templates without them).
    */
   reminderPreview: (clinic, { patientName = 'María Andrade', doctorName = 'Dr. Santiago Pérez', whenText, time = '10:00' } = {}) => {
     const details = detailsOf(clinic);
     const key = reminderTemplateKey(details);
     const template = buildTemplate(key, { clinicName: clinic.name, patientName, whenText, time, doctorName, details });
-    return { text: template.text, template: template.name, detailsInWhatsapp: Boolean(details) && key === 'appointmentReminderDetailed' };
+    return {
+      text: template.text,
+      template: template.name,
+      detailsInWhatsapp: Boolean(details) && key.startsWith('appointmentReminderDetailed'),
+      buttons: template.buttons.map((button) => button.label)
+    };
   },
 
   /**

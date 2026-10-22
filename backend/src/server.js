@@ -14,6 +14,8 @@ const adminRoutes = require('./routes/admin');
 const platformRoutes = require('./routes/platform');
 const appointmentTypeRoutes = require('./routes/appointmentTypes');
 const scheduleBlockRoutes = require('./routes/scheduleBlocks');
+const webhookRoutes = require('./routes/webhooks');
+const { webhookIpLimiter } = require('./middleware/rateLimiters');
 const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
@@ -72,6 +74,8 @@ app.use(helmet());
 // Request logging is noise in the test output
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.use(errorAlerts.middleware);
+// The webhooks read their own body (the signature covers its exact bytes), so they come before express.json()
+app.use('/api/webhooks', webhookIpLimiter, webhookRoutes);
 app.use(express.json());
 
 // Unauthenticated health check - gives uptime monitors (and any future

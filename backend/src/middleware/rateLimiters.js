@@ -32,7 +32,10 @@ const LIMITS = {
   // Only failed attempts (400) count: someone guessing links, or retrying a dead one.
   accountLinkPerIp: { windowMs: 15 * MINUTE, limit: 10 },
   // Every invitation or resend sends an email to someone outside the clinic.
-  invitePerAdmin: { windowMs: HOUR, limit: 20 }
+  invitePerAdmin: { windowMs: HOUR, limit: 20 },
+  // Only calls to the WhatsApp webhook that Meta would never make (wrong token or signature, 403) count:
+  // Meta's own calls are never held back.
+  webhookPerIp: { windowMs: 15 * MINUTE, limit: 30 }
 };
 
 const normalizedEmail = (req) => {
@@ -156,6 +159,15 @@ const changePasswordLimiter = createLimiter({
   keyGenerator: (req) => req.doctorId
 });
 
+// The WhatsApp webhook (routes/webhooks.js) is open to the internet: whoever keeps guessing the verify
+// token or sending unsigned calls is stopped. Per client IP, so Meta (other addresses) is not affected.
+const webhookIpLimiter = createLimiter({
+  name: 'webhook-ip',
+  ...LIMITS.webhookPerIp,
+  message: 'Too many invalid webhook calls.',
+  countOnlyStatus: 403
+});
+
 // Someone who just proved they own the account's email by resetting the password
 // should not stay locked out by the failed logins that made them reset it.
 async function clearLoginAttempts(email) {
@@ -180,6 +192,7 @@ module.exports = {
   registerEmailLimiter,
   accountLinkIpLimiter,
   inviteLimiter,
+  webhookIpLimiter,
   clearLoginAttempts,
   resetRateLimits
 };

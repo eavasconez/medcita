@@ -11,6 +11,7 @@ const notificationLog = require('../services/notificationLog');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 const appointmentTypes = require('../services/appointmentTypes');
 const scheduleBlocks = require('../services/scheduleBlocks');
+const { runSerializableTransaction } = require('../utils/serializableTransaction');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
@@ -39,23 +40,6 @@ class ScheduleConflictError extends Error {
   constructor(message, status = 400) {
     super(message);
     this.status = status;
-  }
-}
-
-// P2034 (serialization failure) can come from any write conflict in the
-// transaction, not just a slot clash, so retry a bounded number of times
-// instead of assuming it always means "appointment already booked". If the
-// conflict is real, the retried attempt's own explicit check throws
-// ScheduleConflictError with the correct message; P2034 only reaches the
-// caller if it persists across every retry.
-async function runSerializableTransaction(fn, maxAttempts = 3) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
-    } catch (err) {
-      if (err.code === 'P2034' && attempt < maxAttempts) continue;
-      throw err;
-    }
   }
 }
 

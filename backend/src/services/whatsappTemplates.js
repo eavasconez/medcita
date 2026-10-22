@@ -1,5 +1,5 @@
 // The WhatsApp messages the business starts on its own: the appointment
-// confirmation and the 24h reminder.
+// confirmation and the reminders.
 //
 // Meta only lets a business open a conversation with a *template* it has
 // registered and had approved (free-form text works only inside the 24 hours
@@ -11,6 +11,12 @@
 //
 // docs/DEPLOY.md lists these bodies for whoever registers them (a test checks
 // that the doc and this file agree).
+//
+// A template with `buttons: true` carries the three quick-reply buttons of whatsappButtons.js
+// («Confirmo», «Cancelar», «Cambiar hora»), which are part of the template registered in Meta.
+// Each send also gives every button the payload of that appointment.
+const { BUTTONS, buttonPayload } = require('./whatsappButtons');
+
 const TEMPLATES = {
   appointmentConfirmation: {
     nameEnvVar: 'META_WHATSAPP_TEMPLATE_CONFIRMATION',
@@ -36,6 +42,24 @@ const TEMPLATES = {
     defaultName: 'recordatorio_cita_consultorio',
     body: 'Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!',
     fields: ['clinicName', 'patientName', 'whenText', 'time', 'doctorName', 'details']
+  },
+  // The two reminders above with the three reply buttons (S9-02). Templates of their own, so they
+  // have to be registered and approved in Meta; they are used only once their name is set
+  // (META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS / _DETAILED_BUTTONS) and the webhook that receives the
+  // taps is configured (see reminderTemplateKey in notificationService.js).
+  appointmentReminderButtons: {
+    nameEnvVar: 'META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS',
+    defaultName: 'recordatorio_cita_botones',
+    body: 'Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!',
+    fields: ['patientName', 'whenText', 'time', 'doctorName'],
+    buttons: true
+  },
+  appointmentReminderDetailedButtons: {
+    nameEnvVar: 'META_WHATSAPP_TEMPLATE_REMINDER_DETAILED_BUTTONS',
+    defaultName: 'recordatorio_cita_consultorio_botones',
+    body: 'Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!',
+    fields: ['clinicName', 'patientName', 'whenText', 'time', 'doctorName', 'details'],
+    buttons: true
   }
 };
 
@@ -59,9 +83,11 @@ const fill = (body, params) => body.replace(/\{\{(\d+)\}\}/g, (_, n) => params[N
 /**
  * Builds a template message from named values, e.g.
  * buildTemplate('appointmentConfirmation', { patientName, doctorName, date, time }).
- * Returns { key, name, language, params, text }: `name`/`language` identify the
+ * Returns { key, name, language, params, text, buttons }: `name`/`language` identify the
  * template registered in Meta, `params` fill its {{n}} in order, and `text` is
- * the finished message for the providers that send plain text.
+ * the finished message for the providers that send plain text. `buttons` is empty for a
+ * template without them; otherwise it lists { action, label, payload }, where the payload
+ * belongs to `values.appointment` ({ id, date, time }) and is null without one (a preview).
  */
 function buildTemplate(key, values, env = process.env) {
   const template = TEMPLATES[key];
@@ -73,7 +99,10 @@ function buildTemplate(key, values, env = process.env) {
     name: env[template.nameEnvVar] || template.defaultName,
     language: env.META_WHATSAPP_TEMPLATE_LANGUAGE || DEFAULT_LANGUAGE,
     params,
-    text: fill(template.body, params)
+    text: fill(template.body, params),
+    buttons: template.buttons
+      ? BUTTONS.map(({ action, label }) => ({ action, label, payload: values.appointment ? buttonPayload(action, values.appointment) : null }))
+      : []
   };
 }
 

@@ -1,7 +1,8 @@
 // A written record of what an admin or a secretary does with appointments,
 // patients and accounts, and of how people sign in: every successful and failed
 // sign-in of an existing account, and every password change. Doctors acting on
-// their own data are not recorded. Each entry also keeps where the request came
+// their own data are not recorded. What a patient does by tapping a button of the
+// WhatsApp reminder (confirm or cancel the visit) is recorded as well, as the patient. Each entry also keeps where the request came
 // from (IP and User-Agent) and the clinic of whoever acted.
 //
 // Every record is written in the same database transaction as the action it
@@ -101,6 +102,28 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
   });
 }
 
+// A patient confirmed or cancelled their own visit from the WhatsApp reminder (S9-02). The
+// patient is not a user, so the entry is written as the patient: their id (never their name or
+// number, the entry is shown to the clinic's admins) and the role 'patient'. `origin` is where
+// the request came from (requestOrigin of the webhook call: Meta's server).
+function recordPatientAction(db, { clinicId, patientId, action, entityId, doctorId = null, changes = null, origin = {} }) {
+  return db.auditLog.create({
+    data: {
+      actorId: patientId,
+      actorName: 'Patient (WhatsApp)',
+      actorRole: 'patient',
+      clinicId,
+      action,
+      entity: 'appointment',
+      entityId,
+      doctorId,
+      changes: changes ?? undefined,
+      ip: origin.ip ?? null,
+      userAgent: origin.userAgent ?? null
+    }
+  });
+}
+
 // An entry about the account itself, for the moments when the person is not (yet)
 // signed in: a sign-in, a failed one, a password reset. `account` is the Doctor row
 // (id, name, role, clinicId). Any role is recorded, not only staff, and nothing the
@@ -157,7 +180,9 @@ module.exports = {
   diffFields,
   describeCreated,
   describeRemoved,
+  requestOrigin,
   recordAudit,
+  recordPatientAction,
   recordAccountEvent,
   recordRead,
   auditPatientUpsert

@@ -16694,6 +16694,1023 @@
           ]
         }
       ]
+    },
+    {
+      "name": "S9-02 - Respuestas por WhatsApp (POST /webhooks/whatsapp)",
+      "item": [
+        {
+          "name": "Setup - login del admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@medcita.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s902AdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login de un médico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@medcita.ec\",\n  \"password\": \"demo1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s902DoctorId', pm.response.json().user.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - login del admin de otro consultorio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinicavida.ec\",\n  \"password\": \"admin1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('s902OtherAdminToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Meta pregunta con un token de verificación equivocado (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=este-no-es-el-token&hub.challenge=1158201444",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "este-no-es-el-token"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "1158201444"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazado: 403 (o 503 si el servidor no tiene el webhook configurado)', () => pm.expect([403, 503]).to.include(pm.response.code));",
+                  "pm.test('No devuelve el desafío', () => pm.expect(pm.response.text()).to.not.include('1158201444'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin parámetros de verificación (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazado: 403 (o 503)', () => pm.expect([403, 503]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Una llamada sin firma se rechaza y no cambia nada (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"object\":\"whatsapp_business_account\",\"entry\":[{\"changes\":[{\"field\":\"messages\",\"value\":{\"messages\":[{\"from\":\"593990000042\",\"id\":\"wamid.POSTMAN\",\"type\":\"button\",\"button\":{\"payload\":\"c.00000000-0000-4000-8000-000000000000.203001151000.AAAAAAAAAAAAAAAAAAAAAA\"}}]}}]}]}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazada: 403 (o 503 si no está configurado)', () => pm.expect([403, 503]).to.include(pm.response.code));",
+                  "pm.test('No dice nada de más', () => pm.expect(Object.keys(pm.response.json())).to.eql(['error']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Una firma que no corresponde al cuerpo se rechaza (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"object\":\"whatsapp_business_account\",\"entry\":[]}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazada: 403 (o 503)', () => pm.expect([403, 503]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Meta verifica la URL con el token correcto (200 y el desafío)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{metaVerifyToken}}&hub.challenge=1158201444",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "{{metaVerifyToken}}"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "1158201444"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('s902VerifyReady', pm.variables.get('metaVerifyToken') ? 'yes' : '');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902VerifyReady')) { pm.test('Omitida: pasa --env-var metaVerifyToken=... (el de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve el desafío tal cual, como texto', () => { pm.expect(pm.response.text()).to.eql('1158201444'); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'); });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup - el admin agenda una cita para el paciente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"S902 Paciente\",\n  \"patientPhone\": \"{{s902Phone}}\",\n  \"date\": \"{{s902Date}}\",\n  \"time\": \"{{s902Time}}\",\n  \"doctorId\": \"{{s902DoctorId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const digits = String(Date.now()).slice(-8);",
+                  "pm.collectionVariables.set('s902Phone', '+59397' + digits);",
+                  "pm.collectionVariables.set('s902PhoneDigits', '59397' + digits);",
+                  "// A weekday of 2030 that changes with the clock, so two runs do not meet in the same slot",
+                  "const day = new Date(Date.UTC(2030, 5, 3 + (Math.floor(Date.now() / 1000) % 600)));",
+                  "while ([0, 6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);",
+                  "pm.collectionVariables.set('s902Date', day.toISOString().slice(0, 10));",
+                  "pm.collectionVariables.set('s902Time', ['10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00'][Math.floor(Date.now() / 100) % 7]);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const a = pm.response.json();",
+                  "pm.test('Queda pendiente de confirmar', () => pm.expect(a.status).to.eql('pending_approval'));",
+                  "pm.collectionVariables.set('s902AptId', a.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alguien reenvía el recordatorio: el toque de otro número no cambia la cita (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "{{s902Signature}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s902Body}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const cjs = require('crypto-js');",
+                  "const appSecret = pm.variables.get('metaAppSecret');",
+                  "const jwtSecret = pm.variables.get('jwtSecret');",
+                  "const ready = Boolean(appSecret && jwtSecret);",
+                  "pm.collectionVariables.set('s902Ready', ready ? 'yes' : '');",
+                  "const b64url = (wordArray) => cjs.enc.Base64.stringify(wordArray).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "// The payload of a button, exactly as services/whatsappButtons.js builds it",
+                  "const payloadOf = (code, id, date, time) => {",
+                  "  const body = code + '.' + id + '.' + date.replace(/-/g, '') + time.replace(':', '');",
+                  "  return body + '.' + b64url(cjs.HmacSHA256('whatsapp-button:' + body, jwtSecret)).slice(0, 22);",
+                  "};",
+                  "// The call Meta makes when a patient taps a button, signed with the app secret",
+                  "const tapBody = (code, from, wamid) => JSON.stringify({",
+                  "  object: 'whatsapp_business_account',",
+                  "  entry: [{ id: 'POSTMAN', changes: [{ field: 'messages', value: {",
+                  "    messaging_product: 'whatsapp',",
+                  "    metadata: {},",
+                  "    messages: [{ from, id: wamid, timestamp: '1', type: 'button',",
+                  "      button: { payload: ready ? payloadOf(code, pm.collectionVariables.get('s902AptId'), pm.collectionVariables.get('s902Date'), pm.collectionVariables.get('s902Time')) : 'x', text: code } }]",
+                  "  } }] }]",
+                  "});",
+                  "const sign = (body) => 'sha256=' + (ready ? cjs.HmacSHA256(body, appSecret).toString(cjs.enc.Hex) : '');",
+                  "pm.collectionVariables.set('s902OtherPhoneDigits', '593991111111');",
+                  "const body = tapBody('x', pm.collectionVariables.get('s902OtherPhoneDigits'), 'wamid.S902.other');",
+                  "pm.collectionVariables.set('s902Body', body);",
+                  "pm.collectionVariables.set('s902Signature', sign(body));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: pasa --env-var metaAppSecret=... --env-var jwtSecret=... (los mismos de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Aceptada', () => pm.expect(pm.response.json()).to.eql({ received: true }));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "La cita sigue pendiente y el historial anota el toque ajeno",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s902AptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s902AptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: faltan los secretos', () => {}); } else {",
+                  "pm.test('Se anotó como ignorado por venir de otro número', () => {",
+                  "  const row = b.notifications.find(n => n.kind === 'patient_reply_ignored');",
+                  "  pm.expect(row).to.be.an('object');",
+                  "  pm.expect(row.status).to.eql('received');",
+                  "  pm.expect(row.errorCode).to.eql('other_number');",
+                  "});",
+                  "pm.test('No hay ninguna confirmación ni cancelación', () => pm.expect(b.notifications.filter(n => ['patient_confirmed', 'patient_cancelled'].includes(n.kind))).to.have.lengthOf(0));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El paciente toca «Confirmo» (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "{{s902Signature}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s902Body}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const cjs = require('crypto-js');",
+                  "const appSecret = pm.variables.get('metaAppSecret');",
+                  "const jwtSecret = pm.variables.get('jwtSecret');",
+                  "const ready = Boolean(appSecret && jwtSecret);",
+                  "pm.collectionVariables.set('s902Ready', ready ? 'yes' : '');",
+                  "const b64url = (wordArray) => cjs.enc.Base64.stringify(wordArray).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "// The payload of a button, exactly as services/whatsappButtons.js builds it",
+                  "const payloadOf = (code, id, date, time) => {",
+                  "  const body = code + '.' + id + '.' + date.replace(/-/g, '') + time.replace(':', '');",
+                  "  return body + '.' + b64url(cjs.HmacSHA256('whatsapp-button:' + body, jwtSecret)).slice(0, 22);",
+                  "};",
+                  "// The call Meta makes when a patient taps a button, signed with the app secret",
+                  "const tapBody = (code, from, wamid) => JSON.stringify({",
+                  "  object: 'whatsapp_business_account',",
+                  "  entry: [{ id: 'POSTMAN', changes: [{ field: 'messages', value: {",
+                  "    messaging_product: 'whatsapp',",
+                  "    metadata: {},",
+                  "    messages: [{ from, id: wamid, timestamp: '1', type: 'button',",
+                  "      button: { payload: ready ? payloadOf(code, pm.collectionVariables.get('s902AptId'), pm.collectionVariables.get('s902Date'), pm.collectionVariables.get('s902Time')) : 'x', text: code } }]",
+                  "  } }] }]",
+                  "});",
+                  "const sign = (body) => 'sha256=' + (ready ? cjs.HmacSHA256(body, appSecret).toString(cjs.enc.Hex) : '');",
+                  "const body = tapBody('c', pm.collectionVariables.get('s902PhoneDigits'), 'wamid.S902.confirm.' + Date.now());",
+                  "pm.collectionVariables.set('s902Body', body);",
+                  "pm.collectionVariables.set('s902ConfirmBody', body);",
+                  "pm.collectionVariables.set('s902ConfirmSignature', sign(body));",
+                  "pm.collectionVariables.set('s902Signature', sign(body));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: pasa --env-var metaAppSecret=... --env-var jwtSecret=... (los mismos de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "La cita quedó confirmada y el historial lo cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?from={{s902Date}}&to={{s902Date}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{s902Date}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{s902Date}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: faltan los secretos', () => {}); } else {",
+                  "const apt = pm.response.json().appointments.find(a => a.id === pm.collectionVariables.get('s902AptId'));",
+                  "pm.test('Está confirmada', () => pm.expect(apt.status).to.eql('confirmed'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Meta reenvía la misma llamada: no cambia ni se repite nada (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "{{s902ConfirmSignature}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s902ConfirmBody}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: pasa --env-var metaAppSecret=... --env-var jwtSecret=... (los mismos de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El historial tiene una sola confirmación del paciente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s902AptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s902AptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: faltan los secretos', () => {}); } else {",
+                  "const rows = pm.response.json().notifications;",
+                  "pm.test('Una sola confirmación recibida', () => pm.expect(rows.filter(n => n.kind === 'patient_confirmed' && n.status === 'received')).to.have.lengthOf(1));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otro consultorio no ve el historial de esa cita (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902OtherAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{s902AptId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{s902AptId}}",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "El paciente toca «Cancelar» (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "{{s902Signature}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s902Body}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const cjs = require('crypto-js');",
+                  "const appSecret = pm.variables.get('metaAppSecret');",
+                  "const jwtSecret = pm.variables.get('jwtSecret');",
+                  "const ready = Boolean(appSecret && jwtSecret);",
+                  "pm.collectionVariables.set('s902Ready', ready ? 'yes' : '');",
+                  "const b64url = (wordArray) => cjs.enc.Base64.stringify(wordArray).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "// The payload of a button, exactly as services/whatsappButtons.js builds it",
+                  "const payloadOf = (code, id, date, time) => {",
+                  "  const body = code + '.' + id + '.' + date.replace(/-/g, '') + time.replace(':', '');",
+                  "  return body + '.' + b64url(cjs.HmacSHA256('whatsapp-button:' + body, jwtSecret)).slice(0, 22);",
+                  "};",
+                  "// The call Meta makes when a patient taps a button, signed with the app secret",
+                  "const tapBody = (code, from, wamid) => JSON.stringify({",
+                  "  object: 'whatsapp_business_account',",
+                  "  entry: [{ id: 'POSTMAN', changes: [{ field: 'messages', value: {",
+                  "    messaging_product: 'whatsapp',",
+                  "    metadata: {},",
+                  "    messages: [{ from, id: wamid, timestamp: '1', type: 'button',",
+                  "      button: { payload: ready ? payloadOf(code, pm.collectionVariables.get('s902AptId'), pm.collectionVariables.get('s902Date'), pm.collectionVariables.get('s902Time')) : 'x', text: code } }]",
+                  "  } }] }]",
+                  "});",
+                  "const sign = (body) => 'sha256=' + (ready ? cjs.HmacSHA256(body, appSecret).toString(cjs.enc.Hex) : '');",
+                  "const body = tapBody('x', pm.collectionVariables.get('s902PhoneDigits'), 'wamid.S902.cancel.' + Date.now());",
+                  "pm.collectionVariables.set('s902Body', body);",
+                  "pm.collectionVariables.set('s902Signature', sign(body));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: pasa --env-var metaAppSecret=... --env-var jwtSecret=... (los mismos de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "La cita quedó cancelada y su horario libre",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?status=cancelled&from={{s902Date}}&to={{s902Date}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "cancelled"
+                },
+                {
+                  "key": "from",
+                  "value": "{{s902Date}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{s902Date}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: faltan los secretos', () => {}); } else {",
+                  "const apt = pm.response.json().appointments.find(a => a.id === pm.collectionVariables.get('s902AptId'));",
+                  "pm.test('Está cancelada', () => pm.expect(apt.status).to.eql('cancelled'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un botón mal firmado no hace nada (200, la cita sigue cancelada)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Hub-Signature-256",
+                "value": "{{s902Signature}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{s902Body}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const cjs = require('crypto-js');",
+                  "const appSecret = pm.variables.get('metaAppSecret');",
+                  "const jwtSecret = pm.variables.get('jwtSecret');",
+                  "const ready = Boolean(appSecret && jwtSecret);",
+                  "pm.collectionVariables.set('s902Ready', ready ? 'yes' : '');",
+                  "const b64url = (wordArray) => cjs.enc.Base64.stringify(wordArray).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "// The payload of a button, exactly as services/whatsappButtons.js builds it",
+                  "const payloadOf = (code, id, date, time) => {",
+                  "  const body = code + '.' + id + '.' + date.replace(/-/g, '') + time.replace(':', '');",
+                  "  return body + '.' + b64url(cjs.HmacSHA256('whatsapp-button:' + body, jwtSecret)).slice(0, 22);",
+                  "};",
+                  "// The call Meta makes when a patient taps a button, signed with the app secret",
+                  "const tapBody = (code, from, wamid) => JSON.stringify({",
+                  "  object: 'whatsapp_business_account',",
+                  "  entry: [{ id: 'POSTMAN', changes: [{ field: 'messages', value: {",
+                  "    messaging_product: 'whatsapp',",
+                  "    metadata: {},",
+                  "    messages: [{ from, id: wamid, timestamp: '1', type: 'button',",
+                  "      button: { payload: ready ? payloadOf(code, pm.collectionVariables.get('s902AptId'), pm.collectionVariables.get('s902Date'), pm.collectionVariables.get('s902Time')) : 'x', text: code } }]",
+                  "  } }] }]",
+                  "});",
+                  "const sign = (body) => 'sha256=' + (ready ? cjs.HmacSHA256(body, appSecret).toString(cjs.enc.Hex) : '');",
+                  "// The call is signed by Meta, but the button is made up: the signature of its payload is wrong",
+                  "const body = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ id: 'POSTMAN', changes: [{ field: 'messages', value: { messaging_product: 'whatsapp', metadata: {},",
+                  "  messages: [{ from: pm.collectionVariables.get('s902PhoneDigits'), id: 'wamid.S902.forged.' + Date.now(), type: 'button', button: { payload: 'c.' + pm.collectionVariables.get('s902AptId') + '.203001151000.AAAAAAAAAAAAAAAAAAAAAA' } }] } }] }] });",
+                  "pm.collectionVariables.set('s902Body', body);",
+                  "pm.collectionVariables.set('s902Signature', sign(body));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: pasa --env-var metaAppSecret=... --env-var jwtSecret=... (los mismos de backend/.env)', () => {}); } else {",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "La cita sigue cancelada tras el botón falso",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s902AdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?status=cancelled&from={{s902Date}}&to={{s902Date}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "cancelled"
+                },
+                {
+                  "key": "from",
+                  "value": "{{s902Date}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{s902Date}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (!pm.collectionVariables.get('s902Ready')) { pm.test('Omitida: faltan los secretos', () => {}); } else {",
+                  "const apt = pm.response.json().appointments.find(a => a.id === pm.collectionVariables.get('s902AptId'));",
+                  "pm.test('Sigue cancelada', () => pm.expect(apt && apt.status).to.eql('cancelled'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -17331,6 +18348,66 @@
     },
     {
       "key": "s908Email",
+      "value": ""
+    },
+    {
+      "key": "s902AdminToken",
+      "value": ""
+    },
+    {
+      "key": "s902DoctorId",
+      "value": ""
+    },
+    {
+      "key": "s902OtherAdminToken",
+      "value": ""
+    },
+    {
+      "key": "s902AptId",
+      "value": ""
+    },
+    {
+      "key": "s902Phone",
+      "value": ""
+    },
+    {
+      "key": "s902PhoneDigits",
+      "value": ""
+    },
+    {
+      "key": "s902OtherPhoneDigits",
+      "value": ""
+    },
+    {
+      "key": "s902Date",
+      "value": ""
+    },
+    {
+      "key": "s902Time",
+      "value": ""
+    },
+    {
+      "key": "s902Ready",
+      "value": ""
+    },
+    {
+      "key": "s902VerifyReady",
+      "value": ""
+    },
+    {
+      "key": "s902Body",
+      "value": ""
+    },
+    {
+      "key": "s902Signature",
+      "value": ""
+    },
+    {
+      "key": "s902ConfirmBody",
+      "value": ""
+    },
+    {
+      "key": "s902ConfirmSignature",
       "value": ""
     }
   ]
