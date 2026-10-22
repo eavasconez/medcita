@@ -153,6 +153,16 @@ Días en que un médico, o todo el consultorio, no atiende: vacaciones, un congr
 - **Auditoría.** Crear y quitar bloqueos (cuando los hace admin o secretaria) queda como `entity: schedule_block` con las fechas; **el motivo no se guarda** en el registro porque es texto libre («operación de rodilla») que puede decir de más.
 - **Interfaz.** Sección «Time off» en la página Availability (lista de lo que viene, formulario, atajo «Ecuador holidays», y por bloqueo las citas que siguen agendadas); el calendario los dibuja como eventos de todo el día y tiñe esos días; la nueva cita dice que el médico no atiende en vez de mostrar una lista vacía. Los bloqueos por horas (medio día) no existen todavía: son días completos.
 
+### Reporte de asistencia (S9-06)
+
+`GET /api/admin/reports/attendance` (solo admin, como la pantalla Analytics) cuenta las citas cuya **fecha** cae en el periodo, con la fecha del consultorio. Periodo: `from` y `to` (ambos incluidos; hasta 1096 días, tres años; por defecto el mes en curso completo, en la zona del consultorio (así lo que está agendado para más adelante y espera confirmación también cuenta)) y, opcionalmente, un solo médico (`doctorId`).
+
+- **Cifras.** Cada fila trae `total`, `attended` (llegó, en consulta o atendida), `noShow`, `cancelled`, `confirmed`, `notConfirmed` (pendiente o agendada, aún sin respuesta) y `noShowRate`: no asistieron ÷ (atendidas + no asistieron), en % con un decimal, o `null` mientras no se haya cerrado ninguna cita (es la misma definición que `GET /appointments/attendance`). Las canceladas no entran en la tasa.
+- **Tres cortes.** `totals` (todo el periodo), `byDoctor` y `byType` (cada tipo de cita con su nombre y color), de mayor a menor número de citas. Una cita agendada antes de que existieran los tipos cuenta como del tipo predeterminado. Un tipo archivado sigue apareciendo en los periodos en que se usó.
+- **Pacientes.** `noShowByPatient` son los 10 pacientes con más inasistencias del periodo (se muestran en pantalla, no se exportan).
+- **CSV.** `GET /api/admin/reports/attendance/export` devuelve `text/csv; charset=utf-8` con BOM (Excel lee bien las tildes), una fila `total`, una por médico y una por tipo, con las columnas `section,name,total,attended,no_show,cancelled,confirmed,not_confirmed,no_show_rate_percent` y la tasa vacía cuando no hay citas cerradas. **Solo conteos: ningún dato de pacientes** (ni nombre, ni teléfono, ni notas). Los nombres de médicos y de tipos los escribe gente, así que uno que empiece con `=`, `+`, `-` o `@` se neutraliza con una comilla para que una hoja de cálculo no lo ejecute como fórmula. Como no lleva datos de pacientes, la descarga no se registra en el Activity Log. Nota de uso: el CSV va separado por comas y los decimales con punto; si un Excel con configuración regional en español lo abre todo en una columna, usar *Datos → Desde texto/CSV* (o abrirlo con Google Sheets o LibreOffice).
+- **Pantalla.** En Analytics, el bloque «No-shows» tiene periodos rápidos (este mes completo, el mes pasado, últimos 30 días, este año completo), fechas libres, filtro por médico, la tasa, confirmadas contra sin confirmar, tablas por médico y por tipo de cita con la tasa en barras, los pacientes que más faltan y el botón «Export CSV». Reemplaza al selector de mes de S8-05, que sigue disponible en la API (`GET /appointments/attendance`).
+
 ### Administración (`/api/admin`)
 
 | Método | Ruta | Rol | Descripción |
@@ -166,6 +176,8 @@ Días en que un médico, o todo el consultorio, no atiende: vacaciones, un congr
 | PUT | `/doctors/:id` | admin | Actualiza nombre, correo y rol (nunca la contraseña: `400`) |
 | DELETE | `/doctors/:id` | admin | Elimina médico (falla si tiene citas, aunque estén canceladas, o disponibilidad asociadas) |
 | GET | `/reports/appointments-by-doctor` | admin | Conteo de citas por médico (sin las canceladas) |
+| GET | `/reports/attendance` | admin | Asistencia de un periodo (ver «Reporte de asistencia»): `?from`, `?to` (`YYYY-MM-DD`, ambos incluidos; el mes en curso por defecto) y `?doctorId` (`404` si no es de tu consultorio). Responde `{ from, to, doctorId, totals, byDoctor, byType, noShowByPatient }` |
+| GET | `/reports/attendance/export` | admin | El mismo reporte como CSV descargable (`attendance_<from>_<to>.csv`), solo conteos |
 | GET | `/audit-log` | admin | Registro de auditoría del consultorio: lo que hicieron sus admins y secretarias, paginado y filtrable (ver «Registro de auditoría»). Solo lectura |
 | GET | `/notification-status` | admin | Si el WhatsApp y el correo del consultorio están saliendo: por canal, los envíos fallidos seguidos y el último error (ver «Historial de mensajes») |
 | GET | `/client-ip` | admin | Diagnóstico de `TRUST_PROXY`: devuelve `{ ip, forwardedFor, trustProxy }`; `ip` debe ser tu IP pública |

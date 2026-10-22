@@ -30,7 +30,7 @@ Este manual contiene los pasos exactos para realizar una demostración de la pla
 ### 1. Gestión Administrativa (Como Admin)
 1. Inicia sesión con las credenciales de **Administrador**.
 2. Abre **Manage Doctors** en la barra lateral: aquí el administrador crea usuarios (médicos, secretarias, otros administradores), los edita o los elimina.
-3. Abre **Analytics** para mostrar las citas por médico y la distribución de carga.
+3. Abre **Analytics** para mostrar las citas por médico y la distribución de carga, y más abajo el control de inasistencias: cambia el periodo o el médico, mira la tasa por médico y por tipo de cita y pulsa **Export CSV** para bajar las cifras.
 4. Cada cambio que hacen administradores y secretarias queda en un **registro de auditoría** (tabla `AuditLog`). Hoy se consulta por API (`GET /api/admin/audit-log`, solo administradores) y aún no tiene pantalla.
 
 ### 2. Gestión Médica (Como Doctor)
