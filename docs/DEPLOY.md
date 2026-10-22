@@ -647,6 +647,76 @@ Sube un archivo de prueba con una URL firmada, lo lee con otra, comprueba que **
 
 `/privacy` y `/terms` se compilan dentro del frontend a partir de `docs/legal/politica-de-privacidad.md` y `terminos-de-uso.md` (una carpeta **fuera** de `frontend/`). Render clona todo el repositorio, así que el *build* los encuentra, pero con *Root Directory* `frontend` un cambio que solo toque `docs/legal/` puede no disparar un despliegue: en el Static Site, *Settings → Build Filters*, agrega `docs/legal/**`, o lanza un *Manual Deploy* después de cambiar los textos. Cuando un abogado apruebe los textos, cambia `LEGAL_REVIEWED` a `true` en `frontend/src/config/legal.js` para quitar el aviso de borrador.
 
+## Producción lista para cobrar (S9-09)
+
+Hoy producción corre con planes gratuitos. Sirve para demostrar y probar, **no** para cobrar ni para guardar datos de salud de pacientes reales. Esta lista es lo que hay que decidir y comprobar antes. No cambia código: la recorre quien administra las cuentas de Render, Neon, Brevo y Meta, y marca cada punto contra el panel real.
+
+> **Sobre las cifras.** Los planes y precios cambian. Lo de abajo se consultó el 22-oct-2026 en las páginas oficiales ([Render: Deploy for Free](https://render.com/docs/free), [Render: precios](https://render.com/pricing), [Neon: planes](https://neon.com/docs/introduction/plans), [Neon: history window](https://neon.com/docs/postgres/backup-restore/history-window)); **confírmalas antes de contratar**, porque algunas fuentes que se encontraron eran de fechas distintas. Los puntos marcados «(por confirmar)» no se pudieron verificar.
+
+### 1. Qué se pierde hoy con los planes gratuitos
+
+| Servicio | Plan de hoy | Qué significa para un consultorio que paga |
+|---|---|---|
+| Render (backend) | Free | El servicio **se duerme tras 15 min sin tráfico** y despertarlo tarda cerca de un minuto: el primer paciente o la primera secretaria de la mañana espera. UptimeRobot lo mantiene despierto, pero es un parche. Hay un tope de 750 horas gratis al mes por espacio de trabajo |
+| Neon (base de datos) | Free | La ventana de historial para restaurar es de **solo unas 6 horas** (con un tope de cambios de 1 GB): un error que se note al día siguiente no se puede deshacer con «volver atrás en el tiempo». Hay 1 instantánea manual y el cómputo se suspende solo cuando no se usa |
+| UptimeRobot | Free | Revisa cada 5 minutos como mínimo y avisa por correo; no hay segundo canal |
+| Brevo / Meta | Gratis o de prueba | El número de prueba de Meta solo entrega a 5 destinatarios, y su token vence a los 60 días mientras el negocio no esté verificado (ver 7.7) |
+
+### 2. Planes a contratar (decisión de quien paga)
+
+- [ ] **Render, backend: un plan de pago** (el más barato, *Starter*, listaba desde unos US$7 al mes; por confirmar) para que **no se duerma**. Con él, UptimeRobot deja de ser necesario para eso, pero se queda para avisar si se cae.
+- [ ] **Neon: plan de pago (*Launch*)**, que permite ampliar la ventana de historial hasta unos 7 días (se cobra por GB; por confirmar) y tiene instantáneas manuales. Decide la ventana: **7 días es lo que permite restaurar un error que se descubre el lunes y ocurrió el viernes.**
+- [ ] Anotar aquí el **costo mensual real** y la fecha en que se contrató: `______ US$/mes (Render) + ______ US$/mes (Neon) + ______ (otros)`.
+- [ ] El **frontend** (sitio estático de Render) no se duerme; no necesita plan de pago.
+
+### 3. Respaldos con restauración probada
+
+Un respaldo que nunca se restauró es una esperanza. Se hace **una vez, sobre una rama, nunca sobre producción**, y se anota lo que se aprendió:
+
+1. En Neon, crea una **rama de prueba** desde producción (*Branches → Create branch*). Es instantánea y no toca producción.
+2. En esa rama, simula un daño: borra un par de filas de una tabla de prueba (por ejemplo, un paciente de demostración).
+3. Restáurala a un momento anterior al daño con la opción de restauración del panel de Neon (*Backup & Restore*; el nombre del menú por confirmar) y comprueba que las filas volvieron.
+4. Anota: `fecha de la prueba: ______ · cuánto tardó: ______ · quién la hizo: ______ · a qué momento restauró: ______`.
+5. Borra la rama de prueba.
+
+- [ ] Restauración ensayada y anotada (arriba).
+- [ ] Ventana de historial configurada a lo decidido en el punto 2.
+- [ ] **Una copia fuera de Neon.** El historial de Neon sirve para errores recientes, no si se pierde la cuenta o el proyecto. Cada tanto (por ejemplo, antes de cada release) haz un `pg_dump` de la base con la cadena directa de conexión y guárdalo **cifrado y fuera del repositorio**. Contiene datos de pacientes: tratarlo como tal. Comando de ejemplo: `pg_dump "<cadena directa de Neon>" -Fc -f medcita-AAAA-MM-DD.dump`; restaurar en una base local de prueba con `pg_restore` para comprobar que abre.
+- [ ] Antes de cada migración que cambie el esquema, la **rama de respaldo en Neon** de siempre (ver «Primer despliegue con consultorios»).
+
+### 4. Monitoreo y avisos
+
+- [ ] `GET /api/health` vigilado desde fuera (UptimeRobot) y con **dos destinatarios** de aviso, no uno. Responde `503` si la base no contesta o si falta una migración.
+- [ ] `ERROR_ALERT_EMAILS` definido en Render con los correos del equipo que opera MedCita (S9-08), y probado con `npm run alerts:test`.
+- [ ] Brevo con la **lista de IPs autorizadas de Render** (si está activa), o sin esa restricción. Sin esto no sale ningún correo ni aviso.
+- [ ] Panel de MedCita: el aviso rojo de «mensajes que fallan» lo ve alguien cada día (lo ve el administrador de cada consultorio).
+- [ ] **Vencimiento del token de Meta** anotado en un calendario compartido (hoy vence el **19-dic-2026**; ver 7.3). Un token vencido apaga todos los WhatsApp con error 190.
+- [ ] Logs de Render: quién tiene acceso y por cuánto tiempo se conservan (por confirmar según el plan).
+
+### 5. Secretos y accesos
+
+- [ ] Lista de **quién tiene acceso** a Render, Neon, Brevo, Meta, GitHub y al dominio, con al menos **dos personas** en cada cuenta importante (que un solo olvido de contraseña no deje a MedCita sin servicio).
+- [ ] Verificación en dos pasos activada en esas cuentas.
+- [ ] Los secretos viven solo en las variables de entorno de Render (nunca en el repositorio ni en chats): `JWT_SECRET`, `DATABASE_URL`, `META_WHATSAPP_TOKEN`, `META_APP_SECRET`, `BREVO_API_KEY`. Si alguno se expone, se rota (cambiar `JWT_SECRET` cierra todas las sesiones y deja sin efecto los botones de WhatsApp ya enviados).
+- [ ] El correo de soporte que reciben los consultorios existe y alguien lo lee.
+
+### 6. Si algo se cae (guía corta)
+
+| Síntoma | Primero mira | Qué hacer |
+|---|---|---|
+| El sitio no abre o el login dice error de conexión | `/api/health` y *Logs* en Render | `503 schema_outdated`: falta una migración, ver «Contrato de despliegue del backend». `database_unreachable`: estado de Neon. Un despliegue reciente que falló: *Rollback* al anterior en Render |
+| Nadie recibe WhatsApp | *Messages* de una cita y el aviso rojo del panel | Error 190: token vencido (7.3). 132001: plantilla sin aprobar o con otro nombre (7.4) |
+| Nadie recibe correos | *Logs* de Render: `[BREVO EMAIL ERROR]` | 401: IPs de Render sin autorizar en Brevo |
+| Un error que se descubre tarde en los datos | Neon: ventana de historial | Restaurar **una rama** al momento anterior al daño, comprobar, y recién entonces decidir qué hacer con producción; **no restaures producción a ciegas** |
+| Se sospecha una filtración | `docs/legal/` (procedimiento ante brechas) | Rotar secretos, revisar el Activity Log y avisar según el procedimiento |
+
+### 7. Antes de cobrar al primer consultorio
+
+- [ ] Los puntos 2 a 5 están marcados.
+- [ ] El abogado revisó `docs/legal/` y se completaron los `[PENDIENTE]` (sin eso no se guardan datos clínicos reales).
+- [ ] Número de WhatsApp propio y negocio verificado en Meta (7.7).
+- [ ] Un **staging** existe para probar migraciones antes de producción (ver «Ambiente de pruebas»).
+
 ## Notas para futuros redeploys
 
 - Cada deploy del backend ejecuta `prisma migrate deploy`. Para cambiar el esquema a partir de ahora (migraciones, qué revisar, cómo se prueba) ver `docs/TECHNICAL.md`, sección 7. Nunca usar `db push` contra Neon: no deja historial.
