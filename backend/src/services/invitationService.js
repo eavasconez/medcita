@@ -182,7 +182,7 @@ async function accept(token, password, req) {
           role: invitation.role,
           password: passwordHash
         },
-        include: { clinic: { select: { id: true, name: true } } }
+        include: { clinic: { select: { id: true, name: true, timezone: true } } }
       });
       // The link signs the new account in
       await recordAccountEvent(tx, req, account, 'login');

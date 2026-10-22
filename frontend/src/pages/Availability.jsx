@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import ScheduleBlocksSection from '../components/ScheduleBlocksSection';
 import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 const DAYS = [
@@ -20,13 +21,13 @@ const Availability = () => {
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
 
-  const showToast = (message, type = 'success') => {
+  const showToast = useCallback((message, type = 'success') => {
     // Clear any pending dismissal so an in-flight timer from a prior toast
     // can't clear this newer one out from under it.
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ message, type });
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   const fetchAvailability = useCallback(async (doctorId) => {
     try {
@@ -225,6 +226,8 @@ const Availability = () => {
           </div>
         </div>
         )}
+
+        <ScheduleBlocksSection doctors={doctors} isStaff={isSpecialRole} selectedDoctorId={selectedDoctorId} showToast={showToast} />
       </div>
     </Layout>
   );

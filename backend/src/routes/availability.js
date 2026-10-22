@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
-const { getDay, parseISO, addMinutes, format } = require('date-fns');
+const { getDay, parseISO } = require('date-fns');
 const { clinicDateString, appointmentInstant } = require('../utils/clinicTime');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
+const appointmentTypes = require('../services/appointmentTypes');
+const scheduleBlocks = require('../services/scheduleBlocks');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -103,45 +105,58 @@ router.get('/slots', async (req, res) => {
       return res.json([]); // No service this day
     }
 
-    // 2. Get existing appointments
+    // A day the doctor (or the clinic) does not attend has no slots at all
+    if (await scheduleBlocks.findBlockOn(prisma, { clinicId: req.clinicId, doctorId: targetDoctorId, date })) {
+      return res.json([]);
+    }
+
+    // 2. The kind of visit being booked decides how long each slot is (the clinic's default
+    // type, 30 minutes, when none is asked for)
+    const type = await appointmentTypes.resolveBookableType(prisma, req.clinicId, req.query.typeId);
+    if (!type) return res.status(400).json({ error: 'typeId must be an active appointment type of your clinic' });
+    const duration = type.durationMinutes;
+
+    // 3. Get existing appointments, each with its own length
     const appointments = await prisma.appointment.findMany({
       where: inClinic(req, {
         doctorId: targetDoctorId,
         date: date,
         status: { not: 'cancelled' }
       }),
-      select: { time: true }
+      select: { time: true, durationMinutes: true }
     });
+    const booked = appointments.map((a) => ({ start: appointmentTypes.toMinutes(a.time), duration: a.durationMinutes }));
 
-    const bookedTimes = appointments.map(a => a.time);
-
-    // 3. Generate slots (30 min default)
-    const slots = [];
-    const SLOT_DURATION = 30;
+    // 4. Generate slots. Inside each working block, one every `duration` minutes from the
+    // block's start; plus one right where each booked visit ends, so a 40-minute visit does not
+    // leave a gap nobody can use. A slot must fit before the block ends.
     const now = new Date();
     // "Today" and "already passed" are decided in the clinic's time, not the server's
     // (Render runs in UTC, which made every slot of the day look past from midday on)
-    const todayStr = clinicDateString(now);
+    const todayStr = clinicDateString(now, req.clinicTimezone);
 
-    availabilities.forEach(avail => {
-      let current = parseISO(`${date}T${avail.startTime}`);
-      const end = parseISO(`${date}T${avail.endTime}`);
-
-      while (current < end) {
-        const timeStr = format(current, 'HH:mm');
-        
-        // Skip if it's today and the time has already passed
-        const isPast = date === todayStr && appointmentInstant(date, timeStr) < now;
-
-        if (!isPast) {
-          slots.push({
-            time: timeStr,
-            status: bookedTimes.includes(timeStr) ? 'booked' : 'available'
-          });
-        }
-        current = addMinutes(current, SLOT_DURATION);
+    const starts = new Set();
+    for (const avail of availabilities) {
+      const from = appointmentTypes.toMinutes(avail.startTime);
+      const to = appointmentTypes.toMinutes(avail.endTime);
+      for (let start = from; start + duration <= to; start += duration) starts.add(start);
+      for (const other of booked) {
+        const end = other.start + other.duration;
+        if (end >= from && end + duration <= to) starts.add(end);
       }
-    });
+    }
+
+    const slots = [];
+    for (const start of [...starts].sort((a, b) => a - b)) {
+      const timeStr = appointmentTypes.toTimeString(start);
+
+      // Skip if it's today and the time has already passed
+      const isPast = date === todayStr && appointmentInstant(date, timeStr, req.clinicTimezone) < now;
+      if (isPast) continue;
+
+      const taken = booked.some((other) => appointmentTypes.overlaps(start, duration, other.start, other.duration));
+      slots.push({ time: timeStr, status: taken ? 'booked' : 'available' });
+    }
 
     res.json(slots);
   } catch (err) {

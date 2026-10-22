@@ -52,14 +52,18 @@ graph TD
 
 The system uses a "Block & Slot" logic:
 - Doctors define **Working Hours** (e.g., Mon-Fri 08:00 - 18:00).
-- The engine calculates 30-minute **Slots**.
+- The engine calculates **Slots** as long as the chosen **Appointment type** (the clinic's default is 30 minutes; admins add others such as "First visit, 40 min" in Settings). A slot is offered every `duration` minutes inside each block, plus one right where each booked visit ends.
+- A day the doctor (or the whole clinic) is **blocked** — vacation, congress, holiday, set in Availability → *Time off* — has no slots and takes no bookings; what was already booked there stays and is listed to be rescheduled.
+- A visit must fit inside a working block and may not overlap another one (back to back is fine); each appointment keeps the length its type had when it was booked.
 - If a slot is occupied in the DB, the UI marks it as **Occupied (Orange)**.
 - If it's a past time, the UI **Blocks** it for safety.
 - Moving an appointment (`PUT /api/appointments/:id`) applies the same rules as booking: it answers 409 if the new slot is taken.
 
 ## 🔔 Reminders
 
-A cron job runs every hour and reminds, once (`reminderSentAt`), the `pending_approval`, `scheduled` and `confirmed` appointments that start within the next 24 hours, using the clinic's local time (`CLINIC_UTC_OFFSET_MINUTES`, default UTC-5).
+A cron job runs every hour and, for each clinic that has reminders on, reminds once (`reminderSentAt`) the `pending_approval`, `scheduled` and `confirmed` appointments that are about to start, using each clinic's own timezone (`Clinic.timezone`, default `America/Guayaquil`, UTC-5; an admin changes it in Settings). Each clinic chooses in *Settings → Reminders* how long before (2, 24 or 48 hours; 24 by default), an optional **second reminder** closer to the appointment (`secondReminderSentAt`; skipped when the first one already went out inside its window), the channels (WhatsApp, email) and the address and indications added to the message. The WhatsApp wording stays the template approved by Meta.
+
+**Answering the reminder (S9-02).** Once the reminder template with buttons is approved in Meta and the webhook is set up, the WhatsApp reminder carries three buttons. «Confirmo» confirms the appointment, «Cancelar» cancels it (the slot is free again) and «Cambiar hora» does not move it: it emails the clinic's admins and secretaries so they can contact the patient. The patient always gets a text answer. Meta calls the signed webhook `POST /api/webhooks/whatsapp`; the button carries a signed identifier of that appointment (not the phone number) and its date and time, so a tap from another number, on a past, cancelled or moved appointment, or a repeated one changes nothing and is only noted. Each reply appears in the appointment's message history and, when it changed the appointment, in the Activity Log as «Patient (WhatsApp)». Without the two Meta secrets the reminders go out without buttons, as before.
 
 ---
 *Created by Antigravity for the MedCita project.*

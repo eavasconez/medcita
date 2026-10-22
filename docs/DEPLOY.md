@@ -94,6 +94,7 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `DATABASE_URL` | La misma connection string de Neon usada en el paso 2 |
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
+   | `ERROR_ALERT_EMAILS` | Opcional pero recomendada. Correos de los **desarrolladores / del equipo de MedCita** (uno o varios, separados por comas) que reciben un aviso cuando el servidor responde un error 500. Nunca la dirección de un consultorio. Ver «Despliegue de los límites persistentes y las alertas de errores» |
    | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
    | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para elegir entre WhatsApp con Meta (plantillas, número de prueba gratuito) y Twilio ver la sección 7 |
 
@@ -222,11 +223,11 @@ El token que muestra *API Setup* es temporal y **vence pronto**: el panel habla 
 
 **Vencimiento.** Mientras el negocio no esté verificado, Meta no ofrece la opción *Never* y el token dura **60 días** (en S7-06 se generó uno con vencimiento a 60 días). Es suficiente para pruebas, pero **no es permanente**: anota la fecha, porque al vencer los envíos fallan con el error 190 y no hay respaldo automático a Twilio. Para ver cuándo vence, consulta `GET /debug_token?input_token=<token>` con ese mismo token (`expires_at` en segundos Unix; `0` significa que no vence). Con el negocio verificado (checklist de 7.7) se genera uno sin vencimiento.
 
-### 7.4 Registrar las dos plantillas
+### 7.4 Registrar las plantillas (dos obligatorias, tres opcionales)
 
 En **WhatsApp Manager → Message templates → Create template** (o **WhatsApp → Message templates** en el panel de la app). Para las dos:
 
-- **Category: Utility** · **Language: Spanish** (código `es`) · sin encabezado, pie ni botones.
+- **Category: Utility** · **Language: Spanish** (código `es`) · sin encabezado ni pie. Botones: ninguno, salvo en las dos plantillas «con botones» de más abajo.
 - El nombre admite solo minúsculas, números y guiones bajos.
 - Pega el texto **exactamente** como está abajo, con sus variables `{{1}}`, `{{2}}`… y completa los **ejemplos** que Meta pide para cada variable.
 
@@ -237,16 +238,41 @@ MedCita: Hola {{1}}, tu cita con {{2}} ha sido agendada para el {{3}} a las {{4}
 ```
 Ejemplos: `{{1}}` María Andrade · `{{2}}` Dr. Santiago Pérez · `{{3}}` 2026-10-21 · `{{4}}` 10:00
 
-**Recordatorio de 24 h** — nombre `recordatorio_cita`:
+**Recordatorio** (a las 2, 24 o 48 h, según lo que elija cada consultorio) — nombre `recordatorio_cita`:
 
 ```
 Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
 ```
 Ejemplos: `{{1}}` María Andrade · `{{2}}` mañana 2026-10-21 · `{{3}}` 10:00 · `{{4}}` Dr. Santiago Pérez
 
+**Recordatorio con la dirección y las indicaciones del consultorio** (opcional) — nombre `recordatorio_cita_consultorio`:
+
+```
+Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Si no puedes asistir, avísanos con anticipación para liberar el horario. ¡Gracias!
+```
+Ejemplos: `{{1}}` Consultorio MedCita · `{{2}}` María Andrade · `{{3}}` mañana 2026-10-21 · `{{4}}` 10:00 · `{{5}}` Dr. Santiago Pérez · `{{6}}` Av. Amazonas N34-12, Quito. Llegar 10 minutos antes y traer la cédula
+
+Es la que usa un consultorio que escribió una dirección o indicaciones en Settings → Reminders. **No se usa hasta que la registras y la apruebas**: después define en Render `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED=recordatorio_cita_consultorio`. Mientras tanto Meta envía el recordatorio sencillo de arriba y la dirección y las indicaciones llegan solo por correo (Twilio y el modo simulado, que envían texto libre, sí las incluyen). Meta puede rechazarla por tener 6 variables: si pasa, acorta lo que va en `{{6}}` o alarga el texto, y cambia el mismo texto en `whatsappTemplates.js`.
+
+**Recordatorio con botones** (S9-02, opcional) — nombre `recordatorio_cita_botones`:
+
+```
+Recordatorio MedCita: Hola {{1}}, tienes una cita {{2}} a las {{3}} con {{4}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!
+```
+Ejemplos: los mismos del recordatorio de arriba. **Botones: tres de tipo «Respuesta rápida» (*Quick reply*), con estos textos y en este orden**: `Confirmo`, `Cancelar`, `Cambiar hora`.
+
+**Recordatorio con la dirección y botones** (S9-02, opcional) — nombre `recordatorio_cita_consultorio_botones`:
+
+```
+Recordatorio de {{1}}: Hola {{2}}, tienes una cita {{3}} a las {{4}} con {{5}}. Dónde y cómo llegar: {{6}}. Toca uno de los botones para confirmar, cancelar o pedir otro horario. ¡Gracias!
+```
+Ejemplos: los mismos del recordatorio con dirección de arriba, y los mismos tres botones de respuesta rápida.
+
+Las dos con botones llevan el mismo texto que sus versiones sin botones más la frase de los botones. **No se usan hasta que existan los dos secretos del webhook y la plantilla esté aprobada**; el orden exacto está en «Despliegue de las respuestas por WhatsApp (S9-02)» (más abajo). Cada botón lleva dentro un identificador firmado de la cita, que MedCita pone al enviar: no se escribe nada en Meta para eso.
+
 > Meta rechaza una plantilla con demasiadas variables para lo corto que es el texto («demasiadas variables en relación con su longitud»), y no admite una variable al principio ni al final. Por eso el día y la fecha viajan juntos en `{{2}}` y el texto cierra con una frase.
 
-La revisión es automática y puede tardar desde minutos hasta 24 h; solo las plantillas en estado **APPROVED** se pueden enviar. Si Meta las recategoriza como *Marketing*, el texto parece promocional: edítalo para que sea solo informativo. Si registras otro nombre o idioma (por ejemplo `es_MX`), indícalo en `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER` o `META_WHATSAPP_TEMPLATE_LANGUAGE`.
+La revisión es automática y puede tardar desde minutos hasta 24 h; solo las plantillas en estado **APPROVED** se pueden enviar. Si Meta las recategoriza como *Marketing*, el texto parece promocional: edítalo para que sea solo informativo. Si registras otro nombre o idioma (por ejemplo `es_MX`), indícalo en `META_WHATSAPP_TEMPLATE_CONFIRMATION`, `META_WHATSAPP_TEMPLATE_REMINDER` (o la variable de la plantilla que cambiaste, 7.5) o `META_WHATSAPP_TEMPLATE_LANGUAGE`.
 
 Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar también la plantilla en Meta (se vuelve a aprobar); mientras tanto los envíos fallan con el error 132001. Un test comprueba que este documento y el código tengan el mismo texto.
 
@@ -257,6 +283,10 @@ Si algún día cambia el texto en `whatsappTemplates.js`, hay que cambiar tambi�
 | `META_WHATSAPP_TOKEN` | El token de usuario del sistema del paso 7.3 (vence a los 60 días si el negocio no está verificado) |
 | `META_WHATSAPP_PHONE_NUMBER_ID` | El *Phone number ID* del paso 7.1 |
 | `META_WHATSAPP_TEMPLATE_CONFIRMATION` / `META_WHATSAPP_TEMPLATE_REMINDER` | Opcionales. Nombres de las plantillas (por defecto `cita_confirmada` y `recordatorio_cita`) |
+| `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED` | Opcional. **Actívala solo cuando la plantilla `recordatorio_cita_consultorio` esté aprobada**: con ella los consultorios con dirección o indicaciones las mandan por WhatsApp. Sin definir, usan el recordatorio sencillo |
+| `META_APP_SECRET` | Opcional (S9-02). El *App secret* de la app de Meta (panel de la app → *App settings → Basic*). Con él el webhook comprueba que cada llamada la firmó Meta; **sin él el webhook rechaza todo** y los recordatorios salen sin botones. Es una credencial: nunca en el repositorio |
+| `META_WEBHOOK_VERIFY_TOKEN` | Opcional (S9-02). Un texto largo y al azar que **tú inventas** y escribes igual en Render y en el panel de Meta al configurar el webhook. Solo sirve para la verificación inicial de la URL |
+| `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` / `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED_BUTTONS` | Opcionales (S9-02). **Defínelas solo cuando el webhook ya esté verificado y la plantilla `recordatorio_cita_botones` (o `recordatorio_cita_consultorio_botones`) esté aprobada.** Desde entonces los recordatorios salen con los tres botones. Sin definir (o sin `META_APP_SECRET`), salen como siempre |
 | `META_WHATSAPP_TEMPLATE_LANGUAGE` | Opcional. Idioma de las plantillas (por defecto `es`) |
 
 Con `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID` definidos, Meta tiene prioridad sobre Twilio. Para dejar de usar Twilio (recomendado en producción), borra las variables `TWILIO_*`; elegir entre Meta y Twilio se explica en la sección 7.0.
@@ -351,6 +381,144 @@ FROM "Clinic" WHERE slug = 'plataforma';
 ```
 
 **Marcha atrás.** Las migraciones no tienen «deshacer». Con la base ya migrada, la versión anterior del código no puede escribir (le falta `clinicId`), así que la salida es corregir hacia adelante o restaurar la copia de Neon, perdiendo lo escrito después de hacerla.
+
+## Despliegue de los tipos de cita (S9-04)
+
+S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica sola con el `prisma migrate deploy` del Build Command. Sobre los datos que ya existen hace esto, en este orden: crea la tabla `AppointmentType`; crea para **cada consultorio** su tipo predeterminado («Consultation», 30 min); agrega `Appointment.durationMinutes` (30 por defecto) y `Appointment.typeId`; asocia **todas las citas existentes** al predeterminado de su consultorio; y recién entonces agrega las claves foráneas. Ninguna cita, paciente ni horario cambia. Se probó con datos heredados en `backend/tests/appointmentTypesMigration.test.js`.
+
+**Antes de fusionar.** En Neon, *Branches → Create branch* desde la rama de producción (por ejemplo `antes-de-s9-04`), como en «Primer despliegue con consultorios». Es instantánea; bórrala cuando ya no la necesites. Si hay staging, despliega ahí primero.
+
+**Qué esperar.** A diferencia de S8-01, **la versión anterior sigue pudiendo agendar** entre la migración y el despliegue nuevo: `typeId` es opcional en la base y `durationMinutes` tiene valor por defecto, así que una cita creada por la versión vieja queda «sin tipo» y cuenta como del predeterminado. Y por lo mismo **volver atrás el código es seguro** (la tabla y las columnas nuevas quedan sin uso). No hay ventana en la que no se pueda escribir.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] La agenda de siempre se ve igual: las citas existentes con la misma hora y 30 minutos de duración.
+- [ ] En Settings, «Appointment types» muestra «Consultation · 30 minutes · Default».
+- [ ] En el SQL Editor de Neon: `SELECT count(*) FROM "Appointment" WHERE "typeId" IS NULL;` devuelve `0` (salvo citas que haya creado la versión anterior durante el despliegue; la aplicación las trata como del tipo predeterminado) y `SELECT "clinicId", count(*) FROM "AppointmentType" WHERE "isDefault" GROUP BY 1 HAVING count(*) > 1;` no devuelve filas.
+- [ ] Agendar una cita de prueba con otro tipo (por ejemplo, 40 min) y comprobar que el calendario la dibuja más larga; cancelarla después.
+
+## Despliegue de los límites persistentes y las alertas de errores (S9-08)
+
+S9-08 hace dos cosas: los contadores de los límites de intentos (login, recuperación de contraseña, registro, invitaciones) pasan de la memoria del servidor a la base de datos, y un error del servidor (5xx) manda un correo **al equipo de desarrollo de MedCita**. Cómo probarlo antes y después: [`docs/qa/S9-08-guia-de-pruebas.md`](qa/S9-08-guia-de-pruebas.md).
+
+### Antes de fusionar a `main`
+
+- [ ] **Rama de respaldo en Neon** (por ejemplo `antes-de-s9-08`), como en «Primer despliegue con consultorios». La migración `20261026100000_add_rate_limit_counters` solo **crea la tabla `RateLimitCounter`**: no toca ninguna fila existente y la versión anterior, que cuenta en memoria, nunca la lee, así que seguir con ella o volver atrás es seguro. Se aplica sola con el `prisma migrate deploy` del Build Command y se probó sobre datos existentes (`backend/tests/rateLimitCountersMigration.test.js`).
+- [ ] **Decidir los correos que recibirán las alertas**: los de los desarrolladores / del equipo que opera MedCita, **nunca** los de un cliente o consultorio.
+- [ ] **Brevo y la lista de IPs autorizadas.** Si en Brevo está activa la lista de IPs (app.brevo.com → *Security → Authorised IPs*), Brevo **rechaza con 401** («unrecognised IP address») las llamadas desde cualquier IP que no esté en ella, y manda un correo «Verify a new IP» a la cuenta. Eso bloquea **todos** los correos de MedCita (invitaciones, altas, recuperación de contraseña, recordatorios por correo y estas alertas). Autoriza las **IPs de salida de Render** de la región del servicio (Render las muestra en el panel del servicio —busca «Outbound» en *Connect*— y en su documentación, «Outbound IP Addresses»; son compartidas por la región y pueden cambiar) o desactiva la restricción. Para probar desde una computadora local también hay que autorizar la IP de esa computadora (puede ser IPv6 y cambiar).
+
+### Variables de entorno (Render → `medcita-backend` → *Environment*)
+
+| Key | Value |
+|---|---|
+| `ERROR_ALERT_EMAILS` | Correos de los **desarrolladores o del equipo de soporte de MedCita**, uno o varios separados por comas (`dev1@…,dev2@…`); cada aviso llega a todos. Una dirección compartida (`soporte@…`) también sirve y no depende de una persona. **Nunca** la de un consultorio: el aviso nombra al consultorio afectado y es solo para quien opera la plataforma. Sin definir no se envía nada y todo sigue como antes. Necesita el correo funcionando (`BREVO_*`, sección 3). Render redespliega solo al guardar |
+
+Nada más cambia: los límites siguen siendo los mismos (`docs/TECHNICAL.md`, «Límite de intentos»).
+
+### Qué cambia al desplegar
+
+- Los intentos fallidos ya **no se pierden con cada despliegue**: quien está bloqueado sigue bloqueado hasta que termine su ventana (de 15 minutos a 1 hora).
+- Cada intento contado hace una escritura en Neon (también despierta la base si estaba dormida; el login ya la necesitaba). Las filas vencidas se borran cada hora.
+- Si la base no responde al contar, la petición **pasa** (lo que sigue, un login o un alta, también necesita la base y falla por su cuenta).
+- A partir de ahora **reiniciar el servicio ya no borra los límites**. Para pruebas y soporte existe `npm run limits:reset` (ver abajo).
+
+### Probar las alertas en producción
+
+La *Shell* de Render depende del plan (en el gratuito normalmente no está; compruébalo en tu panel), así que no cuentes con correr `npm run alerts:test` allí. Alternativas, de la más simple a la más completa:
+
+1. **Probar el proveedor y los destinatarios desde tu computadora**, con las mismas `BREVO_*` y `ERROR_ALERT_EMAILS` de producción en tu `backend/.env`: `npm run alerts:test` debe imprimir `OK -> tu@correo.com (brevo)` y llegar «[MedCita · Consultorio de ejemplo] Error 500 en GET /api/alerts-test (src/routes/example.js:42)». Prueba la clave de Brevo y la dirección, **no** las IPs de Render.
+2. **Probar que Render puede enviar correo** (las IPs): provoca un correo desde producción, por ejemplo «Forgot password» con una cuenta tuya, y mira en los *Logs* de Render: `[BREVO EMAIL] Email sent successfully` (bien) o `[BREVO EMAIL ERROR] 401` (falta autorizar las IPs de Render).
+3. **Un error real en un ambiente de pruebas** (staging, o local con una base aparte): la receta paso a paso está en la guía de pruebas, sección 4.
+
+No se recomienda provocar un 500 a propósito en producción.
+
+### Verificar producción después de desplegar
+
+- [ ] `GET /api/health` responde `200` y el despliegue terminó sin errores de migración.
+- [ ] Iniciar sesión funciona. En el SQL Editor de Neon, `SELECT count(*) FROM "RateLimitCounter";` devuelve un número (la tabla existe; se llena solo con intentos **fallidos** y con solicitudes de registro o de recuperación).
+- [ ] Los *Logs* de Render no muestran `Could not purge the rate limit counters` ni `[BREVO EMAIL ERROR]`.
+- [ ] `ERROR_ALERT_EMAILS` está definida (Render → *Environment*) con las direcciones correctas y el punto 1 o 2 de arriba funcionó.
+- [ ] Opcional: 6 intentos de login con una cuenta de prueba que no exista dan `429` en el sexto; reiniciar el servicio en Render y comprobar que sigue en `429`.
+
+### Cuando llegue la primera alerta real
+
+El correo trae la ruta, el consultorio (nombre, nombre corto e id), el dominio, el archivo y la línea del código, el tipo de error y un **id de la petición**. Para ver el mensaje completo: Render → *Logs* del servicio → busca ese id (`[request a602c1203971]`). El aviso no incluye el mensaje porque puede citar datos de pacientes. No se repite para la misma ruta y consultorio durante 15 minutos (el siguiente cuenta los que se callaron) y salen 10 como máximo por hora; si hay una tormenta de errores el resto está en los logs.
+
+### Si alguien se bloquea por error, o tras una prueba
+
+Los contadores se borran con `npm run limits:reset` desde `backend/`: **solo toca los contadores** y se niega a correr contra una base que no sea local, porque borrarlos en producción le daría intentos nuevos a quien adivina contraseñas. Para hacerlo a propósito en producción: `RATE_LIMIT_RESET_HOST=<host de Neon> npm run limits:reset` con la `DATABASE_URL` de Neon en el entorno. Esperar a que termine la ventana (hasta una hora) también funciona.
+
+### Volver atrás
+
+Revertir el código es seguro: la versión anterior vuelve a contar en memoria y la tabla `RateLimitCounter` queda sin uso. Quitar `ERROR_ALERT_EMAILS` apaga las alertas sin tocar el código.
+
+## Despliegue de las respuestas por WhatsApp (S9-02)
+
+S9-02 deja que el paciente responda el recordatorio con un toque —«Confirmo», «Cancelar» o «Cambiar hora»— y la agenda se actualiza sola. Cómo probarlo: [`docs/qa/S9-02-guia-de-pruebas.md`](qa/S9-02-guia-de-pruebas.md); cómo configurar Meta: [WHATSAPP_META_SETUP.md, paso 12](WHATSAPP_META_SETUP.md).
+
+> **Estado.** El código se probó con llamadas simuladas y firmadas igual que las de Meta (`npm run whatsapp:reply` y la suite). **Todavía no se probó con Meta de verdad**: el webhook y la plantilla con botones están por validar con el número de prueba (checklist de abajo).
+
+**No hay migración**: no cambia el esquema. No hace falta rama de respaldo en Neon y volver atrás el código es seguro. Lo que sí trae es el **primer endpoint abierto a internet sin login**, `POST /api/webhooks/whatsapp` (y su `GET` de verificación). Por eso está apagado hasta que existan sus secretos: sin `META_APP_SECRET` responde `503` a todo y no acepta nada.
+
+### Orden para activarlo (cada paso es seguro por sí solo)
+
+1. **Fusionar y desplegar.** Nada cambia para los pacientes: sin las variables, el webhook responde `503` y los recordatorios salen como siempre.
+2. **Definir en Render** `META_APP_SECRET` y `META_WEBHOOK_VERIFY_TOKEN` (7.5). Redespliega solo.
+3. **Configurar el webhook en Meta** (WHATSAPP_META_SETUP.md, paso 12): URL `https://<tu-backend>.onrender.com/api/webhooks/whatsapp` y el mismo token. Meta hace la verificación en ese momento: tiene que decir que se verificó. Luego, suscribir el campo `messages`.
+4. **Registrar la plantilla con botones** (7.4) y esperar a que esté **APPROVED**.
+5. **Recién entonces** definir `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS` si registraste la de la dirección). Desde el **siguiente recordatorio** de cada cita salen los botones. Los recordatorios ya enviados no cambian.
+
+Si se invierte el orden (poner la plantilla antes que el webhook), el código lo evita: sin `META_APP_SECRET` envía la plantilla sin botones.
+
+### Qué cambia al activarlo
+
+- El recordatorio de WhatsApp lleva tres botones. Al tocar uno, Meta llama al webhook y MedCita: **confirma** la cita, **la cancela** (el horario queda libre) o **avisa por correo a los administradores y secretarias** del consultorio de que el paciente pide otro horario (la cita no se mueve sola). Siempre le responde al paciente con un mensaje de texto.
+- Cada respuesta queda en el **historial de mensajes de la cita** («The patient confirmed the appointment by WhatsApp») y, si cambió la cita, en la **auditoría** como «Patient (WhatsApp)».
+- No cambia nada si el toque no corresponde: la cita ya está cancelada o cerrada, ya pasó, se movió después del recordatorio, vino de otro número (un recordatorio reenviado) o es un repetido. Se anota y no se cambia nada.
+- Un mensaje de texto libre que escriba el paciente **no se interpreta ni se responde**: solo queda en el log, sin su texto.
+- Los botones llevan un identificador firmado con `JWT_SECRET`: **si algún día cambias `JWT_SECRET`, los botones de los recordatorios que ya salieron dejan de funcionar** (el toque se ignora; los recordatorios nuevos sí funcionan).
+- Los avisos a la secretaría usan el correo (`BREVO_*`, y la lista de IPs autorizadas de Brevo, ver S9-08).
+- Un abuso del endpoint (token o firma incorrectos) se frena a las 30 llamadas inválidas por IP cada 15 minutos; las llamadas válidas de Meta nunca cuentan.
+
+### Checklist con el número de prueba de Meta (pendiente)
+
+- [ ] La URL y el token se verifican en el panel de Meta («Verify and save»).
+- [ ] El campo `messages` está suscrito.
+- [ ] La plantilla con botones queda **APPROVED**.
+- [ ] Con tu teléfono como paciente (en la lista de destinatarios del número de prueba), agenda una cita para dentro de unas 20 horas y dispara el recordatorio (`POST /api/tasks/reminders` como administrador): llega con los tres botones.
+- [ ] «Confirmo» → la cita pasa a *confirmed* y llega «quedó confirmada». «Cambiar hora» → llega el correo a los administradores. «Cancelar» → la cita se cancela y el horario queda libre.
+- [ ] En *Appointments → la cita → Messages* se ven las respuestas, y en *Audit log* aparece «Patient (WhatsApp)».
+- [ ] Tocar otra vez el mismo botón, o uno de un recordatorio viejo, no cambia nada.
+
+`npm run whatsapp:reply` solo se usa en local: se niega a hablarle a un servidor que no sea local, porque actuaría como Meta sobre pacientes reales.
+
+### Volver atrás
+
+Quita `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS`) y los recordatorios vuelven a salir sin botones; los botones de los ya enviados siguen funcionando mientras exista `META_APP_SECRET`. Quitar `META_APP_SECRET` apaga el webhook por completo. Revertir el código también es seguro.
+
+## Despliegue de los recordatorios configurables (S9-03)
+
+S9-03 agrega la migración `20261025100000_add_reminder_settings`, que solo **agrega columnas** (`Clinic`: `address`, `reminderEnabled`, `reminderHours`, `secondReminderHours`, `reminderWhatsapp`, `reminderEmail`, `reminderIndications`; `Appointment`: `secondReminderSentAt`), todas opcionales o con el valor que ya tenía el comportamiento: recordatorios activos, 24 horas, WhatsApp y correo. Ningún consultorio ni cita cambia y la versión anterior ignora las columnas, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/reminderSettingsMigration.test.js`. Por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-03`).
+
+**Nada cambia para los pacientes hasta que un administrador toque los ajustes.** Los consultorios con dirección o indicaciones llevan esos datos por correo de inmediato; por WhatsApp solo cuando la plantilla `recordatorio_cita_consultorio` esté aprobada (7.4) y definas `META_WHATSAPP_TEMPLATE_REMINDER_DETAILED`.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Settings → Reminders* aparecen los valores de siempre («24 hours before», sin segundo recordatorio, WhatsApp y Email marcados) y «Messages sent this month».
+- [ ] El recordatorio de la próxima hora llega como siempre (revisar el historial de mensajes de una cita).
+- [ ] Opcional: poner una dirección de prueba y comprobar la vista previa; borrarla después si no se quiere.
+
+## Despliegue de los bloqueos de agenda (S9-05)
+
+S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea la tabla `ScheduleBlock`**: no toca ninguna fila existente y la versión anterior del código nunca la lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/scheduleBlocksMigration.test.js`. Aun así, por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-05`).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
+- [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
 
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
@@ -478,6 +646,76 @@ Sube un archivo de prueba con una URL firmada, lo lee con otra, comprueba que **
 ## Textos legales en el frontend (S8-07)
 
 `/privacy` y `/terms` se compilan dentro del frontend a partir de `docs/legal/politica-de-privacidad.md` y `terminos-de-uso.md` (una carpeta **fuera** de `frontend/`). Render clona todo el repositorio, así que el *build* los encuentra, pero con *Root Directory* `frontend` un cambio que solo toque `docs/legal/` puede no disparar un despliegue: en el Static Site, *Settings → Build Filters*, agrega `docs/legal/**`, o lanza un *Manual Deploy* después de cambiar los textos. Cuando un abogado apruebe los textos, cambia `LEGAL_REVIEWED` a `true` en `frontend/src/config/legal.js` para quitar el aviso de borrador.
+
+## Producción lista para cobrar (S9-09)
+
+Hoy producción corre con planes gratuitos. Sirve para demostrar y probar, **no** para cobrar ni para guardar datos de salud de pacientes reales. Esta lista es lo que hay que decidir y comprobar antes. No cambia código: la recorre quien administra las cuentas de Render, Neon, Brevo y Meta, y marca cada punto contra el panel real.
+
+> **Sobre las cifras.** Los planes y precios cambian. Lo de abajo se consultó el 22-oct-2026 en las páginas oficiales ([Render: Deploy for Free](https://render.com/docs/free), [Render: precios](https://render.com/pricing), [Neon: planes](https://neon.com/docs/introduction/plans), [Neon: history window](https://neon.com/docs/postgres/backup-restore/history-window)); **confírmalas antes de contratar**, porque algunas fuentes que se encontraron eran de fechas distintas. Los puntos marcados «(por confirmar)» no se pudieron verificar.
+
+### 1. Qué se pierde hoy con los planes gratuitos
+
+| Servicio | Plan de hoy | Qué significa para un consultorio que paga |
+|---|---|---|
+| Render (backend) | Free | El servicio **se duerme tras 15 min sin tráfico** y despertarlo tarda cerca de un minuto: el primer paciente o la primera secretaria de la mañana espera. UptimeRobot lo mantiene despierto, pero es un parche. Hay un tope de 750 horas gratis al mes por espacio de trabajo |
+| Neon (base de datos) | Free | La ventana de historial para restaurar es de **solo unas 6 horas** (con un tope de cambios de 1 GB): un error que se note al día siguiente no se puede deshacer con «volver atrás en el tiempo». Hay 1 instantánea manual y el cómputo se suspende solo cuando no se usa |
+| UptimeRobot | Free | Revisa cada 5 minutos como mínimo y avisa por correo; no hay segundo canal |
+| Brevo / Meta | Gratis o de prueba | El número de prueba de Meta solo entrega a 5 destinatarios, y su token vence a los 60 días mientras el negocio no esté verificado (ver 7.7) |
+
+### 2. Planes a contratar (decisión de quien paga)
+
+- [ ] **Render, backend: un plan de pago** (el más barato, *Starter*, listaba desde unos US$7 al mes; por confirmar) para que **no se duerma**. Con él, UptimeRobot deja de ser necesario para eso, pero se queda para avisar si se cae.
+- [ ] **Neon: plan de pago (*Launch*)**, que permite ampliar la ventana de historial hasta unos 7 días (se cobra por GB; por confirmar) y tiene instantáneas manuales. Decide la ventana: **7 días es lo que permite restaurar un error que se descubre el lunes y ocurrió el viernes.**
+- [ ] Anotar aquí el **costo mensual real** y la fecha en que se contrató: `______ US$/mes (Render) + ______ US$/mes (Neon) + ______ (otros)`.
+- [ ] El **frontend** (sitio estático de Render) no se duerme; no necesita plan de pago.
+
+### 3. Respaldos con restauración probada
+
+Un respaldo que nunca se restauró es una esperanza. Se hace **una vez, sobre una rama, nunca sobre producción**, y se anota lo que se aprendió:
+
+1. En Neon, crea una **rama de prueba** desde producción (*Branches → Create branch*). Es instantánea y no toca producción.
+2. En esa rama, simula un daño: borra un par de filas de una tabla de prueba (por ejemplo, un paciente de demostración).
+3. Restáurala a un momento anterior al daño con la opción de restauración del panel de Neon (*Backup & Restore*; el nombre del menú por confirmar) y comprueba que las filas volvieron.
+4. Anota: `fecha de la prueba: ______ · cuánto tardó: ______ · quién la hizo: ______ · a qué momento restauró: ______`.
+5. Borra la rama de prueba.
+
+- [ ] Restauración ensayada y anotada (arriba).
+- [ ] Ventana de historial configurada a lo decidido en el punto 2.
+- [ ] **Una copia fuera de Neon.** El historial de Neon sirve para errores recientes, no si se pierde la cuenta o el proyecto. Cada tanto (por ejemplo, antes de cada release) haz un `pg_dump` de la base con la cadena directa de conexión y guárdalo **cifrado y fuera del repositorio**. Contiene datos de pacientes: tratarlo como tal. Comando de ejemplo: `pg_dump "<cadena directa de Neon>" -Fc -f medcita-AAAA-MM-DD.dump`; restaurar en una base local de prueba con `pg_restore` para comprobar que abre.
+- [ ] Antes de cada migración que cambie el esquema, la **rama de respaldo en Neon** de siempre (ver «Primer despliegue con consultorios»).
+
+### 4. Monitoreo y avisos
+
+- [ ] `GET /api/health` vigilado desde fuera (UptimeRobot) y con **dos destinatarios** de aviso, no uno. Responde `503` si la base no contesta o si falta una migración.
+- [ ] `ERROR_ALERT_EMAILS` definido en Render con los correos del equipo que opera MedCita (S9-08), y probado con `npm run alerts:test`.
+- [ ] Brevo con la **lista de IPs autorizadas de Render** (si está activa), o sin esa restricción. Sin esto no sale ningún correo ni aviso.
+- [ ] Panel de MedCita: el aviso rojo de «mensajes que fallan» lo ve alguien cada día (lo ve el administrador de cada consultorio).
+- [ ] **Vencimiento del token de Meta** anotado en un calendario compartido (hoy vence el **19-dic-2026**; ver 7.3). Un token vencido apaga todos los WhatsApp con error 190.
+- [ ] Logs de Render: quién tiene acceso y por cuánto tiempo se conservan (por confirmar según el plan).
+
+### 5. Secretos y accesos
+
+- [ ] Lista de **quién tiene acceso** a Render, Neon, Brevo, Meta, GitHub y al dominio, con al menos **dos personas** en cada cuenta importante (que un solo olvido de contraseña no deje a MedCita sin servicio).
+- [ ] Verificación en dos pasos activada en esas cuentas.
+- [ ] Los secretos viven solo en las variables de entorno de Render (nunca en el repositorio ni en chats): `JWT_SECRET`, `DATABASE_URL`, `META_WHATSAPP_TOKEN`, `META_APP_SECRET`, `BREVO_API_KEY`. Si alguno se expone, se rota (cambiar `JWT_SECRET` cierra todas las sesiones y deja sin efecto los botones de WhatsApp ya enviados).
+- [ ] El correo de soporte que reciben los consultorios existe y alguien lo lee.
+
+### 6. Si algo se cae (guía corta)
+
+| Síntoma | Primero mira | Qué hacer |
+|---|---|---|
+| El sitio no abre o el login dice error de conexión | `/api/health` y *Logs* en Render | `503 schema_outdated`: falta una migración, ver «Contrato de despliegue del backend». `database_unreachable`: estado de Neon. Un despliegue reciente que falló: *Rollback* al anterior en Render |
+| Nadie recibe WhatsApp | *Messages* de una cita y el aviso rojo del panel | Error 190: token vencido (7.3). 132001: plantilla sin aprobar o con otro nombre (7.4) |
+| Nadie recibe correos | *Logs* de Render: `[BREVO EMAIL ERROR]` | 401: IPs de Render sin autorizar en Brevo |
+| Un error que se descubre tarde en los datos | Neon: ventana de historial | Restaurar **una rama** al momento anterior al daño, comprobar, y recién entonces decidir qué hacer con producción; **no restaures producción a ciegas** |
+| Se sospecha una filtración | `docs/legal/` (procedimiento ante brechas) | Rotar secretos, revisar el Activity Log y avisar según el procedimiento |
+
+### 7. Antes de cobrar al primer consultorio
+
+- [ ] Los puntos 2 a 5 están marcados.
+- [ ] El abogado revisó `docs/legal/` y se completaron los `[PENDIENTE]` (sin eso no se guardan datos clínicos reales).
+- [ ] Número de WhatsApp propio y negocio verificado en Meta (7.7).
+- [ ] Un **staging** existe para probar migraciones antes de producción (ver «Ambiente de pruebas»).
 
 ## Notas para futuros redeploys
 

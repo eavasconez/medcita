@@ -14,10 +14,23 @@ model Clinic {
   name      String
   // URL-safe name, unique across the platform
   slug      String   @unique
-  // IANA zone of the clinic. Stored with the clinic; for now the app still reads
-  // CLINIC_UTC_OFFSET_MINUTES (utils/clinicTime.js) for every clinic.
+  // IANA zone of the clinic. Appointment date/time are clinic-local text; this zone
+  // says which real instant they are (utils/clinicTime.js).
   timezone  String   @default("America/Guayaquil")
   createdAt DateTime @default(now())
+
+  // Where the clinic is, for the reminders ("Dirección")
+  address   String?
+  // Appointment reminders (S9-03). The defaults are what every clinic did before they were
+  // configurable: one WhatsApp and one email, 24 hours before.
+  reminderEnabled     Boolean @default(true)
+  // Hours before the appointment of the first and, optionally, a second reminder
+  reminderHours       Int     @default(24)
+  secondReminderHours Int?
+  reminderWhatsapp    Boolean @default(true)
+  reminderEmail       Boolean @default(true)
+  // Free text added to the reminders ("Llegar 10 minutos antes y traer la cédula")
+  reminderIndications String?
 
   doctors        Doctor[]
   patients       Patient[]
@@ -25,6 +38,8 @@ model Clinic {
   availabilities Availability[]
   invitations    Invitation[]
   consents       PatientConsent[]
+  appointmentTypes AppointmentType[]
+  scheduleBlocks ScheduleBlock[]
 }
 
 model Doctor {
@@ -44,6 +59,7 @@ model Doctor {
   appointments        Appointment[]
   availabilities      Availability[]
   passwordResetTokens PasswordResetToken[]
+  scheduleBlocks      ScheduleBlock[]
 
   // Lets Appointment and Availability point at a doctor *of the same clinic*
   @@unique([id, clinicId])
@@ -94,13 +110,78 @@ model Appointment {
   createdAt      DateTime  @default(now())
   // Set when the 24h reminder is claimed/sent; null means it is still owed.
   reminderSentAt DateTime?
+  // The same for the second reminder, when the clinic sends one. A second reminder that was
+  // no longer owed (the first one already went out inside its window) is dated too.
+  secondReminderSentAt DateTime?
+  // How long the visit lasts, copied from its type when it is booked: editing the
+  // type later does not move or overlap the appointments already in the agenda.
+  durationMinutes Int      @default(30)
   clinicId       String
   clinic         Clinic    @relation(fields: [clinicId], references: [id])
   // The doctor and the patient must belong to the same clinic as the appointment
   doctor         Doctor    @relation(fields: [doctorId, clinicId], references: [id, clinicId])
   patient        Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId])
+  // The kind of visit. Optional in the database on purpose: code from before the types
+  // existed can still book (an appointment without a type counts as the clinic's default
+  // type), so going back to an older release never breaks booking. The app always sets it.
+  typeId         String?
+  type           AppointmentType? @relation(fields: [typeId, clinicId], references: [id, clinicId], onDelete: Restrict)
 
   @@index([clinicId, date])
+}
+
+// A kind of visit a clinic offers ("First visit, 40 min", "Check-up, 20 min"): its
+// length decides how much of the agenda a booking takes. Every clinic has exactly one
+// default type of 30 minutes (what every appointment was before types existed). A type
+// is archived (`active = false`), never deleted, so past appointments keep theirs.
+model AppointmentType {
+  id              String        @id @default(uuid())
+  name            String
+  durationMinutes Int
+  // '#rrggbb', used to paint the type in the calendar
+  color           String
+  isDefault       Boolean       @default(false)
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  clinicId        String
+  clinic          Clinic        @relation(fields: [clinicId], references: [id])
+  appointments    Appointment[]
+
+  @@unique([clinicId, name])
+  // Lets Appointment point at a type *of the same clinic*
+  @@unique([id, clinicId])
+}
+
+// Days a doctor, or the whole clinic, does not attend: holidays, vacations, a congress.
+// Whole days only, `startDate` to `endDate` both included ('YYYY-MM-DD', clinic-local like
+// Appointment.date). Nobody can book on a blocked day; appointments already there stay and
+// are listed so they can be rescheduled. `doctorId` null means every doctor of the clinic.
+model ScheduleBlock {
+  id        String   @id @default(uuid())
+  startDate String
+  endDate   String
+  reason    String
+  createdAt DateTime @default(now())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  doctorId  String?
+  // The doctor must belong to the same clinic as the block; deleting the doctor deletes it
+  doctor    Doctor?  @relation(fields: [doctorId, clinicId], references: [id, clinicId], onDelete: Cascade)
+
+  @@index([clinicId, startDate, endDate])
+}
+
+// How many times a client hit a rate limit (failed logins, password resets, sign-ups...)
+// inside its current window (S9-08). It lives in the database so the counts survive a deploy
+// and are shared by every instance of the backend. `key` is "<limiter>:<sha256 of the client>"
+// (the client is an email or an IP, which are not kept in the clear); a row is dead once
+// `resetAt` has passed and a cleanup removes it.
+model RateLimitCounter {
+  key     String   @id
+  hits    Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }
 
 // One-time password reset links. Only the SHA-256 hash of the token is stored, so
@@ -195,14 +276,18 @@ model NotificationLog {
   createdAt         DateTime @default(now())
   clinicId          String?
   appointmentId     String?
-  // appointment_confirmation, appointment_reminder, doctor_new_appointment,
-  // password_reset, signup_confirmation, account_exists, invitation
+  // appointment_confirmation, appointment_reminder, appointment_second_reminder,
+  // doctor_new_appointment, password_reset, signup_confirmation, account_exists, invitation;
+  // and what the patient did with the buttons of the WhatsApp reminder (S9-02):
+  // patient_confirmed, patient_cancelled, patient_reschedule_request, patient_reply_ignored
+  // (received), patient_reply_answer (our answer), reschedule_request_notice (email to staff)
   kind              String
   channel           String
   provider          String
   // patient, doctor or user: who the message was for
   recipient         String
-  // sent, failed, or simulated (no provider is configured: nothing really left)
+  // sent, failed, or simulated (no provider is configured: nothing really left);
+  // received: a message that came IN from the patient (S9-02), not one we sent
   status            String
   errorCode         String?
   error             String?

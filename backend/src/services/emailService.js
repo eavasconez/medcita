@@ -132,10 +132,15 @@ function appointmentConfirmationHtml({ patientName, doctorName, date, time, addr
   `);
 }
 
-function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana' }) {
+function reminderHtml({ patientName, doctorName, date, time, dayLabel = 'mañana', clinicName, address, indications }) {
+  const extras = [
+    address ? `<li><strong>Dirección:</strong> ${escapeHtml(address)}</li>` : '',
+    indications ? `<li><strong>Indicaciones:</strong> ${escapeHtml(indications)}</li>` : ''
+  ].join('');
   return baseLayout('Recordatorio de cita', `
     <p>Hola <strong>${escapeHtml(patientName)}</strong>,</p>
-    <p>Tienes una cita ${escapeHtml(dayLabel)} <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>.</p>
+    <p>Tienes una cita ${escapeHtml(dayLabel)} <strong>${escapeHtml(date)}</strong> a las <strong>${escapeHtml(time)}</strong> con <strong>${escapeHtml(doctorName)}</strong>${clinicName ? ` en <strong>${escapeHtml(clinicName)}</strong>` : ''}.</p>
+    ${extras ? `<ul>${extras}</ul>` : ''}
   `);
 }
 
@@ -210,6 +215,23 @@ function doctorNewAppointmentHtml({ doctorName, patientName, patientPhone, date,
   `);
 }
 
+// For the clinic's admins and secretaries: a patient tapped «Cambiar hora» on the WhatsApp reminder (S9-02)
+function rescheduleRequestHtml({ staffName, patientName, patientPhone, doctorName, clinicName, date, time, url }) {
+  return baseLayout('Un paciente pidió cambiar su cita', `
+    <p>Hola <strong>${escapeHtml(staffName)}</strong>,</p>
+    <p>En <strong>${escapeHtml(clinicName)}</strong>, un paciente tocó <strong>«Cambiar hora»</strong> en el recordatorio de WhatsApp:</p>
+    <ul>
+      <li><strong>Paciente:</strong> ${escapeHtml(patientName)}</li>
+      <li><strong>Teléfono:</strong> ${escapeHtml(patientPhone)}</li>
+      <li><strong>Cita actual:</strong> ${escapeHtml(date)} a las ${escapeHtml(time)} con ${escapeHtml(doctorName)}</li>
+    </ul>
+    <p>La cita sigue como estaba. Comunícate con el paciente para elegir otro horario y muévela desde la agenda.</p>
+    <p style="text-align: center; margin: 28px 0;">
+      <a href="${escapeHtml(url)}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Abrir la agenda</a>
+    </p>
+  `);
+}
+
 const emailService = {
   /**
    * Send an email. Provider precedence: Brevo (preferred) -> SendGrid
@@ -257,7 +279,8 @@ const emailService = {
     signupConfirmationHtml,
     accountExistsHtml,
     invitationHtml,
-    doctorNewAppointmentHtml
+    doctorNewAppointmentHtml,
+    rescheduleRequestHtml
   }
 };
 

@@ -1,7 +1,8 @@
 // A written record of what an admin or a secretary does with appointments,
 // patients and accounts, and of how people sign in: every successful and failed
 // sign-in of an existing account, and every password change. Doctors acting on
-// their own data are not recorded. Each entry also keeps where the request came
+// their own data are not recorded. What a patient does by tapping a button of the
+// WhatsApp reminder (confirm or cancel the visit) is recorded as well, as the patient. Each entry also keeps where the request came
 // from (IP and User-Agent) and the clinic of whoever acted.
 //
 // Every record is written in the same database transaction as the action it
@@ -16,18 +17,24 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
 // appointment notes (they can hold medical details), emails and passwords are
 // never copied into the log.
 const FIELDS = {
-  appointment: { shown: ['date', 'time', 'status'], hidden: ['notes'] },
+  appointment: { shown: ['date', 'time', 'status'], hidden: ['notes', 'typeId'] },
   patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
   user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
   // An invitation to join the clinic; the account itself is created by its owner later
-  invitation: { shown: ['role'], hidden: ['name', 'email'] }
+  invitation: { shown: ['role'], hidden: ['name', 'email'] },
+  // A kind of visit the clinic offers (admins manage them)
+  appointment_type: { shown: ['name', 'durationMinutes', 'color', 'active'], hidden: [] },
+  // Days nobody attends; the reason is free text that can say too much, so it is not kept
+  schedule_block: { shown: ['startDate', 'endDate'], hidden: [] },
+  // How the clinic reminds its patients; the address and the indications are free text
+  reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 
 const orNull = (value) => (value === undefined ? null : value);
@@ -95,6 +102,28 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
   });
 }
 
+// A patient confirmed or cancelled their own visit from the WhatsApp reminder (S9-02). The
+// patient is not a user, so the entry is written as the patient: their id (never their name or
+// number, the entry is shown to the clinic's admins) and the role 'patient'. `origin` is where
+// the request came from (requestOrigin of the webhook call: Meta's server).
+function recordPatientAction(db, { clinicId, patientId, action, entityId, doctorId = null, changes = null, origin = {} }) {
+  return db.auditLog.create({
+    data: {
+      actorId: patientId,
+      actorName: 'Patient (WhatsApp)',
+      actorRole: 'patient',
+      clinicId,
+      action,
+      entity: 'appointment',
+      entityId,
+      doctorId,
+      changes: changes ?? undefined,
+      ip: origin.ip ?? null,
+      userAgent: origin.userAgent ?? null
+    }
+  });
+}
+
 // An entry about the account itself, for the moments when the person is not (yet)
 // signed in: a sign-in, a failed one, a password reset. `account` is the Doctor row
 // (id, name, role, clinicId). Any role is recorded, not only staff, and nothing the
@@ -151,7 +180,9 @@ module.exports = {
   diffFields,
   describeCreated,
   describeRemoved,
+  requestOrigin,
   recordAudit,
+  recordPatientAction,
   recordAccountEvent,
   recordRead,
   auditPatientUpsert

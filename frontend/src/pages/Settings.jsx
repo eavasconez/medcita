@@ -1,8 +1,10 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../AuthContext';
+import AppointmentTypesCard from '../components/AppointmentTypesCard';
+import ReminderSettingsCard from '../components/ReminderSettingsCard';
 import {
   User,
   Mail,
@@ -18,6 +20,21 @@ import {
 } from 'lucide-react';
 
 const MIN_PASSWORD_LENGTH = 6;
+const DEFAULT_TIMEZONE = 'America/Guayaquil';
+
+// "America/Guayaquil (GMT-5)": the zone name plus how far it is from UTC right now
+const timezoneLabel = (zone) => {
+  try {
+    const offset = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'shortOffset' })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    return offset ? `${zone} (${offset})` : zone;
+  } catch {
+    return zone;
+  }
+};
+
+const allTimezones = () => [...new Set([...Intl.supportedValuesOf('timeZone'), 'UTC'])];
 
 const Settings = () => {
   const { user, token, updateUser, updateToken } = useContext(AuthContext);
@@ -29,13 +46,14 @@ const Settings = () => {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changingPassword, setChangingPassword] = useState(false);
   const [clinicName, setClinicName] = useState('');
+  const [clinicTimezone, setClinicTimezone] = useState(DEFAULT_TIMEZONE);
   const [savingClinic, setSavingClinic] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const showToast = (message, type = 'success') => {
+  const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -46,6 +64,7 @@ const Settings = () => {
         });
         setProfile(res.data);
         setClinicName(res.data.clinic?.name || '');
+        setClinicTimezone(res.data.clinic?.timezone || DEFAULT_TIMEZONE);
         setFormData({
           name: res.data.name || '',
           specialty: res.data.specialty || '',
@@ -60,7 +79,7 @@ const Settings = () => {
       }
     };
     fetchProfile();
-  }, [token]);
+  }, [token, showToast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,16 +103,17 @@ const Settings = () => {
     e.preventDefault();
     setSavingClinic(true);
     try {
-      const res = await axios.put(`${API_BASE_URL}/api/admin/clinic`, { name: clinicName }, {
+      const res = await axios.put(`${API_BASE_URL}/api/admin/clinic`, { name: clinicName, timezone: clinicTimezone }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setClinicName(res.data.name);
+      setClinicTimezone(res.data.timezone);
       setProfile((prev) => ({ ...prev, clinic: res.data }));
       // The sidebar and the tab title read the clinic from the cached user
       updateUser({ clinic: res.data });
-      showToast('Clinic name updated');
+      showToast('Clinic updated');
     } catch (err) {
-      showToast(err.response?.data?.error || 'Error updating the clinic name', 'error');
+      showToast(err.response?.data?.error || 'Error updating the clinic', 'error');
     } finally {
       setSavingClinic(false);
     }
@@ -247,22 +267,43 @@ const Settings = () => {
                     />
                     <p className="text-slate-400 text-xs font-medium">Shown in the sidebar and in the invitations you send</p>
                   </div>
+                  <div className="space-y-2">
+                    <label htmlFor="clinic-timezone" className="form-label">Timezone</label>
+                    <select
+                      id="clinic-timezone"
+                      disabled={loading}
+                      value={clinicTimezone}
+                      onChange={(e) => setClinicTimezone(e.target.value)}
+                      className="form-input disabled:opacity-60"
+                    >
+                      {allTimezones().map((zone) => (
+                        <option key={zone} value={zone}>{timezoneLabel(zone)}</option>
+                      ))}
+                    </select>
+                    <p className="text-slate-400 text-xs font-medium">Appointment times, free slots and reminders are read in this zone. Changing it does not move the appointments already booked: they keep their local time.</p>
+                  </div>
                   <button
                     type="submit"
-                    disabled={savingClinic || loading || clinicName.trim() === (profile?.clinic?.name || '')}
+                    disabled={savingClinic || loading || (clinicName.trim() === (profile?.clinic?.name || '') && clinicTimezone === (profile?.clinic?.timezone || DEFAULT_TIMEZONE))}
                     className="btn-primary px-8 py-3 rounded-xl flex items-center gap-2 disabled:opacity-50"
                   >
-                    <Save size={18} /> {savingClinic ? 'Saving...' : 'Save clinic name'}
+                    <Save size={18} /> {savingClinic ? 'Saving...' : 'Save clinic'}
                   </button>
                 </form>
               ) : (
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clinic name</p>
                   <p className="text-2xl font-black text-secondary mt-1 break-words">{profile?.clinic?.name || user?.clinic?.name || '—'}</p>
-                  <p className="text-slate-400 text-xs font-medium mt-2">Only a clinic administrator can change it</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Timezone</p>
+                  <p className="text-lg font-black text-secondary mt-1 break-words">{timezoneLabel(profile?.clinic?.timezone || user?.clinic?.timezone || DEFAULT_TIMEZONE)}</p>
+                  <p className="text-slate-400 text-xs font-medium mt-2">Only a clinic administrator can change them</p>
                 </div>
               )}
             </div>
+
+            {displayRole === 'admin' && <AppointmentTypesCard onMessage={showToast} />}
+
+            {displayRole === 'admin' && <ReminderSettingsCard onMessage={showToast} />}
 
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">

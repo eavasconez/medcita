@@ -12,11 +12,20 @@ const patientRoutes = require('./routes/patients');
 const availabilityRoutes = require('./routes/availability');
 const adminRoutes = require('./routes/admin');
 const platformRoutes = require('./routes/platform');
+const appointmentTypeRoutes = require('./routes/appointmentTypes');
+const scheduleBlockRoutes = require('./routes/scheduleBlocks');
+const webhookRoutes = require('./routes/webhooks');
+const { webhookIpLimiter } = require('./middleware/rateLimiters');
 const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
 const { getSchemaStatus, logSchemaStatus } = require('./services/schemaCheck');
+const { purgeExpiredCounters } = require('./services/rateLimitStore');
+const { createErrorAlerts } = require('./services/errorAlerts');
+
+// Emails whoever runs the platform when a request ends in a server error (ERROR_ALERT_EMAILS)
+const errorAlerts = createErrorAlerts();
 
 // Refuse to start with a missing, known-example, or too-short JWT secret -
 // tokens signed with a guessable/checked-in secret can be forged by anyone
@@ -64,6 +73,9 @@ app.use(cors({ origin: allowedOrigins }));
 app.use(helmet());
 // Request logging is noise in the test output
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
+app.use(errorAlerts.middleware);
+// The webhooks read their own body (the signature covers its exact bytes), so they come before express.json()
+app.use('/api/webhooks', webhookIpLimiter, webhookRoutes);
 app.use(express.json());
 
 // Unauthenticated health check - gives uptime monitors (and any future
@@ -83,6 +95,8 @@ app.get('/api/health', async (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/appointments', authMiddleware, appointmentRoutes);
+app.use('/api/appointment-types', authMiddleware, appointmentTypeRoutes);
+app.use('/api/schedule-blocks', authMiddleware, scheduleBlockRoutes);
 app.use('/api/patients', authMiddleware, patientRoutes);
 app.use('/api/availability', authMiddleware, availabilityRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
@@ -103,6 +117,9 @@ app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
   }
 });
 
+// Last of all: an error no route dealt with ends here (and is alerted) instead of in Express's own page
+app.use(errorAlerts.errorHandler);
+
 // Only start the cron and open the port when run directly (`node src/server.js`).
 // Importing this file (e.g. from the test suite) just gets the configured app.
 if (require.main === module) {
@@ -113,6 +130,11 @@ if (require.main === module) {
       console.error('Scheduled reminder task failed:', error.message);
     });
   });
+
+  // Rate limit counters whose window ended are dead weight: clear them out every hour (and now)
+  const purgeCounters = () => purgeExpiredCounters().catch((error) => console.error('Could not purge the rate limit counters:', error.message));
+  cron.schedule('30 * * * *', purgeCounters);
+  purgeCounters();
 
   // Say right at boot, in the log, if the database is behind this code.
   getSchemaStatus({ force: true }).then(logSchemaStatus);

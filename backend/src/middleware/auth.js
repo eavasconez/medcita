@@ -26,7 +26,7 @@ module.exports = async (req, res, next) => {
   try {
     const doctor = await prisma.doctor.findUnique({
       where: { id: decoded.id },
-      select: { name: true, clinicId: true, passwordChangedAt: true }
+      select: { name: true, clinicId: true, passwordChangedAt: true, clinic: { select: { timezone: true } } }
     });
     if (!doctor || issuedBeforePasswordChange(decoded.iat, doctor.passwordChangedAt)) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -36,6 +36,8 @@ module.exports = async (req, res, next) => {
     // The clinic comes from the account, never from the token or the request: it is
     // what keeps every query inside the caller's own clinic (see utils/clinicScope.js)
     req.clinicId = doctor.clinicId;
+    // Dates and times of the appointments are the clinic's own, whatever the server's zone is
+    req.clinicTimezone = doctor.clinic.timezone;
   } catch (err) {
     // A database problem is not a bad token: answering 401 would log everyone out.
     console.error('Auth lookup error:', err);

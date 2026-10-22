@@ -5,8 +5,11 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { addDays, format, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
-const { isValidDate, appointmentInstant } = require('../utils/clinicTime');
-const { inClinic } = require('../utils/clinicScope');
+const { isValidDate, isValidTimezone, appointmentInstant, clinicDateString } = require('../utils/clinicTime');
+const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
+const attendance = require('../services/attendanceReport');
+const reminderSettings = require('../services/reminderSettings');
+const notificationService = require('../services/notificationService');
 const { inviteLimiter } = require('../middleware/rateLimiters');
 const invitations = require('../services/invitationService');
 const notificationLog = require('../services/notificationLog');
@@ -159,17 +162,32 @@ router.delete('/invitations/:id', async (req, res) => {
   }
 });
 
-// Rename the admin's own clinic (the name people see all over the app and in the invitations)
+// Change the admin's own clinic: its name (what people see all over the app and in the
+// invitations) and/or its timezone (how every appointment time is read). Send either or both.
 router.put('/clinic', async (req, res) => {
-  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
-  if (name.length < MIN_CLINIC_NAME_LENGTH || name.length > MAX_CLINIC_NAME_LENGTH) {
-    return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+  const { timezone } = req.body || {};
+  const data = {};
+
+  // A request without a name is only valid when it changes the timezone
+  if (req.body?.name !== undefined || timezone === undefined) {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+    if (name.length < MIN_CLINIC_NAME_LENGTH || name.length > MAX_CLINIC_NAME_LENGTH) {
+      return res.status(400).json({ error: `Clinic name must be between ${MIN_CLINIC_NAME_LENGTH} and ${MAX_CLINIC_NAME_LENGTH} characters` });
+    }
+    data.name = name;
   }
+  if (timezone !== undefined) {
+    if (!isValidTimezone(timezone)) {
+      return res.status(400).json({ error: 'timezone must be a valid IANA timezone (e.g. America/Guayaquil)' });
+    }
+    data.timezone = timezone;
+  }
+
   try {
     const clinic = await prisma.clinic.update({
       where: { id: req.clinicId },
-      data: { name },
-      select: { id: true, name: true }
+      data,
+      select: { id: true, name: true, timezone: true }
     });
     res.json(clinic);
   } catch (err) {
@@ -268,7 +286,7 @@ const MAX_ID_LENGTH = 64;
 
 const isBadId = (value) => value !== undefined && (typeof value !== 'string' || !value || value.length > MAX_ID_LENGTH);
 // Clinic-local midnight of a 'YYYY-MM-DD' date, and the date after it
-const dayStart = (date) => appointmentInstant(date, '00:00');
+const dayStart = (date, timezone) => appointmentInstant(date, '00:00', timezone);
 const nextDay = (date) => format(addDays(parseISO(date), 1), 'yyyy-MM-dd');
 
 // What admins and secretaries of the clinic did, newest first, one page at a time. Filters:
@@ -309,8 +327,8 @@ router.get('/audit-log', async (req, res) => {
     ...(doctorId && { doctorId }),
     ...((from || to) && {
       createdAt: {
-        ...(from && { gte: dayStart(from) }),
-        ...(to && { lt: dayStart(nextDay(to)) })
+        ...(from && { gte: dayStart(from, req.clinicTimezone) }),
+        ...(to && { lt: dayStart(nextDay(to), req.clinicTimezone) })
       }
     })
   });
@@ -388,6 +406,110 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
     res.json(formatted);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Reminder settings (S9-03) as the screen needs them: the settings, what each option can be, the
+// messages the clinic sent this month (each costs, on WhatsApp) and how a reminder would look.
+async function reminderSettingsResponse(clinic) {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return {
+    ...reminderSettings.present(clinic),
+    options: { hours: reminderSettings.REMINDER_HOURS },
+    usage: await reminderSettings.monthlyUsage(prisma, clinic),
+    preview: notificationService.reminderPreview(clinic, { whenText: `mañana ${clinicDateString(tomorrow, clinic.timezone)}` })
+  };
+}
+
+// How the clinic reminds its patients
+router.get('/reminder-settings', async (req, res) => {
+  try {
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.clinicId }, select: reminderSettings.SETTINGS_SELECT });
+    res.json(await reminderSettingsResponse(clinic));
+  } catch (err) {
+    console.error('Reminder settings error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Change them: any of enabled, hours (2, 24 or 48 before), secondHours (null for none, or earlier
+// than the first), whatsapp, email, address and indications. The change applies from the next
+// hourly run; appointments already reminded are not reminded again.
+router.put('/reminder-settings', async (req, res) => {
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.clinic.findUnique({ where: { id: req.clinicId }, select: reminderSettings.SETTINGS_SELECT });
+      const { data, error } = reminderSettings.validateChange(req.body, current);
+      if (error) return { error };
+
+      const updated = await tx.clinic.update({ where: { id: current.id }, data, select: reminderSettings.SETTINGS_SELECT });
+      const changes = diffFields('reminder_settings', current, updated);
+      if (changes) await recordAudit(tx, req, { action: 'update', entity: 'reminder_settings', entityId: current.id, changes });
+      return { updated };
+    });
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json(await reminderSettingsResponse(result.updated));
+  } catch (err) {
+    console.error('Update reminder settings error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The period of an attendance report: ?from and ?to (both included, 'YYYY-MM-DD' in the clinic's
+// time); the whole current month when they are left out (its upcoming appointments are the ones
+// still waiting for a confirmation). Returns { error } or { from, to, doctorId }.
+function attendancePeriod(req) {
+  const today = clinicDateString(new Date(), req.clinicTimezone);
+  const [year, month] = today.split('-').map(Number);
+  const from = req.query.from ?? `${today.slice(0, 7)}-01`;
+  const to = req.query.to ?? `${today.slice(0, 7)}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`;
+  const { doctorId } = req.query;
+
+  if (!isValidDate(from)) return { error: 'from must be a valid date (YYYY-MM-DD)' };
+  if (!isValidDate(to)) return { error: 'to must be a valid date (YYYY-MM-DD)' };
+  if (from > to) return { error: 'from must not be after to' };
+  if (Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1 > attendance.MAX_RANGE_DAYS) {
+    return { error: `The period can cover at most ${attendance.MAX_RANGE_DAYS} days` };
+  }
+  if (doctorId !== undefined && (typeof doctorId !== 'string' || !doctorId || doctorId.length > MAX_ID_LENGTH)) {
+    return { error: 'doctorId must be an id' };
+  }
+  return { from, to, doctorId };
+}
+
+// Attendance of a period (S9-06): how many patients came, missed, cancelled or are still waiting,
+// overall, by doctor and by type of visit, and who misses the most. Filters: from, to, doctorId.
+router.get('/reports/attendance', async (req, res) => {
+  const period = attendancePeriod(req);
+  if (period.error) return res.status(400).json({ error: period.error });
+
+  try {
+    if (period.doctorId && !(await findDoctorInClinic(prisma, req, period.doctorId))) return res.status(404).json({ error: 'Doctor not found' });
+    res.json(await attendance.attendanceReport(prisma, req, period));
+  } catch (err) {
+    console.error('Attendance report error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The same report as a spreadsheet (CSV): counts for the whole period, per doctor and per type,
+// never any patient's data.
+router.get('/reports/attendance/export', async (req, res) => {
+  const period = attendancePeriod(req);
+  if (period.error) return res.status(400).json({ error: period.error });
+
+  try {
+    if (period.doctorId && !(await findDoctorInClinic(prisma, req, period.doctorId))) return res.status(404).json({ error: 'Doctor not found' });
+    const report = await attendance.attendanceReport(prisma, req, period);
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="attendance_${period.from}_${period.to}.csv"`,
+      'Cache-Control': 'no-store'
+    });
+    res.send(attendance.attendanceCsv(report));
+  } catch (err) {
+    console.error('Attendance export error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });

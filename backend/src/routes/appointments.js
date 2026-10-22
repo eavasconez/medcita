@@ -9,6 +9,9 @@ const { upsertPatient } = require('../services/patientUpsert');
 const { recordAudit, diffFields, describeCreated, auditPatientUpsert } = require('../services/auditLog');
 const notificationLog = require('../services/notificationLog');
 const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
+const appointmentTypes = require('../services/appointmentTypes');
+const scheduleBlocks = require('../services/scheduleBlocks');
+const { runSerializableTransaction } = require('../utils/serializableTransaction');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
@@ -25,6 +28,10 @@ const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 // notificationService) - avoids pulling the full row (e.g. createdAt) on
 // every appointment list/create/update.
 const PATIENT_SELECT = { id: true, name: true, phone: true, email: true, cedula: true };
+// The kind of visit, as the calendar needs it (name and color; the length is the appointment's own)
+const TYPE_SELECT = appointmentTypes.APPOINTMENT_TYPE_SELECT;
+const MINUTES_PER_DAY = 24 * 60;
+const UNKNOWN_TYPE = 'typeId must be an active appointment type of your clinic';
 
 // Thrown for expected scheduling conflicts inside the appointment transaction,
 // so the catch block can tell them apart from unexpected DB/runtime errors.
@@ -36,60 +43,58 @@ class ScheduleConflictError extends Error {
   }
 }
 
-// P2034 (serialization failure) can come from any write conflict in the
-// transaction, not just a slot clash, so retry a bounded number of times
-// instead of assuming it always means "appointment already booked". If the
-// conflict is real, the retried attempt's own explicit check throws
-// ScheduleConflictError with the correct message; P2034 only reaches the
-// caller if it persists across every retry.
-async function runSerializableTransaction(fn, maxAttempts = 3) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
-    } catch (err) {
-      if (err.code === 'P2034' && attempt < maxAttempts) continue;
-      throw err;
-    }
-  }
-}
-
 // What "cancelled" leaves out of lists and counts (see DELETE /:id).
 const NOT_CANCELLED = { not: 'cancelled' };
 
-// The rules a doctor's slot has to meet, shared by booking and rescheduling.
+// The rules a doctor's slot has to meet, shared by booking and rescheduling: the day is not
+// blocked (vacation, holiday: see routes/scheduleBlocks.js), the whole visit
+// (from `time` for `durationMinutes`) fits inside one of the doctor's working blocks and does
+// not overlap another visit. Back to back is fine.
 // Runs inside the caller's transaction. `excludeId` leaves an appointment out
 // of the clash check (the one being moved must not clash with itself).
 // `checkAvailability: false` skips the schedule check, for an appointment that
 // keeps its slot and only needs to know the slot is still free.
-async function assertSlotBookable(tx, { doctorId, date, time, excludeId, occupiedStatus = 400, checkAvailability = true }) {
+async function assertSlotBookable(tx, { doctorId, clinicId, date, time, durationMinutes = 30, excludeId, occupiedStatus = 400, checkAvailability = true, checkBlocks = true }) {
+  const start = appointmentTypes.toMinutes(time);
+
+  // A day the doctor (or the whole clinic) does not attend takes no appointments. Skipped for an
+  // appointment that keeps its day, which may well have been booked before the block existed.
+  if (checkBlocks && (await scheduleBlocks.findBlockOn(tx, { clinicId, doctorId, date }))) {
+    throw new ScheduleConflictError('The doctor does not attend on this date');
+  }
+
   if (checkAvailability) {
-    const availability = await tx.availability.findFirst({
-      where: {
-        doctorId,
-        dayOfWeek: getDay(parseISO(date)),
-        startTime: { lte: time },
-        endTime: { gte: time }
-      }
+    const blocks = await tx.availability.findMany({
+      where: { doctorId, dayOfWeek: getDay(parseISO(date)) },
+      select: { startTime: true, endTime: true }
     });
 
     // A doctor who has not configured any schedule can be booked at any time
     // (demo simplicity), so only enforce it once there is one.
     const totalAvailabilities = await tx.availability.count({ where: { doctorId } });
-    if (totalAvailabilities > 0 && !availability) {
-      throw new ScheduleConflictError('The doctor does not work at the selected time');
+    if (totalAvailabilities > 0) {
+      const minutes = blocks.map((block) => ({ from: appointmentTypes.toMinutes(block.startTime), to: appointmentTypes.toMinutes(block.endTime) }));
+      const startsInABlock = minutes.some((block) => block.from <= start && start < block.to);
+      if (!startsInABlock) throw new ScheduleConflictError('The doctor does not work at the selected time');
+      if (!minutes.some((block) => block.from <= start && start + durationMinutes <= block.to)) {
+        throw new ScheduleConflictError("The appointment does not fit in the doctor's working hours");
+      }
     }
   }
+  if (start + durationMinutes > MINUTES_PER_DAY) {
+    throw new ScheduleConflictError('The appointment cannot run past midnight');
+  }
 
-  const conflict = await tx.appointment.findFirst({
+  const sameDay = await tx.appointment.findMany({
     where: {
       doctorId,
       date,
-      time,
       status: NOT_CANCELLED,
       ...(excludeId && { id: { not: excludeId } })
-    }
+    },
+    select: { time: true, durationMinutes: true }
   });
-  if (conflict) {
+  if (sameDay.some((other) => appointmentTypes.overlaps(start, durationMinutes, appointmentTypes.toMinutes(other.time), other.durationMinutes))) {
     throw new ScheduleConflictError('An appointment already exists at this time', occupiedStatus);
   }
 }
@@ -137,7 +142,7 @@ router.get('/', async (req, res) => {
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
-        include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
+        include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } }, type: { select: TYPE_SELECT } },
         // id as the last key keeps the order (and so the pages) stable when two
         // doctors have an appointment at the same date and time
         orderBy: [{ date: 'asc' }, { time: 'asc' }, { id: 'asc' }],
@@ -184,14 +189,14 @@ router.get('/stats', async (req, res) => {
 // no-show. Same visibility as the list; the oldest first.
 router.get('/unclosed', async (req, res) => {
   try {
-    const today = clinicDateString(new Date());
+    const today = clinicDateString(new Date(), req.clinicTimezone);
     const candidates = await prisma.appointment.findMany({
       where: { ...doctorScope(req), status: { in: OPEN_STATUSES }, date: { lte: today } },
-      include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } } },
+      include: { patient: { select: PATIENT_SELECT }, doctor: { select: { name: true } }, type: { select: TYPE_SELECT } },
       orderBy: [{ date: 'asc' }, { time: 'asc' }, { id: 'asc' }]
     });
     const now = new Date();
-    const unclosed = candidates.filter((apt) => appointmentInstant(apt.date, apt.time) < now);
+    const unclosed = candidates.filter((apt) => appointmentInstant(apt.date, apt.time, req.clinicTimezone) < now);
     res.json({ total: unclosed.length, appointments: unclosed.slice(0, 50).map((apt) => ({ ...apt, Patient: apt.patient })) });
   } catch (err) {
     console.error('Unclosed appointments error:', err);
@@ -203,7 +208,7 @@ router.get('/unclosed', async (req, res) => {
 // already closed, how many the patient missed; how many of the month's appointments
 // are confirmed against still waiting for the patient's answer; and who misses the most (all time). Same visibility as the list.
 router.get('/attendance', async (req, res) => {
-  const month = req.query.month ?? clinicDateString(new Date()).slice(0, 7);
+  const month = req.query.month ?? clinicDateString(new Date(), req.clinicTimezone).slice(0, 7);
   if (typeof month !== 'string' || !MONTH_REGEX.test(month)) {
     return res.status(400).json({ error: 'month must be a valid month (YYYY-MM)' });
   }
@@ -261,11 +266,14 @@ router.get('/:id/notifications', async (req, res) => {
       select: { id: true, status: true, date: true, time: true, reminderSentAt: true }
     });
     if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
+    const clinic = await prisma.clinic.findUnique({ where: { id: req.clinicId }, select: { reminderEnabled: true, reminderWhatsapp: true, reminderEmail: true } });
 
     res.json({
       notifications: await notificationLog.forAppointment(req.clinicId, appointment.id),
-      // Whether the 24h reminder is still owed (see tasks/reminderTask.js)
-      reminderPending: !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
+      // Whether the first reminder is still owed (see tasks/reminderTask.js): not when the clinic
+      // turned its reminders off or left them no channel
+      reminderPending: clinic.reminderEnabled && (clinic.reminderWhatsapp || clinic.reminderEmail) &&
+        !appointment.reminderSentAt && ['pending_approval', 'scheduled', 'confirmed'].includes(appointment.status)
     });
   } catch (err) {
     console.error('Appointment notifications error:', err);
@@ -275,7 +283,7 @@ router.get('/:id/notifications', async (req, res) => {
 
 // Create appointment with validations
 router.post('/', async (req, res) => {
-  const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes, doctorId } = req.body;
+  const { patientName, patientPhone, patientEmail, patientCedula, date, time, notes, doctorId, typeId } = req.body;
   const targetDoctorId = (req.userRole === 'admin' || req.userRole === 'secretary') && doctorId
     ? doctorId
     : req.doctorId;
@@ -312,8 +320,11 @@ router.post('/', async (req, res) => {
     // doctor/date/time can never both pass the conflict check and double-book
     // the slot (Postgres detects the write conflict and Prisma retries/aborts).
     const appointment = await runSerializableTransaction(async (tx) => {
-      // 1. Availability + conflict check (same rules as rescheduling)
-      await assertSlotBookable(tx, { doctorId: targetDoctorId, date, time });
+      // 1. The kind of visit (the clinic's default one unless another is asked for) decides
+      // how long it takes, then availability + conflict check (same rules as rescheduling)
+      const type = await appointmentTypes.resolveBookableType(tx, req.clinicId, typeId);
+      if (!type) throw new ScheduleConflictError(UNKNOWN_TYPE);
+      await assertSlotBookable(tx, { doctorId: targetDoctorId, clinicId: req.clinicId, date, time, durationMinutes: type.durationMinutes });
 
       // 2. Find or update the patient (a booking made by staff also leaves a
       // record of the patient it created or changed)
@@ -334,9 +345,12 @@ router.post('/', async (req, res) => {
           notes,
           patientId: patient.id,
           doctorId: targetDoctorId,
+          typeId: type.id,
+          durationMinutes: type.durationMinutes,
           status: 'pending_approval' // Default always pending for confirmation
         },
         include: {
+          type: { select: TYPE_SELECT },
           patient: { select: PATIENT_SELECT },
           doctor: { select: { id: true, name: true, email: true, role: true, address: true } }
         }
@@ -386,7 +400,7 @@ router.post('/', async (req, res) => {
 // schedule: 400 for a time the doctor does not work or one already gone, 409
 // for a slot someone else holds.
 router.put('/:id', async (req, res) => {
-  const { date, time, status, notes } = req.body;
+  const { date, time, status, notes, typeId } = req.body;
   const isSpecialRole = req.userRole === 'admin' || req.userRole === 'secretary';
 
   if (status !== undefined && !VALID_STATUSES.includes(status)) {
@@ -397,6 +411,9 @@ router.put('/:id', async (req, res) => {
   }
   if (time !== undefined && (typeof time !== 'string' || !TIME_REGEX.test(time))) {
     return res.status(400).json({ error: 'A valid time (HH:MM) is required' });
+  }
+  if (typeId !== undefined && (typeof typeId !== 'string' || !typeId)) {
+    return res.status(400).json({ error: UNKNOWN_TYPE });
   }
 
   try {
@@ -417,27 +434,42 @@ router.put('/:id', async (req, res) => {
       const moved = nextDate !== current.date || nextTime !== current.time;
       const reactivated = current.status === 'cancelled' && nextStatus !== 'cancelled';
 
+      // Another kind of visit may last longer or shorter, so it takes the agenda again.
+      // Asking for the type it already has changes nothing (it may even be archived by now).
+      let nextType = null;
+      if (typeId !== undefined && typeId !== current.typeId) {
+        nextType = await appointmentTypes.resolveBookableType(tx, req.clinicId, typeId);
+        if (!nextType) throw new ScheduleConflictError(UNKNOWN_TYPE);
+      }
+      const nextDuration = nextType ? nextType.durationMinutes : current.durationMinutes;
+      const resized = nextDuration !== current.durationMinutes;
+
       // A visit can only be missed once its time has come
-      if (nextStatus === 'no_show' && current.status !== 'no_show' && appointmentInstant(nextDate, nextTime) > new Date()) {
+      if (nextStatus === 'no_show' && current.status !== 'no_show' && appointmentInstant(nextDate, nextTime, req.clinicTimezone) > new Date()) {
         throw new ScheduleConflictError('An appointment cannot be marked as no-show before its time');
       }
 
       // A cancelled appointment holds no slot, so there is nothing to check.
-      if (nextStatus !== 'cancelled' && (moved || reactivated)) {
+      if (nextStatus !== 'cancelled' && (moved || reactivated || resized)) {
         // Rescheduling to a time that has passed makes no sense, except for
         // an appointment already marked as done (correcting its record).
-        if (moved && !CLOSED_STATUSES.includes(nextStatus) && appointmentInstant(nextDate, nextTime) < new Date()) {
+        if (moved && !CLOSED_STATUSES.includes(nextStatus) && appointmentInstant(nextDate, nextTime, req.clinicTimezone) < new Date()) {
           throw new ScheduleConflictError('The appointment cannot be moved to a time that has already passed');
         }
         await assertSlotBookable(tx, {
           doctorId: current.doctorId,
+          clinicId: current.clinicId,
           date: nextDate,
           time: nextTime,
+          durationMinutes: nextDuration,
           excludeId: current.id,
           occupiedStatus: 409,
-          // The schedule only matters when the slot changes; a reactivated
+          // The schedule only matters when the slot or its length changes; a reactivated
           // appointment keeps the slot it was booked in.
-          checkAvailability: moved
+          checkAvailability: moved || resized,
+          // A visit that stays on a day blocked after it was booked can still change its type or
+          // its status; moving it onto a blocked day, or bringing it back to one, cannot
+          checkBlocks: moved || reactivated
         });
       }
 
@@ -447,9 +479,10 @@ router.put('/:id', async (req, res) => {
           ...(date && { date }),
           ...(time && { time }),
           ...(status && { status }),
-          ...(notes && { notes })
+          ...(notes && { notes }),
+          ...(nextType && { typeId: nextType.id, durationMinutes: nextType.durationMinutes })
         },
-        include: { patient: { select: PATIENT_SELECT } }
+        include: { patient: { select: PATIENT_SELECT }, type: { select: TYPE_SELECT } }
       });
 
       // A request that changes nothing leaves no record
@@ -502,7 +535,7 @@ router.delete('/:id', async (req, res) => {
       const cancelled = await tx.appointment.update({
         where: { id: current.id },
         data: { status: 'cancelled' },
-        include: { patient: { select: PATIENT_SELECT } }
+        include: { patient: { select: PATIENT_SELECT }, type: { select: TYPE_SELECT } }
       });
 
       // Cancelling one that is already cancelled changes nothing, so it leaves no record

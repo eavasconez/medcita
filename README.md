@@ -83,11 +83,13 @@ Debes tener dos terminales abiertas:
 
 ## 📱 Notificaciones de WhatsApp
 
-**En producción** los mensajes salen por la **API de WhatsApp Cloud de Meta**, con dos plantillas aprobadas en español (`cita_confirmada` y `recordatorio_cita`). Meta solo deja que un negocio inicie una conversación con una plantilla aprobada, y así el paciente recibe el mensaje sin haberle escrito antes al número.
+**En producción** los mensajes salen por la **API de WhatsApp Cloud de Meta**, con dos plantillas aprobadas en español (`cita_confirmada` y `recordatorio_cita`; las de recordatorio con botones, opcionales, se explican más abajo). Meta solo deja que un negocio inicie una conversación con una plantilla aprobada, y así el paciente recibe el mensaje sin haberle escrito antes al número.
 
 - **Número de prueba.** Hoy se usa el número de prueba gratuito de Meta, que solo entrega a **5 destinatarios registrados** en el panel de Meta. Para pacientes reales hace falta un número propio y la verificación del negocio (`docs/DEPLOY.md`, sección 7.7).
 - **Token.** El token de usuario del sistema dura 60 días mientras el negocio no esté verificado; el actual vence el **19-dic-2026**. Al vencer, los envíos fallan con el error 190.
 - **Probar un envío:** desde `backend/`, `npm run whatsapp:test -- +593XXXXXXXXX` (confirmación) o `... reminder` (recordatorio).
+- **Responder el recordatorio con un toque (S9-02):** con la plantilla con botones y el webhook configurados (`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`), el paciente confirma, cancela o pide otra hora desde el recordatorio y la agenda se actualiza sola; «Cambiar hora» avisa por correo a la secretaría. Sin esas variables todo sigue como antes. `npm run whatsapp:reply -- <id de la cita> confirm|cancel|reschedule` simula el toque en local. Todavía no se probó con Meta de verdad. Guía de pruebas: `docs/qa/S9-02-guia-de-pruebas.md`; configuración: `docs/WHATSAPP_META_SETUP.md`, paso 12.
+- **Alertas de errores del servidor (S9-08):** si `ERROR_ALERT_EMAILS` (en `backend/.env` o en Render) tiene los correos de los desarrolladores, un error 500 les manda un aviso con la ruta, el consultorio y la línea del código. `npm run alerts:test` manda uno de ejemplo; `npm run limits:reset` borra los contadores de los límites de intentos (solo en bases locales). Guía de pruebas: `docs/qa/S9-08-guia-de-pruebas.md`; despliegue: `docs/DEPLOY.md`.
 - **Guía paso a paso** para crear la cuenta, la app, las plantillas y el token: `docs/WHATSAPP_META_SETUP.md`. Variables de entorno y tabla de errores: `docs/DEPLOY.md`, sección 7.
 
 **Orden de proveedores:** Meta (si hay `META_WHATSAPP_TOKEN` y `META_WHATSAPP_PHONE_NUMBER_ID`) → Twilio (si hay `TWILIO_*`) → mock. Solo se elige uno: si Meta responde con error, **no se intenta con Twilio**.
@@ -96,7 +98,7 @@ Debes tener dos terminales abiertas:
 
 ### Funciones incluidas
 - **Confirmación:** mensaje automático (WhatsApp + Email) al crear una cita.
-- **Recordatorio 24h:** cron que corre cada hora y avisa una sola vez (`reminderSentAt`) de las citas `pending_approval`, `scheduled` y `confirmed` que ocurren en las próximas 24 horas, con la hora de la clínica (`CLINIC_UTC_OFFSET_MINUTES`).
+- **Recordatorios configurables:** cron que corre cada hora y avisa una sola vez (`reminderSentAt`) de las citas `pending_approval`, `scheduled` y `confirmed` que están por empezar. Cada consultorio decide en *Settings → Reminders* si recuerda, cuánto antes (2, 24 o 48 horas), si manda un segundo recordatorio más cerca de la cita, por qué canal (WhatsApp, correo) y qué dirección e indicaciones se añaden; por defecto, uno por WhatsApp y correo a las 24 h. Usa la hora del consultorio (`Clinic.timezone`).
 - **Disparo manual:** `POST /api/tasks/reminders` (requiere rol admin/secretaria) — endpoint de backend para forzar el proceso de recordatorios sin esperar al cron; no tiene un botón dedicado en la interfaz todavía.
 
 ## 🔐 Seguridad y trazabilidad
