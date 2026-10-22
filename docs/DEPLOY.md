@@ -378,6 +378,27 @@ S9-04 agrega la migración `20261023100000_add_appointment_types`, que se aplica
 - [ ] En el SQL Editor de Neon: `SELECT count(*) FROM "Appointment" WHERE "typeId" IS NULL;` devuelve `0` (salvo citas que haya creado la versión anterior durante el despliegue; la aplicación las trata como del tipo predeterminado) y `SELECT "clinicId", count(*) FROM "AppointmentType" WHERE "isDefault" GROUP BY 1 HAVING count(*) > 1;` no devuelve filas.
 - [ ] Agendar una cita de prueba con otro tipo (por ejemplo, 40 min) y comprobar que el calendario la dibuja más larga; cancelarla después.
 
+## Despliegue de los límites persistentes y las alertas de errores (S9-08)
+
+S9-08 agrega la migración `20261026100000_add_rate_limit_counters`, que solo **crea la tabla `RateLimitCounter`** (los contadores de los límites de intentos). No toca ninguna fila existente y la versión anterior, que cuenta en memoria, nunca la lee: seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/rateLimitCountersMigration.test.js`. Por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-08`).
+
+**Qué cambia al desplegar:** los intentos fallidos de login, de recuperación de contraseña y de registro ya no se pierden con cada despliegue: quien está bloqueado sigue bloqueado hasta que termine su ventana (15 minutos a 1 hora). Cada intento cuenta con una escritura en Neon (también despierta la base si estaba dormida; el login ya la necesitaba).
+
+**Activar las alertas de errores:**
+
+1. En Render → `medcita-backend` → **Environment**, agrega `ERROR_ALERT_EMAILS` con una o más direcciones separadas por comas (por ejemplo la tuya). Necesita el correo funcionando (Brevo, sección 3).
+2. Desde `backend/` con el `.env` de producción (o en la *Shell* de Render): `npm run alerts:test`. Debe imprimir `OK -> tu@correo.com (brevo)` y llegar un correo «[MedCita] Error 500 en GET /api/alerts-test». Si dice *simulated*, falta configurar el proveedor de correo.
+3. Sin `ERROR_ALERT_EMAILS` no se envía nada y todo sigue como antes.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Iniciar sesión funciona. En el SQL Editor de Neon, `SELECT count(*) FROM "RateLimitCounter";` devuelve un número (la tabla existe y se va llenando solo con intentos **fallidos** y solicitudes de registro o de recuperación).
+- [ ] `npm run alerts:test` llega a la bandeja.
+- [ ] Opcional: provocar a propósito 6 intentos de login con una cuenta de prueba que no exista y comprobar el `429`; reiniciar el servicio en Render y comprobar que sigue en `429`.
+
+**Si alguien se bloquea por error** (o tras una prueba), los contadores se pueden borrar: `RATE_LIMIT_RESET_HOST=<host de Neon> npm run limits:reset` desde `backend/` (solo toca los contadores; sin esa variable se niega a correr contra una base que no sea local).
+
 ## Despliegue de los recordatorios configurables (S9-03)
 
 S9-03 agrega la migración `20261025100000_add_reminder_settings`, que solo **agrega columnas** (`Clinic`: `address`, `reminderEnabled`, `reminderHours`, `secondReminderHours`, `reminderWhatsapp`, `reminderEmail`, `reminderIndications`; `Appointment`: `secondReminderSentAt`), todas opcionales o con el valor que ya tenía el comportamiento: recordatorios activos, 24 horas, WhatsApp y correo. Ningún consultorio ni cita cambia y la versión anterior ignora las columnas, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/reminderSettingsMigration.test.js`. Por la regla de los cambios de esquema, crea antes una rama de respaldo en Neon (por ejemplo `antes-de-s9-03`).
