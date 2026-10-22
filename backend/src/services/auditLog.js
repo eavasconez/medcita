@@ -17,7 +17,7 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -42,6 +42,11 @@ const FIELDS = {
   // Days nobody attends; the reason is free text that can say too much, so it is not kept
   schedule_block: { shown: ['startDate', 'endDate'], hidden: [] },
   // How the clinic reminds its patients; the address and the indications are free text
+  // Clinical lines (S10-03): which patient, and whether it is still active. What they say is
+  // health data and never goes into the log; only the names of the fields that changed.
+  patient_allergy: { shown: ['patientId', 'active'], hidden: ['substance', 'reaction', 'severity'] },
+  patient_medication: { shown: ['patientId', 'active'], hidden: ['name', 'dose', 'frequency'] },
+  patient_background: { shown: ['patientId', 'category'], hidden: ['description', 'noted'] },
   reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 
@@ -104,6 +109,24 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
       entity,
       entityId,
       doctorId,
+      changes: changes ?? undefined,
+      ...requestOrigin(req)
+    }
+  });
+}
+
+// A change to the clinical record (S10-03). Unlike recordAudit it is written for every role:
+// a doctor writing clinical data is exactly what must stay traceable.
+function recordClinicalWrite(db, req, { action, entity, entityId, changes = null }) {
+  return db.auditLog.create({
+    data: {
+      actorId: req.doctorId,
+      actorName: req.userName,
+      actorRole: req.userRole,
+      clinicId: req.clinicId,
+      action,
+      entity,
+      entityId,
       changes: changes ?? undefined,
       ...requestOrigin(req)
     }
@@ -206,5 +229,6 @@ module.exports = {
   recordAccountEvent,
   recordRead,
   recordClinicalRead,
+  recordClinicalWrite,
   auditPatientUpsert
 };

@@ -8,7 +8,9 @@ const { recordAudit, recordRead, recordClinicalRead, diffFields, auditPatientUps
 const consents = require('../services/patientConsent');
 const { consentDocumentFor, CONSENT_METHODS, CURRENT_CONSENT_VERSION } = require('../legal/healthDataConsent');
 const { inClinic } = require('../utils/clinicScope');
-const { clinicalRoleOf } = require('../middleware/clinicalAccess');
+const clinicalAccess = require('../middleware/clinicalAccess');
+const { clinicalRoleOf } = clinicalAccess;
+const clinicalBackground = require('./clinicalBackground');
 const { PROFILE_FIELDS, parseProfile, withDerived } = require('../services/patientRecord');
 const { clinicDateString } = require('../utils/clinicTime');
 
@@ -138,6 +140,12 @@ router.get('/:id/export', async (req, res) => {
       select: { createdAt: true, kind: true, channel: true, status: true, destination: true, appointmentId: true }
     });
     const consentHistory = await consents.history(req.clinicId, patient.id);
+    const clinicalWhere = { patientId: patient.id, clinicId: req.clinicId };
+    const [allergies, medications, backgrounds] = await Promise.all([
+      prisma.patientAllergy.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
+      prisma.patientMedication.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
+      prisma.patientBackground.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } })
+    ]);
 
     await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });
 
@@ -152,6 +160,9 @@ router.get('/:id/export', async (req, res) => {
       appointments: patient.appointments.map((a) => ({
         id: a.id, date: a.date, time: a.time, status: a.status, notes: a.notes, doctor: a.doctor.name, createdAt: a.createdAt
       })),
+      allergies,
+      medications,
+      backgrounds,
       messagesSent: messages,
       healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
     });
@@ -160,6 +171,9 @@ router.get('/:id/export', async (req, res) => {
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
+
+// Allergies, regular medication and history (S10-03): clinical data, doctors and admins only
+router.use('/:id/clinical', clinicalAccess, clinicalBackground);
 
 // The patient's record in one place: their data, how old they are and their appointments.
 // The notes of an appointment can hold medical details, so they only go to the roles that
@@ -344,6 +358,16 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    // Allergies, medication and history are never swept away with the patient (S10-03)
+    const [allergies, medications, backgrounds] = await Promise.all([
+      prisma.patientAllergy.count({ where: { patientId: id } }),
+      prisma.patientMedication.count({ where: { patientId: id } }),
+      prisma.patientBackground.count({ where: { patientId: id } })
+    ]);
+    if (allergies + medications + backgrounds > 0) {
+      return res.status(409).json({ error: 'This patient has clinical data and cannot be deleted.' });
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.patient.delete({ where: { id } });
       await recordAudit(tx, req, { action: 'delete', entity: 'patient', entityId: id });
@@ -352,7 +376,7 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });
     // an appointment was booked for this patient between the check and the delete
-    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history and cannot be deleted.' });
+    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history or clinical data and cannot be deleted.' });
     console.error('Delete patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
