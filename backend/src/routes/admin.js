@@ -5,8 +5,9 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { addDays, format, parseISO } = require('date-fns');
 const { parsePagination, pageInfo } = require('../utils/pagination');
-const { isValidDate, isValidTimezone, appointmentInstant } = require('../utils/clinicTime');
-const { inClinic } = require('../utils/clinicScope');
+const { isValidDate, isValidTimezone, appointmentInstant, clinicDateString } = require('../utils/clinicTime');
+const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
+const attendance = require('../services/attendanceReport');
 const { inviteLimiter } = require('../middleware/rateLimiters');
 const invitations = require('../services/invitationService');
 const notificationLog = require('../services/notificationLog');
@@ -403,6 +404,64 @@ router.get('/reports/appointments-by-doctor', async (req, res) => {
     res.json(formatted);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The period of an attendance report: ?from and ?to (both included, 'YYYY-MM-DD' in the clinic's
+// time); the whole current month when they are left out (its upcoming appointments are the ones
+// still waiting for a confirmation). Returns { error } or { from, to, doctorId }.
+function attendancePeriod(req) {
+  const today = clinicDateString(new Date(), req.clinicTimezone);
+  const [year, month] = today.split('-').map(Number);
+  const from = req.query.from ?? `${today.slice(0, 7)}-01`;
+  const to = req.query.to ?? `${today.slice(0, 7)}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`;
+  const { doctorId } = req.query;
+
+  if (!isValidDate(from)) return { error: 'from must be a valid date (YYYY-MM-DD)' };
+  if (!isValidDate(to)) return { error: 'to must be a valid date (YYYY-MM-DD)' };
+  if (from > to) return { error: 'from must not be after to' };
+  if (Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1 > attendance.MAX_RANGE_DAYS) {
+    return { error: `The period can cover at most ${attendance.MAX_RANGE_DAYS} days` };
+  }
+  if (doctorId !== undefined && (typeof doctorId !== 'string' || !doctorId || doctorId.length > MAX_ID_LENGTH)) {
+    return { error: 'doctorId must be an id' };
+  }
+  return { from, to, doctorId };
+}
+
+// Attendance of a period (S9-06): how many patients came, missed, cancelled or are still waiting,
+// overall, by doctor and by type of visit, and who misses the most. Filters: from, to, doctorId.
+router.get('/reports/attendance', async (req, res) => {
+  const period = attendancePeriod(req);
+  if (period.error) return res.status(400).json({ error: period.error });
+
+  try {
+    if (period.doctorId && !(await findDoctorInClinic(prisma, req, period.doctorId))) return res.status(404).json({ error: 'Doctor not found' });
+    res.json(await attendance.attendanceReport(prisma, req, period));
+  } catch (err) {
+    console.error('Attendance report error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The same report as a spreadsheet (CSV): counts for the whole period, per doctor and per type,
+// never any patient's data.
+router.get('/reports/attendance/export', async (req, res) => {
+  const period = attendancePeriod(req);
+  if (period.error) return res.status(400).json({ error: period.error });
+
+  try {
+    if (period.doctorId && !(await findDoctorInClinic(prisma, req, period.doctorId))) return res.status(404).json({ error: 'Doctor not found' });
+    const report = await attendance.attendanceReport(prisma, req, period);
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="attendance_${period.from}_${period.to}.csv"`,
+      'Cache-Control': 'no-store'
+    });
+    res.send(attendance.attendanceCsv(report));
+  } catch (err) {
+    console.error('Attendance export error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
