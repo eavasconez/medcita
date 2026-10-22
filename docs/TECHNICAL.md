@@ -229,7 +229,7 @@ Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/
 
 Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes. Desde S9-02 también queda escrito lo que **el paciente** hace con los botones del recordatorio de WhatsApp (confirmar o cancelar su cita): `actor.role` = `patient`, nombre «Patient (WhatsApp)» y su id (nunca su nombre ni su teléfono).
 
-**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type` o `schedule_block`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
+**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type`, `schedule_block`, `reminder_settings` o `clinical_record`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
 
 | Acción | Se registra |
 |---|---|
@@ -263,6 +263,23 @@ Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias*
 ```
 
 **Pantalla.** Los administradores la ven en **Activity Log** (`/activity`): las entradas del consultorio, de 25 en 25, con filtros por fecha, persona y acción, frases legibles («Changed their password», «Failed sign-in attempt»…), la IP y un navegador corto («Chrome on Linux»). **Límites actuales.** No se registran los cambios de horarios de atención (`/api/availability`). Un intento fallido contra un correo que no existe queda fuera a propósito. La tabla `AuditLog` no se purga: crece con el uso, y ahora cada inicio de sesión suma una fila (conviene pensar en una política de retención antes de tener mucho tráfico).
+
+### Datos clínicos: quién los ve y cómo se audita (S10-01)
+
+Regla para todo lo clínico que traiga el Sprint 10 (ficha ampliada, antecedentes, notas, diagnósticos, signos vitales):
+
+| Rol | Lee y escribe datos clínicos |
+|---|---|
+| `doctor` | Sí, de **cualquier paciente de su consultorio** (no solo de los que atendió) |
+| `admin` | Sí, de los pacientes de su consultorio |
+| `secretary` | **No**: `403` en toda ruta clínica. Sigue agendando y viendo la ficha administrativa (nombre, teléfono, correo, cédula) |
+| Cualquier rol de **otro** consultorio | Un paciente ajeno no existe: `404`, sin entrada de auditoría |
+
+- **`middleware/clinicalAccess.js`** (`CLINICAL_ROLES = ['doctor', 'admin']`) va después de `auth` en cada ruta clínica. Lee el rol **de la cuenta en cada petición**, no el del token, que dura horas: un médico pasado a secretaría, o una cuenta borrada, pierde el acceso al instante (`403`/`401`). Cuesta una consulta por clave primaria.
+- **Auditoría de lecturas.** Cada ruta que devuelva datos clínicos llama a `recordClinicalRead(db, req, { patientId, section })` (`services/auditLog.js`): `action: read`, `entity: clinical_record`, `entityId` = el paciente y `changes.section` = qué parte se abrió (`notes`, `allergies`…). **Nunca guarda el contenido.** Se registra para cualquier rol y en cada lectura, también las repetidas. Se llama después de comprobar el acceso y de cargar el paciente dentro del consultorio, así que un intento rechazado no deja entrada. En el Activity Log aparece como «Viewed a patient's clinical record».
+- **Ruta clínica nueva = pruebas de acceso cruzado**: secretaría `403`, otro consultorio `404`, sin token `401`, rol cambiado tras emitir el token, y la entrada de auditoría. `tests/clinicalAccess.test.js` es la plantilla.
+- Este ticket no agrega rutas clínicas: dejó la regla y la auditoría listas para S10-02 en adelante. Lo único visible por HTTP es que `GET /api/admin/audit-log?entity=clinical_record` ya es un filtro válido.
+- El **Activity Log** lo ve solo el administrador; los médicos no ven quién leyó qué.
 
 ### Consentimiento y exportación de datos (S8-07)
 
@@ -435,7 +452,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 **Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 319 peticiones y 540 aserciones al cierre de S8-07). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 430 peticiones y 720 aserciones al cierre de S10-01). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

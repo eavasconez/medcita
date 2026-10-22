@@ -11,13 +11,13 @@
 
 const STAFF_ROLES = ['admin', 'secretary'];
 // `read` is for looking at something that must stay traceable: the export of a patient's
-// data today, the clinical history once it exists.
+// data and the clinical record (recordClinicalRead).
 const AUDIT_ACTIONS = [
   'create', 'update', 'cancel', 'delete',
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -145,7 +145,7 @@ function recordAccountEvent(db, req, account, action) {
 
 // Someone looked at a record that must stay traceable (today: the export of a patient's
 // data; later the clinical history). Recorded for every role, since reading is the point.
-function recordRead(db, req, { entity, entityId, doctorId = null }) {
+function recordRead(db, req, { entity, entityId, doctorId = null, changes = undefined }) {
   return db.auditLog.create({
     data: {
       actorId: req.doctorId,
@@ -156,8 +156,20 @@ function recordRead(db, req, { entity, entityId, doctorId = null }) {
       entity,
       entityId,
       doctorId,
+      ...(changes && { changes }),
       ...requestOrigin(req)
     }
+  });
+}
+
+// Someone looked at part of a patient's clinical record (S10-01). One entry per patient,
+// with the part that was opened ("notes", "allergies"...) and never its content.
+// `db` is the transaction when the read happens inside one.
+function recordClinicalRead(db, req, { patientId, section }) {
+  return recordRead(db, req, {
+    entity: 'clinical_record',
+    entityId: patientId,
+    changes: { section: { to: section } }
   });
 }
 
@@ -185,5 +197,6 @@ module.exports = {
   recordPatientAction,
   recordAccountEvent,
   recordRead,
+  recordClinicalRead,
   auditPatientUpsert
 };
