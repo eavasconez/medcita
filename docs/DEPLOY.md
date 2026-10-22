@@ -520,6 +520,18 @@ S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea
 - [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
 - [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
 
+## Despliegue de la ficha del paciente (S10-02)
+
+S10-02 agrega la migración `20261027100000_add_patient_record_fields`, que solo **añade 12 columnas nulas a `Patient`** (fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro y representante legal): ninguna fila existente cambia y la versión anterior del código no las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/patientRecordMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-02`).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Patients*, abrir un paciente existente: la ficha carga con los datos que ya tenía y los campos nuevos vacíos.
+- [ ] Completar su fecha de nacimiento y guardar: aparece la edad.
+- [ ] Con un paciente de prueba menor de 18 años y sin representante, aparece el aviso; al registrarlo, desaparece.
+- [ ] Con la cuenta de una secretaria: la ficha abre y las citas **no** muestran notas.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
