@@ -4,10 +4,15 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { upsertPatient } = require('../services/patientUpsert');
-const { recordAudit, recordRead, diffFields, auditPatientUpsert } = require('../services/auditLog');
+const { recordAudit, recordRead, recordClinicalRead, diffFields, auditPatientUpsert } = require('../services/auditLog');
 const consents = require('../services/patientConsent');
 const { consentDocumentFor, CONSENT_METHODS, CURRENT_CONSENT_VERSION } = require('../legal/healthDataConsent');
 const { inClinic } = require('../utils/clinicScope');
+const { clinicalRoleOf } = require('../middleware/clinicalAccess');
+const { PROFILE_FIELDS, parseProfile, withDerived } = require('../services/patientRecord');
+const { clinicDateString } = require('../utils/clinicTime');
+
+const todayOf = (req) => clinicDateString(new Date(), req.clinicTimezone);
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
@@ -50,7 +55,7 @@ router.get('/', async (req, res) => {
     ]);
     const standing = await consents.statusByPatient(req.clinicId, patients.map((p) => p.id));
     res.json({
-      patients: patients.map((p) => ({ ...p, consent: standing[p.id] })),
+      patients: patients.map((p) => ({ ...withDerived(p, todayOf(req)), consent: standing[p.id] })),
       ...pageInfo({ total, page, pageSize })
     });
   } catch (err) {
@@ -140,7 +145,10 @@ router.get('/:id/export', async (req, res) => {
     res.json({
       exportedAt: new Date().toISOString(),
       clinic: patient.clinic.name,
-      patient: { id: patient.id, name: patient.name, cedula: patient.cedula, phone: patient.phone, email: patient.email, createdAt: patient.createdAt },
+      patient: {
+        id: patient.id, name: patient.name, cedula: patient.cedula, phone: patient.phone, email: patient.email, createdAt: patient.createdAt,
+        ...Object.fromEntries(PROFILE_FIELDS.map((field) => [field, patient[field]]))
+      },
       appointments: patient.appointments.map((a) => ({
         id: a.id, date: a.date, time: a.time, status: a.status, notes: a.notes, doctor: a.doctor.name, createdAt: a.createdAt
       })),
@@ -149,6 +157,52 @@ router.get('/:id/export', async (req, res) => {
     });
   } catch (err) {
     console.error('Export patient error:', err);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// The patient's record in one place: their data, how old they are and their appointments.
+// The notes of an appointment can hold medical details, so they only go to the roles that
+// may see clinical data (the secretary gets the appointments without them), and that read
+// is audited like any other clinical one.
+router.get('/:id', async (req, res) => {
+  try {
+    const patient = await prisma.patient.findFirst({
+      where: inClinic(req, { id: req.params.id }),
+      include: {
+        appointments: {
+          orderBy: [{ date: 'desc' }, { time: 'desc' }],
+          include: {
+            doctor: { select: { id: true, name: true } },
+            type: { select: { name: true, color: true } }
+          }
+        }
+      }
+    });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    const clinical = Boolean(await clinicalRoleOf(req));
+    const { appointments, ...fields } = patient;
+    const standing = await consents.statusByPatient(req.clinicId, [patient.id]);
+
+    if (clinical) await recordClinicalRead(prisma, req, { patientId: patient.id, section: 'patient_record' });
+
+    res.json({
+      patient: { ...withDerived(fields, todayOf(req)), consent: standing[patient.id] },
+      appointments: appointments.map((a) => ({
+        id: a.id,
+        date: a.date,
+        time: a.time,
+        status: a.status,
+        durationMinutes: a.durationMinutes,
+        doctor: a.doctor,
+        type: a.type,
+        ...(clinical && { notes: a.notes })
+      })),
+      canViewClinical: clinical
+    });
+  } catch (err) {
+    console.error('Get patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
@@ -177,6 +231,9 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
+  const record = parseProfile(req.body, todayOf(req));
+  if (record.error) return res.status(400).json({ error: record.error });
+
   try {
     // The record of what staff did is written in the same transaction as the patient
     const patient = await prisma.$transaction(async (tx) => {
@@ -184,7 +241,8 @@ router.post('/', async (req, res) => {
         name: normalizedName,
         phone: normalizedPhone,
         email: normalizedEmail,
-        cedula: normalizedCedula
+        cedula: normalizedCedula,
+        profile: record.data
       });
       await auditPatientUpsert(tx, req, result);
       return result.patient;
@@ -224,6 +282,9 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
+  const record = parseProfile(req.body, todayOf(req));
+  if (record.error) return res.status(400).json({ error: record.error });
+
   try {
     const patient = await prisma.$transaction(async (tx) => {
       const previous = await tx.patient.findFirst({ where: inClinic(req, { id: req.params.id }) });
@@ -235,7 +296,8 @@ router.put('/:id', async (req, res) => {
           ...(normalizedName !== undefined && { name: normalizedName }),
           ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
           ...(email !== undefined && { email: normalizedEmail }),
-          ...(cedula !== undefined && { cedula: normalizedCedula })
+          ...(cedula !== undefined && { cedula: normalizedCedula }),
+          ...record.data
         }
       });
 

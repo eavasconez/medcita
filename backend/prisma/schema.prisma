@@ -73,6 +73,25 @@ model Patient {
   email        String?
   createdAt    DateTime      @default(now())
   cedula       String?
+
+  // The patient's record (S10-02). All optional: a patient booked by phone has none of it.
+  // Demographic and administrative data, not clinical: the front desk fills it in too.
+  // Birth date is clinic-local text ("2015-03-09", like Appointment.date); the age is derived.
+  birthDate            String?
+  // female | male | other
+  sex                  String?
+  address              String?
+  occupation           String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  insuranceProvider    String?
+  insuranceNumber      String?
+  // Legal representative, for patients under 18
+  guardianName         String?
+  guardianCedula       String?
+  guardianPhone        String?
+  guardianRelationship String?
+
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
