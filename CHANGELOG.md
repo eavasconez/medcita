@@ -1,5 +1,11 @@
 # Cambios de MedCita
 
+## Sprint 10 — en curso
+
+Ficha del paciente y primera historia clínica.
+
+- **Permisos clínicos por rol y auditoría de lecturas (S10-01, #133).** Antes de que exista el primer dato clínico queda escrita y comprobada la regla de quién lo ve: **los médicos y los administradores del consultorio** leen y escriben; **la secretaría no** (recibe `403`) y nadie de otro consultorio ve a un paciente ajeno (`404`). El rol se vuelve a leer de la cuenta en cada petición clínica, así que quitarle el rol a alguien o borrar su cuenta corta el acceso sin esperar a que caduque su sesión. Cada lectura de datos clínicos queda en el Activity Log como «Viewed a patient's clinical record», con quién, cuándo, de qué paciente y qué parte se abrió, **sin copiar el contenido**. Todavía no hay pantallas ni rutas clínicas: son la base de S10-02 en adelante. Sin migración. Detalle: `docs/TECHNICAL.md`, «Datos clínicos: quién los ve y cómo se audita».
+
 ## Sprint 9 — 22-oct-2026 (v0.9.0)
 
 El ciclo de la cita: cada consultorio con su zona horaria, tipos de cita con duración, días bloqueados, recordatorios configurables, reportes de asistencia exportables, límites de intentos persistentes con alertas de error, y el recordatorio de WhatsApp que el paciente puede responder con un toque. Cuatro migraciones (todas añaden tablas o columnas). **Pendiente de comprobar en producción:** que Meta apruebe la plantilla con botones y que entregue los toques reales con la app sin publicar. Quedan fuera del sprint, a la espera del abogado, la retención de registros (S9-07) y la aceptación de términos (S9-10).
