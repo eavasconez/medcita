@@ -95,13 +95,13 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
    | `ERROR_ALERT_EMAILS` | Opcional pero recomendada. Correos de los **desarrolladores / del equipo de MedCita** (uno o varios, separados por comas) que reciben un aviso cuando el servidor responde un error 500. Nunca la dirección de un consultorio. Ver «Despliegue de los límites persistentes y las alertas de errores» |
-   | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
+   | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `3` por defecto (no hace falta definirla; si en el panel de Render está definida con otro valor, ese manda). Ver la verificación abajo |
    | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para elegir entre WhatsApp con Meta (plantillas, número de prueba gratuito) y Twilio ver la sección 7 |
 
    > **Verificar `TRUST_PROXY` tras desplegar**: el login limita los intentos fallidos por IP y por correo, y la IP depende de cuántos proxies hay delante (en Render: Cloudflare + balanceador). Con un token de admin:
    > ```bash
    > curl -H "Authorization: Bearer <token-admin>" https://medcita-backend.onrender.com/api/admin/client-ip
-   > # {"ip":"<tu IP pública>","forwardedFor":"...","trustProxy":2}
+   > # {"ip":"<tu IP pública>","forwardedFor":"<tu IP>, <Cloudflare>, <Render 10.x>","trustProxy":3}
    > ```
    > `ip` debe ser **tu IP pública** (compárala con `curl ifconfig.me`). Si muestra una IP de Cloudflare o privada, sube `TRUST_PROXY` en 1; si muestra una IP que no es tuya, bájalo en 1. El límite por correo funciona igual aunque este valor esté mal; solo el límite por IP depende de él.
 
