@@ -14,7 +14,7 @@ export const ACTION_OPTIONS = [
   { value: 'read', label: 'Viewed' }
 ];
 
-const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data', appointment_type: 'an appointment type', schedule_block: 'days off' };
+const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data', appointment_type: 'an appointment type', schedule_block: 'days off', reminder_settings: 'the reminder settings' };
 const VERB = { create: 'Created', update: 'Updated', cancel: 'Cancelled', delete: 'Deleted', read: 'Viewed' };
 
 const SESSION_TITLES = {
@@ -46,6 +46,7 @@ export function entryTitle(entry) {
     if (entry.action === 'delete') return 'Cancelled an invitation';
   }
   if (entry.entity === 'schedule_block') return entry.action === 'delete' ? 'Opened blocked days again' : 'Blocked days in the agenda';
+  if (entry.entity === 'reminder_settings') return 'Changed the reminder settings';
   if (entry.entity === 'patient_export') return 'Exported a patient\'s data';
   if (entry.entity === 'consent') return entry.changes?.granted?.to === false ? 'Recorded a patient\'s consent withdrawal' : 'Recorded a patient\'s consent';
   return `${VERB[entry.action] || entry.action} ${noun}`;

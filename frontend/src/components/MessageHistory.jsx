@@ -7,6 +7,7 @@ import { CheckCircle2, XCircle, Info, Clock } from 'lucide-react';
 const KIND = {
   appointment_confirmation: 'Confirmation',
   appointment_reminder: 'Reminder',
+  appointment_second_reminder: 'Second reminder',
   doctor_new_appointment: "Doctor's notice"
 };
 const CHANNEL = { whatsapp: 'WhatsApp', email: 'email' };
@@ -57,7 +58,7 @@ const MessageHistory = ({ appointmentId }) => {
           {data.notifications.length === 0 && <li className="text-sm font-bold text-slate-400">No messages have been sent for this appointment.</li>}
           {data.reminderPending && (
             <li className="flex items-start gap-3 text-sm font-bold text-slate-400">
-              <Clock size={18} className="mt-0.5 shrink-0" /> The 24-hour reminder has not been sent yet.
+              <Clock size={18} className="mt-0.5 shrink-0" /> The reminder has not been sent yet.
             </li>
           )}
         </ul>
