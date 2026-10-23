@@ -101,7 +101,7 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
 | GET | `/` | Autenticado | Lista paginada **de los pacientes del consultorio** (`page`, `pageSize`; máx. 100 por página), con búsqueda por `search` (nombre, teléfono, cédula) |
-| GET | `/:id` | Autenticado | **La ficha** (S10-02): `{ patient, appointments, canViewClinical }`. `patient` trae los datos, la edad (`age: { years, months }`), `isMinor` y `missingGuardian`; `appointments`, de la más reciente a la más antigua, con médico, tipo y estado. Las **notas** de las citas solo van para médico y admin (`canViewClinical`), y esa lectura queda auditada; la secretaría recibe las citas sin notas. De otro consultorio, `404` |
+| GET | `/:id` | Autenticado | **La ficha** (S10-02): `{ patient, appointments, canViewClinical }`. `patient` trae los datos, la edad (`age: { years, months }`), `isMinor` y `missingGuardian`; `appointments`, de la más reciente a la más antigua, con médico, tipo y estado. Las `notes` de las citas son **notas administrativas** (*booking notes*) y las ven todos los roles; lo clínico va en la nota de consulta. `canViewClinical` dice si la pantalla puede pedir las partes clínicas. De otro consultorio, `404` |
 | POST | `/` | Autenticado | Crea o actualiza (upsert por teléfono **dentro del consultorio**: el mismo teléfono en otro consultorio es otro paciente). Acepta los campos de la ficha |
 | PUT | `/:id` | Autenticado | Actualiza datos del paciente y de su ficha. Solo cambia lo que se envía; una cadena vacía borra el campo |
 | DELETE | `/:id` | Autenticado | Elimina un paciente **sin citas** (pensado para registros creados por error). Con cualquier cita —activa, cancelada o completada— responde `409` y lo conserva, porque ese historial es suyo; el mensaje distingue «tiene citas activas, cancélalas primero» de «tiene historial». `404` si no existe |
@@ -140,6 +140,31 @@ Rutas bajo `/api/patients/:id/clinical`, protegidas por `auth` y `clinicalAccess
 - **Un paciente con datos clínicos no se borra**: las claves foráneas son `RESTRICT` (a diferencia de los consentimientos, que se van con el paciente), y `DELETE /api/patients/:id` responde `409`. La exportación de datos del paciente incluye las tres listas.
 - **Migración** `20261028100000_add_clinical_background`: solo crea tres tablas; probada sobre datos existentes en `tests/clinicalBackgroundMigration.test.js`.
 - **Pendiente (S10-04).** Las notas internas de las citas siguen viéndose en la agenda para todos los roles; la nota de consulta SOAP las reemplazará con acceso clínico.
+
+### Nota de consulta SOAP (S10-04)
+
+La nota clínica de una cita, en las cuatro partes del formato SOAP: **S**ubjetivo (lo que cuenta el paciente), **O**bjetivo (lo que se observa y mide), **A**nálisis (la impresión diagnóstica) y **P**lan. Rutas bajo `/api/patients/:id/clinical/notes`, con la misma regla que el resto de lo clínico: médico y admin; secretaría `403`; otro consultorio `404`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/templates` | `general`, `pediatrics`, `blank` |
+| GET | `/` | Las notas del paciente, **sin texto** (cita, autor, estado, fechas, cuántas adendas). `read` auditado |
+| GET | `/:noteId` | La nota con su texto, su `revision` y sus adendas. `read` auditado con `section: note:<id>` |
+| POST | `/` | `{ appointmentId, template }` (por defecto `general`). Una nota por cita: otra igual da `409` con el `noteId` existente; cita cancelada, `409`; cita de otro paciente u otro consultorio, `404` |
+| PUT | `/:noteId` | Guarda el borrador: `{ revision, subjective?, objective?, assessment?, plan? }` (hasta 10 000 caracteres cada una). Devuelve la `revision` nueva |
+| POST | `/:noteId/close` | `{ revision }`. Cierra la nota, definitivamente |
+| POST | `/:noteId/addenda` | `{ text }` (hasta 5 000). Solo a una nota cerrada |
+| DELETE | `/:noteId` | Solo un borrador |
+
+- **Quién hace qué.** Cualquier médico o admin la inicia y queda como **autor**. Solo el autor edita, cierra o borra el borrador (`403` para los demás, también el admin). Cualquier médico o admin agrega una adenda, con su propio nombre y fecha. Una nota **cerrada** nunca se edita ni se borra; una adenda tampoco (no hay ruta).
+- **Autoguardado sin pisarse.** La pantalla guarda a los 1,5 s de dejar de escribir. Cada guardado lleva la `revision` que vio; si otra pestaña guardó en medio, responde `409` con `currentRevision` y la pantalla ofrece recargar, en vez de sobrescribir. Dos guardados simultáneos con la misma revisión: gana uno. Al salir de la pantalla se guarda lo pendiente y el navegador avisa antes de cerrar la pestaña con cambios sin guardar.
+- **Cerrar.** Se rechaza (`400`) una nota en la que solo están los encabezados de la plantilla. Guarda quién la cerró y cuándo.
+- **Plantillas.** Solo ponen encabezados en español en las cuatro partes (motivo de consulta, examen físico, impresión diagnóstica, tratamiento...); el médico cambia lo que quiera.
+- **Auditoría** (`recordClinicalWrite`, también para médicos): `create`, el cierre (`update` con `status: draft → closed`), `delete` de un borrador y cada adenda, siempre con el paciente y **sin el texto**. **Los guardados del borrador no se registran uno por uno** (serían una entrada por pausa al escribir); la lectura sí, siempre.
+- **Notas administrativas de la cita.** `Appointment.notes` sigue existiendo pero ya no es clínico: se llama *Booking notes* en la pantalla, con el aviso de no escribir datos médicos, y las ven todos los roles (incluida la ficha, donde S10-02 las ocultaba a la secretaría). Las ya guardadas no se tocaron.
+- **Integridad.** `RESTRICT`: no se borra una cita ni un paciente con nota (`409` al borrar el paciente) ni una nota con adendas. La exportación de datos del paciente incluye las notas con sus adendas.
+- **Migración** `20261029100000_add_consultation_notes`: solo crea dos tablas, probada con datos existentes en `tests/consultationNotesMigration.test.js`.
+- **Pantalla.** `/patients/:id/appointments/:appointmentId/note`, desde la cita en la agenda («Consultation note») o desde la ficha («Write note», «Continue draft», «Open note»), con el aviso de alergias arriba. Los diagnósticos codificados (CIE-10) llegan con S10-05 y los signos vitales con S10-06.
 
 ### Disponibilidad (`/api/availability`)
 
@@ -261,7 +286,7 @@ Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/
 
 Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes. Desde S9-02 también queda escrito lo que **el paciente** hace con los botones del recordatorio de WhatsApp (confirmar o cancelar su cita): `actor.role` = `patient`, nombre «Patient (WhatsApp)» y su id (nunca su nombre ni su teléfono).
 
-**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type`, `schedule_block`, `reminder_settings`, `clinical_record`, `patient_allergy`, `patient_medication` o `patient_background`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
+**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type`, `schedule_block`, `reminder_settings`, `clinical_record`, `patient_allergy`, `patient_medication`, `patient_background`, `consultation_note` o `consultation_addendum`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
 
 | Acción | Se registra |
 |---|---|
@@ -484,7 +509,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 **Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 468 peticiones y 778 aserciones al cierre de S10-03). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 496 peticiones y 820 aserciones al cierre de S10-04). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

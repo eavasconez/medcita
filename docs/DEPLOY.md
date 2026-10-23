@@ -547,6 +547,23 @@ S10-03 agrega la migración `20261028100000_add_clinical_background`, que solo *
 - [ ] En *Activity Log*: aparecen las lecturas y los cambios, sin el texto de lo escrito.
 - [ ] Borrar los datos de prueba (el paciente de prueba no se puede borrar hasta quitar sus entradas).
 
+## Despliegue de la nota de consulta (S10-04)
+
+S10-04 agrega la migración `20261029100000_add_consultation_notes`, que solo **crea dos tablas** (`ConsultationNote` y `ConsultationAddendum`): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro (las notas que existan simplemente dejan de mostrarse). Se probó sobre datos existentes en `backend/tests/consultationNotesMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-04`).
+
+**A partir de aquí una nota cerrada no se puede borrar** (ni desde la aplicación ni de la base, que lo impide con `RESTRICT`), y la cita o el paciente que la tienen tampoco. Úsalo con un paciente de prueba que no te importe dejar para siempre.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico: abrir una cita de un paciente de prueba → «Consultation note» → iniciar con la plantilla general → escribir; en unos segundos dice «Saved». Recargar la página: el texto sigue.
+- [ ] Abrir la misma nota en otra pestaña con el mismo médico y guardar en las dos: la segunda avisa que la nota cambió y no pisa la primera.
+- [ ] Con otro médico o el admin: el borrador se ve pero no se edita («Only they can edit it»).
+- [ ] Cerrar la nota: ya no se edita; agregar una adenda con otro usuario.
+- [ ] Con una secretaria: la dirección de la nota responde «Clinical data is not available to your role».
+- [ ] En *Activity Log*: la creación, el cierre y las adendas (y las lecturas), sin texto.
+- [ ] Las «Internal Notes» de las citas ahora se llaman *Booking notes* y las siguen viendo todos.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
