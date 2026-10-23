@@ -601,6 +601,19 @@ S10-06 agrega la migración `20261031100000_add_patient_vitals`, que solo **crea
 - [ ] Con una secretaria: la ficha no muestra «Vital signs» y `/clinical/vitals` responde `403`.
 - [ ] En *Activity Log*: la creación y la anulación (y las lecturas), sin las medidas.
 
+## Despliegue de la línea de tiempo y la exportación en PDF (S10-07)
+
+S10-07 **no cambia el esquema**: no hay migración ni hace falta una rama de respaldo en Neon. Sí hay **una dependencia nueva** (`pdfkit`, en `backend/package.json`): Render la instala con el `npm install` de cada despliegue. Las dos fuentes del PDF (`backend/src/assets/fonts/`, ~1,4 MB) viajan en el repositorio; no hay nada que configurar.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un admin, en la ficha de un paciente de prueba: «Export PDF» baja `patient-<id>.pdf`; ábrelo: sale en español, con tildes y caracteres como «°C» y «SpO₂» bien impresos, y cada página trae su pie con el número.
+- [ ] En *Activity Log*: la exportación aparece como «Viewed a patient's data».
+- [ ] Con un médico: la ficha muestra «Timeline» pero no «Export PDF»; la línea de tiempo lista visitas, notas, signos vitales y consentimientos en orden, y los filtros funcionan.
+- [ ] Con una secretaria: la dirección `/patients/<id>/timeline` responde «Clinical data is not available to your role».
+- [ ] Un paciente con mucha historia: «Show older» trae la página siguiente sin repetir eventos.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
