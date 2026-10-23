@@ -46,6 +46,9 @@ async function main() {
   await prisma.rateLimitCounter.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
+  // Notes are never swept away with their appointment or patient (RESTRICT), so they go first
+  await prisma.consultationAddendum.deleteMany();
+  await prisma.consultationNote.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.appointmentType.deleteMany();
   await prisma.scheduleBlock.deleteMany();
@@ -243,6 +246,38 @@ async function main() {
     });
   });
   await prisma.appointment.createMany({ data: history });
+
+  // Consultation notes for María Elena Lasso: a closed one, with an addendum, on her most recent
+  // completed visit; and a draft the doctor has not finished on the one before it
+  const mariaVisits = await prisma.appointment.findMany({
+    where: { patientId: allPatients[1].id, status: 'completed' },
+    orderBy: [{ date: 'desc' }, { time: 'desc' }],
+    include: { doctor: true },
+    take: 2
+  });
+  if (mariaVisits.length === 2) {
+    const [closedVisit, draftVisit] = mariaVisits;
+    const author = (visit) => ({ authorId: visit.doctorId, authorName: visit.doctor.name });
+    const closedNote = await prisma.consultationNote.create({
+      data: {
+        clinicId: clinic.id, patientId: allPatients[1].id, appointmentId: closedVisit.id, template: 'general', ...author(closedVisit),
+        status: 'closed', revision: 3, closedAt: new Date(), closedById: closedVisit.doctorId, closedByName: closedVisit.doctor.name,
+        subjective: 'Motivo de consulta: control de diabetes tipo 2.\n\nEnfermedad actual: refiere buen apego al tratamiento, sin poliuria ni polidipsia.',
+        objective: 'Examen físico: sin hallazgos. Glucemia en ayunas 118 mg/dl.',
+        assessment: 'Impresión diagnóstica: diabetes mellitus tipo 2 controlada.',
+        plan: 'Tratamiento: continuar metformina 850 mg cada 12 horas.\n\nControl: en 3 meses con HbA1c.'
+      }
+    });
+    await prisma.consultationAddendum.create({
+      data: { clinicId: clinic.id, noteId: closedNote.id, text: 'Se aclara que la dosis de metformina es con las comidas.', ...author(closedVisit) }
+    });
+    await prisma.consultationNote.create({
+      data: {
+        clinicId: clinic.id, patientId: allPatients[1].id, appointmentId: draftVisit.id, template: 'general', ...author(draftVisit),
+        subjective: 'Motivo de consulta: dolor lumbar de tres días.\n\nEnfermedad actual:', objective: 'Examen físico:', assessment: 'Impresión diagnóstica:', plan: 'Tratamiento:'
+      }
+    });
+  }
 
   // A vacation of one of the doctors, two weeks from now: the blocked days show in the calendar
   // and nobody can book them

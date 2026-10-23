@@ -41,6 +41,8 @@ model Clinic {
   allergies      PatientAllergy[]
   medications    PatientMedication[]
   backgrounds    PatientBackground[]
+  consultationNotes ConsultationNote[]
+  consultationAddenda ConsultationAddendum[]
   appointmentTypes AppointmentType[]
   scheduleBlocks ScheduleBlock[]
 }
@@ -102,6 +104,7 @@ model Patient {
   allergies    PatientAllergy[]
   medications  PatientMedication[]
   backgrounds  PatientBackground[]
+  notes        ConsultationNote[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -151,6 +154,7 @@ model Appointment {
   // type), so going back to an older release never breaks booking. The app always sets it.
   typeId         String?
   type           AppointmentType? @relation(fields: [typeId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  consultationNote ConsultationNote?
 
   @@index([clinicId, date])
 }
@@ -417,4 +421,59 @@ model PatientBackground {
   patient     Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
 
   @@index([patientId, category])
+}
+
+// The doctor's record of one consultation, in the four parts of a SOAP note (S10-04):
+// Subjective (what the patient says), Objective (what is observed and measured), Assessment
+// and Plan. One note per appointment. It starts as a draft that its author edits (the screen
+// saves it as they type) and is closed once: a closed note is never edited again, a correction
+// is an addendum with its own date and author, so what the chart said on a given day can be
+// trusted. Clinical data: same access rule and audit as the rest (middleware/clinicalAccess.js).
+// RESTRICT everywhere on purpose: a patient, or an appointment, with a note is not deleted.
+model ConsultationNote {
+  id            String    @id @default(uuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  clinicId      String
+  patientId     String
+  appointmentId String    @unique
+  // draft | closed
+  status        String    @default("draft")
+  // Counts the saves of the draft. A save that carries an older number is refused (409), so
+  // two open screens cannot silently overwrite each other.
+  revision      Int       @default(1)
+  subjective    String    @default("")
+  objective     String    @default("")
+  assessment    String    @default("")
+  plan          String    @default("")
+  // The template it was started from (general | pediatrics | blank); only informative
+  template      String?
+  // Who wrote it and who closed it, as plain text so the note outlives the account
+  authorId      String
+  authorName    String
+  closedAt      DateTime?
+  closedById    String?
+  closedByName  String?
+  clinic        Clinic    @relation(fields: [clinicId], references: [id])
+  patient       Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  addenda       ConsultationAddendum[]
+
+  @@index([patientId, createdAt])
+  @@index([clinicId, status])
+}
+
+// A correction or an addition to a closed note. Append-only: never edited, never deleted.
+model ConsultationAddendum {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  clinicId   String
+  noteId     String
+  text       String
+  authorId   String
+  authorName String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id])
+  note       ConsultationNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+
+  @@index([noteId, createdAt])
 }

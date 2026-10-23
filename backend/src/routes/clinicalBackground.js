@@ -4,6 +4,7 @@ const { inClinic } = require('../utils/clinicScope');
 const {
   recordClinicalRead, recordClinicalWrite, diffFields, describeCreated, describeRemoved
 } = require('../services/auditLog');
+const consultationNotes = require('./consultationNotes');
 const { KINDS, MAX_ITEMS_PER_PATIENT, parseItem, byImportance } = require('../services/clinicalBackground');
 
 // Mounted by routes/patients.js on /api/patients/:id/clinical, behind auth and
@@ -27,6 +28,9 @@ router.use(async (req, res, next) => {
     unexpected(res, err, 'Clinical patient lookup');
   }
 });
+
+// The SOAP notes of the patient's appointments (S10-04)
+router.use('/notes', consultationNotes);
 
 const listOf = (kind, patientId, clinicId) =>
   prisma[KINDS[kind].model].findMany({ where: { patientId, clinicId }, orderBy: { createdAt: 'asc' } });
