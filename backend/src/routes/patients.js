@@ -4,7 +4,7 @@ const prisma = require('../config/prisma');
 const auth = require('../middleware/auth');
 const { parsePagination, pageInfo } = require('../utils/pagination');
 const { upsertPatient } = require('../services/patientUpsert');
-const { recordAudit, recordRead, recordClinicalRead, diffFields, auditPatientUpsert } = require('../services/auditLog');
+const { recordAudit, recordRead, diffFields, auditPatientUpsert } = require('../services/auditLog');
 const consents = require('../services/patientConsent');
 const { consentDocumentFor, CONSENT_METHODS, CURRENT_CONSENT_VERSION } = require('../legal/healthDataConsent');
 const { inClinic } = require('../utils/clinicScope');
@@ -146,6 +146,11 @@ router.get('/:id/export', async (req, res) => {
       prisma.patientMedication.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
       prisma.patientBackground.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } })
     ]);
+    const consultationNotes = await prisma.consultationNote.findMany({
+      where: clinicalWhere,
+      orderBy: { createdAt: 'asc' },
+      include: { addenda: { orderBy: { createdAt: 'asc' } } }
+    });
 
     await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });
 
@@ -163,6 +168,7 @@ router.get('/:id/export', async (req, res) => {
       allergies,
       medications,
       backgrounds,
+      consultationNotes,
       messagesSent: messages,
       healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
     });
@@ -176,9 +182,9 @@ router.get('/:id/export', async (req, res) => {
 router.use('/:id/clinical', clinicalAccess, clinicalBackground);
 
 // The patient's record in one place: their data, how old they are and their appointments.
-// The notes of an appointment can hold medical details, so they only go to the roles that
-// may see clinical data (the secretary gets the appointments without them), and that read
-// is audited like any other clinical one.
+// The notes of an appointment are booking notes (administrative, visible to the whole front
+// desk); what is clinical is written in the consultation note (S10-04), which has its own
+// routes and rules. `canViewClinical` tells the screen whether to ask for the clinical parts.
 router.get('/:id', async (req, res) => {
   try {
     const patient = await prisma.patient.findFirst({
@@ -199,8 +205,6 @@ router.get('/:id', async (req, res) => {
     const { appointments, ...fields } = patient;
     const standing = await consents.statusByPatient(req.clinicId, [patient.id]);
 
-    if (clinical) await recordClinicalRead(prisma, req, { patientId: patient.id, section: 'patient_record' });
-
     res.json({
       patient: { ...withDerived(fields, todayOf(req)), consent: standing[patient.id] },
       appointments: appointments.map((a) => ({
@@ -211,7 +215,7 @@ router.get('/:id', async (req, res) => {
         durationMinutes: a.durationMinutes,
         doctor: a.doctor,
         type: a.type,
-        ...(clinical && { notes: a.notes })
+        notes: a.notes
       })),
       canViewClinical: clinical
     });
@@ -358,13 +362,14 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Allergies, medication and history are never swept away with the patient (S10-03)
-    const [allergies, medications, backgrounds] = await Promise.all([
+    // Allergies, medication, history and notes are never swept away with the patient (S10-03, S10-04)
+    const [allergies, medications, backgrounds, notes] = await Promise.all([
       prisma.patientAllergy.count({ where: { patientId: id } }),
       prisma.patientMedication.count({ where: { patientId: id } }),
-      prisma.patientBackground.count({ where: { patientId: id } })
+      prisma.patientBackground.count({ where: { patientId: id } }),
+      prisma.consultationNote.count({ where: { patientId: id } })
     ]);
-    if (allergies + medications + backgrounds > 0) {
+    if (allergies + medications + backgrounds + notes > 0) {
       return res.status(409).json({ error: 'This patient has clinical data and cannot be deleted.' });
     }
 

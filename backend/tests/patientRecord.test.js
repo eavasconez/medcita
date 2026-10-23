@@ -226,39 +226,18 @@ describe('GET /api/patients/:id (the record screen)', () => {
     expect(res.body.appointments.map((a) => a.date)).toEqual(['2031-01-06', MONDAY]);
   });
 
-  it.each(['doctor', 'admin'])('a %s sees the notes and the read is audited', async (role) => {
+  it.each(['doctor', 'admin', 'secretary'])('a %s sees the booking notes of the appointments and leaves no read entry', async (role) => {
     const { clinic, patient } = await setup();
     const reader = await createUser({ role, clinic });
 
     const res = await show(reader.token, patient.id);
 
     expect(res.body.appointments[0].notes).toBe('Dolor de cabeza');
-    const reads = (await audit()).filter((e) => e.action === 'read');
-    expect(reads).toHaveLength(1);
-    expect(reads[0]).toMatchObject({
-      entity: 'clinical_record',
-      entityId: patient.id,
-      actorId: reader.user.id,
-      actorRole: role,
-      changes: { section: { to: 'patient_record' } }
-    });
-  });
-
-  it('the secretary sees the record but not the notes, and leaves no read entry', async () => {
-    const { clinic, patient } = await setup();
-    const secretary = await createUser({ role: 'secretary', clinic });
-
-    const res = await show(secretary.token, patient.id);
-
-    expect(res.status).toBe(200);
-    expect(res.body.canViewClinical).toBe(false);
-    expect(res.body.appointments).toHaveLength(1);
-    expect(res.body.appointments[0]).not.toHaveProperty('notes');
-    expect(JSON.stringify(res.body)).not.toContain('Dolor de cabeza');
+    expect(res.body.canViewClinical).toBe(role !== 'secretary');
     expect((await audit()).filter((e) => e.action === 'read')).toHaveLength(0);
   });
 
-  it('a doctor turned secretary loses the notes at once, with the old token', async () => {
+  it('a doctor turned secretary is told at once that clinical data is closed to them, with the old token', async () => {
     const { clinic, patient } = await setup();
     const reader = await createUser({ role: 'doctor', clinic });
     await prisma.doctor.update({ where: { id: reader.user.id }, data: { role: 'secretary' } });
@@ -266,7 +245,6 @@ describe('GET /api/patients/:id (the record screen)', () => {
     const res = await show(tokenFor({ ...reader.user, role: 'doctor' }), patient.id);
 
     expect(res.body.canViewClinical).toBe(false);
-    expect(JSON.stringify(res.body)).not.toContain('Dolor de cabeza');
   });
 
   it.each(['doctor', 'admin', 'secretary'])('a %s of another clinic gets 404 and no entry', async (role) => {

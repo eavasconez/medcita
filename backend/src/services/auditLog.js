@@ -17,7 +17,7 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -47,6 +47,11 @@ const FIELDS = {
   patient_allergy: { shown: ['patientId', 'active'], hidden: ['substance', 'reaction', 'severity'] },
   patient_medication: { shown: ['patientId', 'active'], hidden: ['name', 'dose', 'frequency'] },
   patient_background: { shown: ['patientId', 'category'], hidden: ['description', 'noted'] },
+  // The SOAP note and its addenda (S10-04). Drafts are saved as the doctor types and are not
+  // logged one by one: the log has the creation, the closing, the deletion of a draft and every
+  // addendum. What the note says never goes in.
+  consultation_note: { shown: ['patientId', 'appointmentId', 'status'], hidden: ['subjective', 'objective', 'assessment', 'plan'] },
+  consultation_addendum: { shown: ['noteId'], hidden: ['text'] },
   reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 

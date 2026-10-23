@@ -12,7 +12,8 @@ import ClinicalBackground from '../components/ClinicalBackground';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { statusLabel, statusColor } from '../utils/appointmentStatus';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
-import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText } from 'lucide-react';
+import { formatDateTime } from '../utils/consultationNote';
 
 const Field = ({ label, children }) => (
   <div>
@@ -54,6 +55,7 @@ const PatientRecord = () => {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [showConsent, setShowConsent] = useState(false);
+  const [notes, setNotes] = useState([]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -97,6 +99,16 @@ const PatientRecord = () => {
   };
 
   const patient = data?.patient;
+  const canViewClinical = data?.canViewClinical === true;
+
+  // The consultation notes of the patient, without their text (S10-04): who wrote each one and its state
+  useEffect(() => {
+    if (!canViewClinical) return;
+    axios.get(`${API_BASE_URL}/api/patients/${id}/clinical/notes`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setNotes(res.data))
+      .catch(() => setNotes([]));
+  }, [id, token, canViewClinical]);
+  const noteOf = (appointmentId) => notes.find((n) => n.appointmentId === appointmentId);
   // Allergies, medication and history: only for the roles that may read clinical data
   const clinical = useClinicalSummary(id, data?.canViewClinical === true);
   const today = new Date().toISOString().slice(0, 10);
@@ -247,6 +259,30 @@ const PatientRecord = () => {
               </section>
             )}
 
+            {canViewClinical && notes.length > 0 && (
+              <section className="mt-8">
+                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <FileText size={16} className="text-primary" /> Consultation notes ({notes.length})
+                </h3>
+                <ul className="space-y-3">
+                  {notes.map((n) => (
+                    <li key={n.id}>
+                      <Link to={`/patients/${id}/appointments/${n.appointmentId}/note`} className="bg-white rounded-2xl border border-slate-100 hover:border-primary p-4 flex flex-wrap items-center gap-x-6 gap-y-1 transition-colors">
+                        <span className="font-black text-secondary w-40">{n.appointment.date} · {n.appointment.time}</span>
+                        <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
+                          {n.authorName} · {formatDateTime(n.status === 'closed' ? n.closedAt : n.updatedAt)}
+                          {n.addendaCount > 0 ? ` · ${n.addendaCount} ${n.addendaCount === 1 ? 'addendum' : 'addenda'}` : ''}
+                        </span>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${n.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
+                          {n.status === 'closed' ? 'Closed' : 'Draft'}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="mt-8">
               <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4 flex items-center gap-2">
                 <CalendarDays size={16} className="text-primary" /> Appointments ({data.appointments.length})
@@ -264,7 +300,16 @@ const PatientRecord = () => {
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white" style={{ background: statusColor(a.status) }}>
                         {statusLabel(a.status)}
                       </span>
-                      {data.canViewClinical && a.notes && <p className="basis-full text-sm text-slate-500 border-t border-slate-50 pt-2">{a.notes}</p>}
+                      {canViewClinical && a.status !== 'cancelled' && (
+                        <Link
+                          to={`/patients/${id}/appointments/${a.id}/note`}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-black text-primary hover:border-primary transition-colors"
+                        >
+                          <FileText size={14} />
+                          {!noteOf(a.id) ? 'Write note' : noteOf(a.id).status === 'closed' ? 'Open note' : 'Continue draft'}
+                        </Link>
+                      )}
+                      {a.notes && <p className="basis-full text-sm text-slate-500 border-t border-slate-50 pt-2"><span className="font-black text-slate-400 text-[10px] uppercase tracking-widest mr-2">Booking note</span>{a.notes}</p>}
                     </li>
                   ))}
                 </ul>
