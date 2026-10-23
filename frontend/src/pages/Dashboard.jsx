@@ -8,6 +8,8 @@ import MessageHistory from '../components/MessageHistory';
 import NotificationAlert from '../components/NotificationAlert';
 import UnclosedVisits from '../components/UnclosedVisits';
 import { STATUS, statusLabel, statusColor, nextSteps } from '../utils/appointmentStatus';
+import ClinicalAlert from '../components/ClinicalAlert';
+import useClinicalSummary from '../utils/useClinicalSummary';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -122,6 +124,12 @@ const Dashboard = () => {
 
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
+  // Allergies and regular medication of the patient of the open appointment, for the roles that
+  // may read clinical data (the secretary never asks: the API would refuse)
+  const clinicalSummary = useClinicalSummary(
+    showEditModal ? selectedEvent?.patientId : null,
+    showEditModal && user?.role !== 'secretary'
+  );
 
   // Add new states for Calendly logic
   const [modalStep, setModalStep] = useState(1); // 1: Patient, 2: Date/Time, 3: Confirm
@@ -1344,6 +1352,8 @@ const Dashboard = () => {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Patient Email</p>
                       <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
                     </div>
+
+                    {user?.role !== 'secretary' && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
 
                     <MessageHistory appointmentId={selectedEvent.id} />
 

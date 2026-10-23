@@ -38,6 +38,9 @@ model Clinic {
   availabilities Availability[]
   invitations    Invitation[]
   consents       PatientConsent[]
+  allergies      PatientAllergy[]
+  medications    PatientMedication[]
+  backgrounds    PatientBackground[]
   appointmentTypes AppointmentType[]
   scheduleBlocks ScheduleBlock[]
 }
@@ -96,6 +99,9 @@ model Patient {
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
   consents     PatientConsent[]
+  allergies    PatientAllergy[]
+  medications  PatientMedication[]
+  backgrounds  PatientBackground[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -344,4 +350,71 @@ model PatientConsent {
 
   @@index([patientId, createdAt])
   @@index([clinicId, createdAt])
+}
+
+// What a doctor must know before treating a patient (S10-03). Clinical data: read and written
+// only by the roles of middleware/clinicalAccess.js, every read and change audited. The
+// patient must belong to the same clinic as the row. `onDelete: Restrict` on purpose: a
+// patient with clinical data is never deleted as a "record created by mistake", because
+// those rows would vanish with nobody having looked at them.
+
+// A substance the patient reacts to. Resolved allergies stay (active = false), they are
+// not erased: what a patient once reacted to is part of the history.
+model PatientAllergy {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinicId  String
+  patientId String
+  substance String
+  reaction  String?
+  // mild | moderate | severe
+  severity  String?
+  active    Boolean  @default(true)
+  // Who recorded it, as plain text so the row outlives the account
+  recordedById   String
+  recordedByName String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  patient   Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, active])
+}
+
+// A medicine the patient takes regularly. Stopped ones stay (active = false).
+model PatientMedication {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinicId  String
+  patientId String
+  name      String
+  dose      String?
+  frequency String?
+  active    Boolean  @default(true)
+  recordedById   String
+  recordedByName String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  patient   Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, active])
+}
+
+// One line of the patient's history: personal, family, surgical or a habit.
+model PatientBackground {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clinicId    String
+  patientId   String
+  // personal | family | surgical | habit
+  category    String
+  description String
+  // When, in the doctor's words ("2019", "since childhood"); free text on purpose
+  noted       String?
+  recordedById   String
+  recordedByName String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id])
+  patient     Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, category])
 }

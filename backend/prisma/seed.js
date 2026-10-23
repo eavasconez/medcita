@@ -50,6 +50,10 @@ async function main() {
   await prisma.appointmentType.deleteMany();
   await prisma.scheduleBlock.deleteMany();
   await prisma.availability.deleteMany();
+  // Clinical data is never swept away with its patient (RESTRICT), so it goes first
+  await prisma.patientAllergy.deleteMany();
+  await prisma.patientMedication.deleteMany();
+  await prisma.patientBackground.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.doctor.deleteMany();
   await prisma.clinic.deleteMany();
@@ -149,6 +153,24 @@ async function main() {
   const allPatients = await Promise.all(patientsData.map(p =>
     prisma.patient.findUniqueOrThrow({ where: { clinicId_phone: { clinicId: clinic.id, phone: p.phone } } })
   ));
+
+  // Background and allergies for María Elena Lasso, recorded by the first pilot doctor
+  const recorder = { recordedById: pilotDoctors[0].id, recordedByName: pilotDoctors[0].name };
+  const mariaKey = { patientId: allPatients[1].id, clinicId: clinic.id, ...recorder };
+  await prisma.patientAllergy.createMany({ data: [
+    { ...mariaKey, substance: 'Penicilina', reaction: 'Urticaria y dificultad para respirar', severity: 'severe' },
+    { ...mariaKey, substance: 'Polvo', reaction: 'Estornudos', severity: 'mild' }
+  ] });
+  await prisma.patientMedication.createMany({ data: [
+    { ...mariaKey, name: 'Metformina', dose: '850 mg', frequency: 'cada 12 horas' },
+    { ...mariaKey, name: 'Losartán', dose: '50 mg', frequency: 'cada día' }
+  ] });
+  await prisma.patientBackground.createMany({ data: [
+    { ...mariaKey, category: 'personal', description: 'Diabetes tipo 2', noted: '2018' },
+    { ...mariaKey, category: 'family', description: 'Madre con hipertensión arterial' },
+    { ...mariaKey, category: 'surgical', description: 'Apendicectomía', noted: '2009' },
+    { ...mariaKey, category: 'habit', description: 'No fuma; camina 30 minutos al día' }
+  ] });
 
   // The kinds of visit of the demo clinic: the default one (30 min) and two more
   const defaultType = await ensureDefaultType(prisma, clinic.id);

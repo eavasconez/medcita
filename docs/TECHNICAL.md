@@ -122,6 +122,25 @@ Además del nombre, teléfono, correo y cédula, `Patient` guarda (todo opcional
 - **Pantalla.** `/patients/:id` (desde el nombre o el icono de la tarjeta en Patients): datos, aviso de menor sin representante, edición en la misma página y las citas.
 - **Migración** `20261027100000_add_patient_record_fields`: solo `ADD COLUMN` nulos; probada sobre datos existentes en `tests/patientRecordMigration.test.js`.
 
+### Antecedentes y alergias (S10-03)
+
+Rutas bajo `/api/patients/:id/clinical`, protegidas por `auth` y `clinicalAccess` (S10-01): **médico y admin**; la secretaría recibe `403` en todas y un paciente de otro consultorio, `404`. Cada ruta busca primero al paciente dentro del consultorio de quien pregunta.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/summary` | `{ allergies, medications, backgrounds }` en una llamada (lo que usa la ficha y el aviso de la cita). **Una** entrada de auditoría (`read`, `section: summary`) |
+| GET | `/allergies`, `/medications`, `/backgrounds` | La lista; `read` con la sección. Alergias y medicación: activas primero, las más graves primero, luego las más nuevas |
+| POST | `/allergies`, `/medications`, `/backgrounds` | Crea una entrada (`201`). Máximo 100 por tipo y paciente (`409`) |
+| PUT | `/<tipo>/:itemId` | Cambia solo lo enviado; cadena vacía borra un campo opcional. `active: false` = alergia resuelta o medicamento suspendido: **se conserva** |
+| DELETE | `/<tipo>/:itemId` | Para algo escrito por error |
+
+- **Campos** (`services/clinicalBackground.js`): alergia = `substance` (obligatoria), `reaction`, `severity` (`mild`, `moderate`, `severe`), `active`; medicación = `name` (obligatorio), `dose`, `frequency`, `active`; antecedente = `category` (`personal`, `family`, `surgical`, `habit`; obligatoria), `description` (obligatoria, hasta 500) y `noted` (cuándo, texto libre). Cada fila guarda quién la registró (`recordedById`/`recordedByName`, como texto para que sobreviva a la cuenta).
+- **Auditoría de cambios** (`recordClinicalWrite`): a diferencia de `recordAudit`, **se escribe también cuando actúa un médico**. Entidades `patient_allergy`, `patient_medication`, `patient_background`; `changes` lleva el paciente (`patientId`), si sigue activo o la categoría, y de los demás campos **solo que cambiaron**, nunca su texto. Un cambio sin cambios no deja entrada.
+- **Aviso.** `ClinicalAlert` muestra en rojo las alergias activas (con su gravedad) y la medicación habitual, arriba de la ficha y en la ventana de la cita para médico y admin; la secretaría no lo pide. Cada vez que se abre es una lectura auditada.
+- **Un paciente con datos clínicos no se borra**: las claves foráneas son `RESTRICT` (a diferencia de los consentimientos, que se van con el paciente), y `DELETE /api/patients/:id` responde `409`. La exportación de datos del paciente incluye las tres listas.
+- **Migración** `20261028100000_add_clinical_background`: solo crea tres tablas; probada sobre datos existentes en `tests/clinicalBackgroundMigration.test.js`.
+- **Pendiente (S10-04).** Las notas internas de las citas siguen viéndose en la agenda para todos los roles; la nota de consulta SOAP las reemplazará con acceso clínico.
+
 ### Disponibilidad (`/api/availability`)
 
 | Método | Ruta | Rol | Descripción |
@@ -242,7 +261,7 @@ Nadie escribe la contraseña de otra persona. Un admin invita (`POST /api/admin/
 
 Desde S7-09 queda escrito qué hicieron los **administradores y las secretarias** sobre las citas, los pacientes y las cuentas de usuario; desde S8-03 también **cómo entra la gente**: cada inicio de sesión y cada cambio de contraseña, de **cualquier rol**. Un médico que trabaja con su propia agenda no genera registro de sus citas ni de sus pacientes. Desde S9-02 también queda escrito lo que **el paciente** hace con los botones del recordatorio de WhatsApp (confirmar o cancelar su cita): `actor.role` = `patient`, nombre «Patient (WhatsApp)» y su id (nunca su nombre ni su teléfono).
 
-**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type`, `schedule_block`, `reminder_settings` o `clinical_record`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
+**Qué se registra.** Cada entrada tiene quién (`actor`: id, nombre y rol *en ese momento*), cuándo (`createdAt`), qué (`action`: `create`, `update`, `cancel`, `delete`, `login`, `login_failed`, `password_change`, `password_reset` o `read`; `entity`: `appointment`, `patient`, `user`, `invitation`, `consent`, `patient_export`, `appointment_type`, `schedule_block`, `reminder_settings`, `clinical_record`, `patient_allergy`, `patient_medication` o `patient_background`, y `entityId`), desde dónde (`ip` y `userAgent`, recortado a 255 caracteres; la IP de un cliente IPv4 se guarda sin el prefijo `::ffff:`), el médico afectado (`doctor`, cuando la acción toca su agenda) y qué cambió (`changes`):
 
 | Acción | Se registra |
 |---|---|
@@ -465,7 +484,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 **Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 446 peticiones y 749 aserciones al cierre de S10-02). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 468 peticiones y 778 aserciones al cierre de S10-03). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 

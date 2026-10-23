@@ -1,6 +1,8 @@
 // How the patient's record is shown (see backend/src/services/patientRecord.js)
 export const SEX_LABEL = { female: 'Female', male: 'Male', other: 'Other' };
 
+export const SEVERITY_LABEL = { mild: 'Mild', moderate: 'Moderate', severe: 'Severe' };
+
 // "41 years", "3 years", "5 months" (under two years the months matter), "Newborn"
 export function formatAge(age) {
   if (!age) return null;
