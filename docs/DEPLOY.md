@@ -585,6 +585,22 @@ S10-05 agrega la migración `20261030100000_add_diagnoses`, que solo **crea dos 
 - [ ] Cerrar la nota: los diagnósticos ya no se pueden cambiar. La lista de notas de la ficha muestra el principal.
 - [ ] Con una secretaria: `/api/diagnoses/search` responde `403`.
 
+## Despliegue de los signos vitales (S10-06)
+
+S10-06 agrega la migración `20261031100000_add_patient_vitals`, que solo **crea una tabla** (`PatientVitals`): no toca ninguna fila existente y la versión anterior del código nunca la lee, así que seguir con ella o volver atrás es seguro (las tomas que existan simplemente dejan de mostrarse). Se probó sobre datos existentes en `backend/tests/vitalsMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-06`).
+
+**Una toma de signos vitales no se puede borrar** (solo anular), y el paciente o la cita que la tienen tampoco. Prueba con un paciente de prueba que no te importe dejar para siempre.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico, en la ficha de un paciente de prueba: «Vital signs» → «Record vitals» → guardar peso, talla y presión: aparecen los últimos valores, el IMC y la gráfica.
+- [ ] Una presión con un solo número, o un peso de 700, se rechazan con un mensaje claro.
+- [ ] Anular una toma: queda tachada en el historial y desaparece de la gráfica.
+- [ ] Desde una cita → nota de consulta → «Vital signs of this visit»: registrar una toma; aparece en esa nota.
+- [ ] Con una secretaria: la ficha no muestra «Vital signs» y `/clinical/vitals` responde `403`.
+- [ ] En *Activity Log*: la creación y la anulación (y las lecturas), sin las medidas.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
