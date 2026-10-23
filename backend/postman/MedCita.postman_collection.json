@@ -20329,6 +20329,42 @@
           ]
         },
         {
+          "name": "Éxito - la cita queda atendida al cerrar la nota (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{s1004DoctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/patients/{{s1004PatientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "patients",
+                "{{s1004PatientId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const visit = pm.response.json().appointments.find((a) => a.id === pm.collectionVariables.get('s1004AptId'));",
+                  "pm.test('S10.5-01: closing the note completed the appointment', () => pm.expect(visit.status).to.eql('completed'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Falla - una nota cerrada no se edita (409)",
           "request": {
             "method": "PUT",

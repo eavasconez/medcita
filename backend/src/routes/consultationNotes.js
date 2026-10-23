@@ -4,6 +4,7 @@ const { inClinic } = require('../utils/clinicScope');
 const { recordClinicalRead, recordClinicalWrite, describeCreated, describeRemoved } = require('../services/auditLog');
 const notes = require('../services/consultationNotes');
 const diagnoses = require('../services/diagnoses');
+const { OPEN_STATUSES } = require('../utils/appointmentStatus');
 
 // Mounted by routes/clinicalBackground.js on /api/patients/:id/clinical/notes: already behind
 // auth, middleware/clinicalAccess.js (doctors and admins) and the lookup of the patient inside
@@ -189,6 +190,20 @@ router.post('/:noteId/close', async (req, res) => {
         entityId: note.id,
         changes: { patientId: { to: note.patientId }, status: { from: 'draft', to: 'closed' } }
       });
+
+      // The visit is over: a still-open appointment becomes "completed" (no_show and cancelled stay as they are)
+      const visit = await tx.appointment.findFirst({ where: { id: note.appointmentId, clinicId: req.clinicId }, select: { id: true, status: true } });
+      if (visit && OPEN_STATUSES.includes(visit.status)) {
+        const moved = await tx.appointment.updateMany({ where: { id: visit.id, status: visit.status }, data: { status: 'completed' } });
+        if (moved.count === 1) {
+          await recordClinicalWrite(tx, req, {
+            action: 'update',
+            entity: 'appointment',
+            entityId: visit.id,
+            changes: { status: { from: visit.status, to: 'completed' } }
+          });
+        }
+      }
       return { status: 200 };
     });
 
