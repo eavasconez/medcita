@@ -43,6 +43,7 @@ model Clinic {
   backgrounds    PatientBackground[]
   consultationNotes ConsultationNote[]
   consultationAddenda ConsultationAddendum[]
+  consultationDiagnoses ConsultationDiagnosis[]
   appointmentTypes AppointmentType[]
   scheduleBlocks ScheduleBlock[]
 }
@@ -105,6 +106,7 @@ model Patient {
   medications  PatientMedication[]
   backgrounds  PatientBackground[]
   notes        ConsultationNote[]
+  diagnoses    ConsultationDiagnosis[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -458,6 +460,7 @@ model ConsultationNote {
   patient       Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   addenda       ConsultationAddendum[]
+  diagnoses     ConsultationDiagnosis[]
 
   @@index([patientId, createdAt])
   @@index([clinicId, status])
@@ -476,4 +479,59 @@ model ConsultationAddendum {
   note       ConsultationNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
 
   @@index([noteId, createdAt])
+}
+
+// The ICD-10 (CIE-10) list the doctor picks diagnoses from (S10-05). One list for the whole
+// platform, not per clinic, and not data of any patient. MedCita does not ship it: it is loaded
+// with `npm run diagnoses:import` from a file (see docs/TECHNICAL.md for where it comes from and
+// the licence caveat), so the repository stays free of the classification itself.
+model DiagnosisCode {
+  id         String  @id @default(uuid())
+  // 'A00.0': the code with the point after the third character, as doctors write it
+  code       String  @unique
+  // 'A000': the same without the point, uppercase, for searching by code
+  codeKey    String
+  name       String
+  // The name lowercased and without accents, for searching by name
+  searchText String
+  // category (three characters, A00) or subcategory (four or more, A00.0)
+  level      String
+  // Whether a diagnosis can be recorded with it. A category that is split into subcategories
+  // (A00 into A00.0, A00.1...) is a heading, not a diagnosis.
+  selectable Boolean @default(true)
+  // Where the row was loaded from (e.g. msp-rdacaa) and the revision of the classification
+  source     String
+  version    String  @default("CIE10")
+
+  @@index([codeKey])
+  @@index([source])
+}
+
+// A diagnosis of a consultation note. The code and the name are COPIED from the catalogue (there
+// is no link to it) so a note keeps saying what it said when it was written, whatever happens
+// to the catalogue later. `code` is empty for a diagnosis typed as free text (a diagnosis that
+// is not in the list, or a clinic that has not loaded it). Only a draft note can change its
+// diagnoses: once it is closed they are as final as the rest of the note.
+model ConsultationDiagnosis {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  clinicId   String
+  patientId  String
+  noteId     String
+  code       String?
+  name       String
+  // primary | secondary. A note has at most one primary diagnosis.
+  kind       String   @default("secondary")
+  // presumptive | definitive
+  certainty  String   @default("presumptive")
+  recordedById   String
+  recordedByName String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id])
+  patient    Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  note       ConsultationNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+
+  // The same code twice in one note makes no sense (free-text rows have no code and may repeat)
+  @@unique([noteId, code])
+  @@index([patientId, createdAt])
+  @@index([code])
 }

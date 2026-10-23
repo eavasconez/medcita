@@ -10,6 +10,7 @@
     "whatsapp:test": "node scripts/sendTestWhatsApp.js",
     "storage:check": "node scripts/checkStorage.js",
     "limits:reset": "node scripts/resetRateLimits.js",
+    "diagnoses:import": "node scripts/importDiagnoses.js",
     "alerts:test": "node scripts/sendTestAlert.js",
     "whatsapp:reply": "node scripts/simulateWhatsAppReply.js"
   },
