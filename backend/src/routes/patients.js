@@ -149,7 +149,7 @@ router.get('/:id/export', async (req, res) => {
     const consultationNotes = await prisma.consultationNote.findMany({
       where: clinicalWhere,
       orderBy: { createdAt: 'asc' },
-      include: { addenda: { orderBy: { createdAt: 'asc' } } }
+      include: { addenda: { orderBy: { createdAt: 'asc' } }, diagnoses: { orderBy: { createdAt: 'asc' } } }
     });
 
     await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });

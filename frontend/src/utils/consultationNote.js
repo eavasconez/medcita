@@ -7,3 +7,9 @@ export const SECTIONS = [
 ];
 
 export const formatDateTime = (iso) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+// The Ministry's list is in capitals ("COLERA DEBIDO A..."): shown as a sentence, stored as it came.
+export const diagnosisLabel = (name) =>
+  name && name === name.toUpperCase() ? name.charAt(0) + name.slice(1).toLowerCase() : name;
+
+export const CERTAINTY_LABEL = { presumptive: 'Presumptive', definitive: 'Definitive' };

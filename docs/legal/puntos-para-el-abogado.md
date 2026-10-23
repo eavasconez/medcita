@@ -42,6 +42,7 @@
 - Retención del **registro de actividad** (Activity Log) y del historial de mensajes: hoy no se purgan nunca. ¿Qué plazo?
 - Los **respaldos** de Neon (ramas y retroceso en el tiempo) contienen datos que «ya se borraron»: ¿cómo afecta al derecho de eliminación?
 - Uso de **datos de pruebas**: staging se llena con datos ficticios; ¿alguna restricción más?
+- **Catálogo CIE-10** (S10-05): la OMS es titular del CIE-10 y exige una licencia comercial para incorporarlo a un producto de pago; la edición en español la gestiona la OPS. MedCita carga la lista que publica el Ministerio de Salud Pública de Ecuador en su repositorio público de RDACAA (software bajo GPL-3.0, sin indicar el origen de la lista ni condiciones propias para ella). ¿Basta eso, o hay que pedir la licencia a la OMS/OPS antes de cobrar? Ver `docs/TECHNICAL.md`, «Diagnósticos CIE-10».
 
 ## 2. Qué ya hace el producto (para que no se vuelva a discutir)
 

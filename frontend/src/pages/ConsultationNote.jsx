@@ -6,6 +6,7 @@ import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import ClinicalAlert from '../components/ClinicalAlert';
+import NoteDiagnoses from '../components/NoteDiagnoses';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
 import { formatAge } from '../utils/patientRecord';
@@ -296,6 +297,17 @@ const ConsultationNote = () => {
                       )}
                     </section>
                   ))}
+                </div>
+
+                <div className="mt-5">
+                  <NoteDiagnoses
+                    patientId={patientId}
+                    noteId={note.id}
+                    diagnoses={note.diagnoses}
+                    editable={editable}
+                    onChange={(diagnoses) => setNote((current) => ({ ...current, diagnoses }))}
+                    onError={(message) => showToast(message, 'error')}
+                  />
                 </div>
 
                 {editable && (

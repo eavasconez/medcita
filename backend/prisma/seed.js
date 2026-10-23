@@ -47,6 +47,7 @@ async function main() {
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
   // Notes are never swept away with their appointment or patient (RESTRICT), so they go first
+  await prisma.consultationDiagnosis.deleteMany();
   await prisma.consultationAddendum.deleteMany();
   await prisma.consultationNote.deleteMany();
   await prisma.appointment.deleteMany();
@@ -258,6 +259,7 @@ async function main() {
   if (mariaVisits.length === 2) {
     const [closedVisit, draftVisit] = mariaVisits;
     const author = (visit) => ({ authorId: visit.doctorId, authorName: visit.doctor.name });
+    const recordedBy = (visit) => ({ recordedById: visit.doctorId, recordedByName: visit.doctor.name });
     const closedNote = await prisma.consultationNote.create({
       data: {
         clinicId: clinic.id, patientId: allPatients[1].id, appointmentId: closedVisit.id, template: 'general', ...author(closedVisit),
@@ -268,6 +270,11 @@ async function main() {
         plan: 'Tratamiento: continuar metformina 850 mg cada 12 horas.\n\nControl: en 3 meses con HbA1c.'
       }
     });
+    // Diagnoses typed as free text: the seed carries no part of the ICD-10 list (docs/TECHNICAL.md)
+    await prisma.consultationDiagnosis.createMany({ data: [
+      { clinicId: clinic.id, patientId: allPatients[1].id, noteId: closedNote.id, name: 'Diabetes mellitus tipo 2 controlada', kind: 'primary', certainty: 'definitive', ...recordedBy(closedVisit) },
+      { clinicId: clinic.id, patientId: allPatients[1].id, noteId: closedNote.id, name: 'Hipertensión arterial en tratamiento', kind: 'secondary', certainty: 'definitive', ...recordedBy(closedVisit) }
+    ] });
     await prisma.consultationAddendum.create({
       data: { clinicId: clinic.id, noteId: closedNote.id, text: 'Se aclara que la dosis de metformina es con las comidas.', ...author(closedVisit) }
     });

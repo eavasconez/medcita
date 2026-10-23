@@ -564,6 +564,27 @@ S10-04 agrega la migración `20261029100000_add_consultation_notes`, que solo **
 - [ ] En *Activity Log*: la creación, el cierre y las adendas (y las lecturas), sin texto.
 - [ ] Las «Internal Notes» de las citas ahora se llaman *Booking notes* y las siguen viendo todos.
 
+## Despliegue de los diagnósticos CIE-10 (S10-05)
+
+S10-05 agrega la migración `20261030100000_add_diagnoses`, que solo **crea dos tablas** (`DiagnosisCode`, la lista, y `ConsultationDiagnosis`, los diagnósticos de las notas): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/diagnosesMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-05`).
+
+**La lista CIE-10 no viene con la aplicación.** Después de desplegar, la búsqueda de diagnósticos no encuentra nada hasta cargarla (el texto libre sí funciona). Antes de cargarla en producción **lee el riesgo de licencia** en `docs/TECHNICAL.md`, «Diagnósticos CIE-10»: no es una licencia de la OMS/OPS.
+
+**Cargar la lista (desde tu máquina, sin guardar el archivo en el repositorio):**
+
+1. Descarga `CIE.sql` de `https://gitlab.com/MSP_EC/rdacaa/-/raw/master/base_rdacaa/Scripts/SCRIPTS_SQLITE/CIE.sql` a una carpeta fuera del repositorio.
+2. Pruébalo primero en una base local o en la rama de respaldo de Neon: `npm run diagnoses:import -- /ruta/CIE.sql` debe decir `Loaded 14462 codes (12656 selectable)`.
+3. En producción, con la cadena de conexión de Neon: `DIAGNOSES_IMPORT_HOST=<host de DATABASE_URL> npm run diagnoses:import -- /ruta/CIE.sql`. Sin `DIAGNOSES_IMPORT_HOST` se niega a escribir en una base que no sea local. Se puede repetir: reemplaza las filas de la misma fuente.
+4. Para quitarla: `DELETE FROM "DiagnosisCode";` (las notas ya escritas conservan su copia del código y el nombre).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico, en un borrador de nota de un paciente de prueba: buscar «diabetes» antes de cargar la lista dice que no está cargada y ofrece el texto libre.
+- [ ] Después de cargarla: «diabetes mellitus» y «E11» devuelven resultados; elegir uno lo agrega como diagnóstico principal; agregar uno de texto libre; cambiar cuál es el principal.
+- [ ] Cerrar la nota: los diagnósticos ya no se pueden cambiar. La lista de notas de la ficha muestra el principal.
+- [ ] Con una secretaria: `/api/diagnoses/search` responde `403`.
+
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
