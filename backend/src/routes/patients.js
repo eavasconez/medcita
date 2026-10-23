@@ -11,7 +11,9 @@ const { inClinic } = require('../utils/clinicScope');
 const clinicalAccess = require('../middleware/clinicalAccess');
 const { clinicalRoleOf } = clinicalAccess;
 const clinicalBackground = require('./clinicalBackground');
-const { PROFILE_FIELDS, parseProfile, withDerived } = require('../services/patientRecord');
+const { buildPatientExport } = require('../services/patientExport');
+const { renderPatientExportPdf } = require('../services/patientExportPdf');
+const { parseProfile, withDerived } = require('../services/patientRecord');
 const { clinicDateString } = require('../utils/clinicTime');
 
 const todayOf = (req) => clinicDateString(new Date(), req.clinicTimezone);
@@ -119,64 +121,30 @@ router.post('/:id/consents', async (req, res) => {
 
 // Everything MedCita holds about one patient, as a file: the answer to a patient who asks
 // for their data (access and portability). Admin only, because it is the whole record, and
-// every export is written to the audit log. The messages are listed without their text
-// (it is never stored) and with the destination masked.
+// every export is written to the audit log. As JSON by default, or as a PDF to read and hand
+// over (?format=pdf, S10-07). See services/patientExport.js for what it holds.
 router.get('/:id/export', async (req, res) => {
   if (req.userRole !== 'admin') return res.status(403).json({ error: 'Only an administrator can export a patient\'s data' });
+  const format = req.query.format === undefined ? 'json' : req.query.format;
+  if (format !== 'json' && format !== 'pdf') return res.status(400).json({ error: 'format must be json or pdf' });
 
   try {
-    const patient = await prisma.patient.findFirst({
-      where: inClinic(req, { id: req.params.id }),
-      include: {
-        appointments: { orderBy: [{ date: 'asc' }, { time: 'asc' }], include: { doctor: { select: { name: true } } } },
-        clinic: { select: { name: true } }
-      }
-    });
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const data = await buildPatientExport(prisma, req, req.params.id);
+    if (!data) return res.status(404).json({ error: 'Patient not found' });
 
-    const messages = await prisma.notificationLog.findMany({
-      where: { clinicId: req.clinicId, recipient: 'patient', appointmentId: { in: patient.appointments.map((a) => a.id) } },
-      orderBy: { createdAt: 'asc' },
-      select: { createdAt: true, kind: true, channel: true, status: true, destination: true, appointmentId: true }
-    });
-    const consentHistory = await consents.history(req.clinicId, patient.id);
-    const clinicalWhere = { patientId: patient.id, clinicId: req.clinicId };
-    const [allergies, medications, backgrounds] = await Promise.all([
-      prisma.patientAllergy.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
-      prisma.patientMedication.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
-      prisma.patientBackground.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } })
-    ]);
-    const vitalSigns = await prisma.patientVitals.findMany({ where: clinicalWhere, orderBy: [{ measuredAt: 'asc' }, { createdAt: 'asc' }] });
-    const consultationNotes = await prisma.consultationNote.findMany({
-      where: clinicalWhere,
-      orderBy: { createdAt: 'asc' },
-      include: { addenda: { orderBy: { createdAt: 'asc' } }, diagnoses: { orderBy: { createdAt: 'asc' } } }
-    });
+    await recordRead(prisma, req, { entity: 'patient_export', entityId: data.patient.id, changes: { format: { to: format } } });
 
-    await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });
-
-    res.set('Content-Disposition', `attachment; filename="patient-${patient.id}.json"`);
-    res.json({
-      exportedAt: new Date().toISOString(),
-      clinic: patient.clinic.name,
-      patient: {
-        id: patient.id, name: patient.name, cedula: patient.cedula, phone: patient.phone, email: patient.email, createdAt: patient.createdAt,
-        ...Object.fromEntries(PROFILE_FIELDS.map((field) => [field, patient[field]]))
-      },
-      appointments: patient.appointments.map((a) => ({
-        id: a.id, date: a.date, time: a.time, status: a.status, notes: a.notes, doctor: a.doctor.name, createdAt: a.createdAt
-      })),
-      allergies,
-      medications,
-      backgrounds,
-      consultationNotes,
-      vitalSigns,
-      messagesSent: messages,
-      healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
-    });
+    if (format === 'pdf') {
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', `attachment; filename="patient-${data.patient.id}.pdf"`);
+      renderPatientExportPdf(data, { exportedBy: req.userName, timezone: req.clinicTimezone }, res);
+      return;
+    }
+    res.set('Content-Disposition', `attachment; filename="patient-${data.patient.id}.json"`);
+    res.json(data);
   } catch (err) {
     console.error('Export patient error:', err);
-    res.status(500).json({ error: 'An unexpected error occurred' });
+    if (!res.headersSent) res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
 

@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "node-cron": "^4.2.1",
+    "pdfkit": "^0.17.2",
     "prisma": "^5.10.2",
     "twilio": "^5.13.0"
   },

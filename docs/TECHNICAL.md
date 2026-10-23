@@ -108,7 +108,7 @@ El calendario del frontend pide solo el rango de fechas que está mostrando (sem
 | GET | `/consent-document` | Autenticado | El texto del consentimiento de datos de salud vigente con el nombre del consultorio: `{ kind, version, title, paragraphs, methods }` |
 | GET | `/:id/consents` | Autenticado | Cómo está el paciente respecto del consentimiento y todos sus eventos: `{ status: none \| granted \| withdrawn, upToDate, current, history, currentVersion }`. De otro consultorio, `404` |
 | POST | `/:id/consents` | Autenticado | Registra que el paciente **dio** (`granted: true`) o **retiró** (`false`) el consentimiento, con `method` (`in_person_signed`, `in_person_verbal`, `electronic`, `other`). La versión es siempre la vigente; si se envía `documentVersion` y ya no lo es, `409`. Es un evento nuevo, nunca una edición. Quedó en el Activity Log si lo hizo un admin o una secretaria. `201` con el estado nuevo |
-| GET | `/:id/export` | Solo admin | Todos los datos del paciente (ficha incluida) como archivo (`Content-Disposition: attachment`): paciente, citas con sus notas, mensajes enviados (sin texto, con el destino enmascarado) y consentimientos. Cada exportación queda en el Activity Log (`read` sobre `patient_export`). Secretaria y médico: `403` |
+| GET | `/:id/export` | Solo admin | Todos los datos del paciente (ficha incluida) como archivo (`Content-Disposition: attachment`), en **JSON** (por defecto) o en **PDF** (`?format=pdf`, S10-07; otro formato, `400`): paciente, citas con sus notas, mensajes enviados (sin texto, con el destino enmascarado) y consentimientos. Cada exportación queda en el Activity Log (`read` sobre `patient_export`, con el `format` en `changes`). Secretaria y médico: `403` |
 
 ### Ficha del paciente (S10-02)
 
@@ -206,6 +206,30 @@ Rutas bajo `/api/patients/:id/clinical/vitals`, con la misma regla que el resto 
 - **Migración** `20261031100000_add_patient_vitals`: solo crea una tabla, probada con datos existentes en `tests/vitalsMigration.test.js`.
 - **Pantallas.** En la ficha, «Vital signs» (solo médico y admin): el último valor de cada medida con su fecha (un peso puede ser de hace un mes y un pulso de hoy), una **gráfica** por medida (peso, IMC, presión con dos líneas, pulso, respiración, temperatura, saturación; la librería de gráficas solo se descarga si el paciente tiene tomas), el historial completo y el formulario «Record vitals». En la nota de consulta, «Vital signs of this visit» registra y muestra las tomas de esa cita.
 - **Pendiente.** Las tomas no se comparan con rangos normales por edad ni se marcan como fuera de rango; tampoco hay curvas de crecimiento pediátricas.
+
+### Línea de tiempo y exportación clínica (S10-07)
+
+**Línea de tiempo.** `GET /api/patients/:id/clinical/timeline` (médico y admin; secretaría `403`; otro consultorio `404`): la historia del paciente en un solo orden, la más reciente primero. Cada evento es `{ type, at, id, ... }`:
+
+| `type` | Cuándo (`at`) | Qué trae |
+|---|---|---|
+| `appointment` | el instante de la cita, en la zona del consultorio | fecha, hora, estado, médico, tipo, `noteId` si tiene nota |
+| `note` | cuando se **cerró** (un borrador: la última vez que se tocó) | estado, autor, quién la cerró, `diagnoses` (el principal primero) y cuántas adendas; **nunca el texto de la nota** |
+| `addendum` | cuando se escribió | autor y texto de la adenda |
+| `vitals` | cuando se **midió** | las medidas, el IMC y `voided` |
+| `consent` | cuando se registró | otorgado o retirado, versión del texto, método, quién lo registró |
+
+- **Parámetros.** `types` (lista separada por comas de los de arriba; otro valor, `400`), `limit` (1 a 200, por defecto 50) y `before` (fecha ISO: solo lo **estrictamente más antiguo**). La respuesta trae `nextBefore` para pedir la página siguiente (`null` en la última). Una página **nunca parte los eventos del mismo instante**: si el corte cae en medio de un empate, la página los incluye todos.
+- **Auditoría.** Cada llamada es una lectura (`section: timeline`). Los parámetros desconocidos se ignoran.
+- **Límite de lectura.** Se carga la historia del paciente y se mezcla aquí, hasta 2 000 por tipo, para no cargar entera una historia desbordada.
+- **Pantalla.** `/patients/:id/timeline` (botón «Timeline» de la ficha, solo médico y admin): los eventos por mes, con filtros (todo, visitas, notas, signos vitales, consentimientos), enlaces a la nota de cada visita y «Show older» para la página siguiente.
+
+**Exportación en PDF.** `GET /api/patients/:id/export?format=pdf`: el mismo contenido que el JSON (`services/patientExport.js` arma los datos, `services/patientExportPdf.js` los dibuja) pensado para leerse y entregar al paciente. Solo admin, igual que el JSON. Es un **documento para el paciente, así que está en español**: datos personales y representante legal, consentimiento, alergias, medicación, antecedentes, signos vitales (las anuladas marcadas), cada nota de consulta con sus cuatro partes, diagnósticos y adendas (un borrador dice «BORRADOR sin cerrar»), citas y mensajes enviados (sin su texto, con el destino enmascarado). Las fechas van en la zona del consultorio y cada página lleva el nombre del consultorio y del paciente, «confidencial» y su número.
+
+- **Qué lleva el PDF** se arma primero como una lista de bloques (`buildBlocks`), aparte de cómo se dibuja, para poder probarlo sin leer un PDF.
+- **Tipografía.** Usa **DejaVu Sans** (`backend/src/assets/fonts/`, sin modificar, con su licencia en `LICENSE.txt`) y no las fuentes estándar de los PDF, que solo imprimen Latin-1: un «β-bloqueante» o un «SpO₂» escrito por el médico no saldrían. El PDF se hace con `pdfkit` (MIT), dependencia nueva del backend.
+- **Pantallas.** «Export PDF» en la ficha y un segundo icono de descarga en cada tarjeta de Patients (solo admin).
+- **Sin migración.**
 
 ### Disponibilidad (`/api/availability`)
 
@@ -550,7 +574,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 **Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 549 peticiones y 894 aserciones al cierre de S10-06). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 569 peticiones y 931 aserciones al cierre de S10-07). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
