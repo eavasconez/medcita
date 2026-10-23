@@ -71,13 +71,15 @@ const ScheduleBlocksSection = ({ doctors, isStaff, selectedDoctorId, showToast }
   }, [load]);
 
   const doctorForForm = form.doctorId || selectedDoctorId || doctors[0]?.id || '';
+  // A clinic with no doctor yet has only "The whole clinic" to choose, and the list shows it: that is what is sent
+  const scope = isStaff && form.scope === 'doctor' && !doctorForForm ? 'clinic' : form.scope;
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const body = { scope: form.scope, startDate: form.startDate, endDate: form.endDate || form.startDate, reason: form.reason };
-      if (form.scope === 'doctor' && isStaff) body.doctorId = doctorForForm;
+      const body = { scope, startDate: form.startDate, endDate: form.endDate || form.startDate, reason: form.reason };
+      if (scope === 'doctor' && isStaff) body.doctorId = doctorForForm;
       const res = await axios.post(`${API_BASE_URL}/api/schedule-blocks`, body, { headers });
       setForm(emptyForm);
       setAffected(res.data.affectedTotal > 0 ? { total: res.data.affectedTotal, appointments: res.data.affectedAppointments } : null);
@@ -206,7 +208,7 @@ const ScheduleBlocksSection = ({ doctors, isStaff, selectedDoctorId, showToast }
           {isStaff && (
             <label className="block sm:col-span-2">
               <span className="form-label !mb-1">Who</span>
-              <select className={field} value={form.scope === 'clinic' ? 'clinic' : doctorForForm} onChange={(e) => setForm(e.target.value === 'clinic' ? { ...form, scope: 'clinic' } : { ...form, scope: 'doctor', doctorId: e.target.value })}>
+              <select className={field} value={scope === 'clinic' ? 'clinic' : doctorForForm} onChange={(e) => setForm(e.target.value === 'clinic' ? { ...form, scope: 'clinic' } : { ...form, scope: 'doctor', doctorId: e.target.value })}>
                 <option value="clinic">The whole clinic</option>
                 {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
               </select>

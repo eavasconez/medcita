@@ -95,13 +95,13 @@ Solo cuando el paso 3 esté bien, cambiar el **Build Command** del servicio en R
    | `JWT_SECRET` | Generar una nueva y real: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `FRONTEND_URL` | La URL del Static Site de Render (paso 4) — mientras no exista, usar un placeholder temporal y **actualizarlo después** (ver nota abajo) |
    | `ERROR_ALERT_EMAILS` | Opcional pero recomendada. Correos de los **desarrolladores / del equipo de MedCita** (uno o varios, separados por comas) que reciben un aviso cuando el servidor responde un error 500. Nunca la dirección de un consultorio. Ver «Despliegue de los límites persistentes y las alertas de errores» |
-   | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `2` por defecto (no hace falta definirla). Ver la verificación abajo |
+   | `TRUST_PROXY` | Opcional. Nº de proxies delante de la app para los límites de intentos por IP; en Render vale `3` por defecto (no hace falta definirla; si en el panel de Render está definida con otro valor, ese manda). Ver la verificación abajo |
    | `META_WHATSAPP_*` / `TWILIO_*` / `BREVO_*` / `SENDGRID_*` | Opcionales — sin ellas, WhatsApp/Email corren en modo mock (igual que en local). Para elegir entre WhatsApp con Meta (plantillas, número de prueba gratuito) y Twilio ver la sección 7 |
 
    > **Verificar `TRUST_PROXY` tras desplegar**: el login limita los intentos fallidos por IP y por correo, y la IP depende de cuántos proxies hay delante (en Render: Cloudflare + balanceador). Con un token de admin:
    > ```bash
    > curl -H "Authorization: Bearer <token-admin>" https://medcita-backend.onrender.com/api/admin/client-ip
-   > # {"ip":"<tu IP pública>","forwardedFor":"...","trustProxy":2}
+   > # {"ip":"<tu IP pública>","forwardedFor":"<tu IP>, <Cloudflare>, <Render 10.x>","trustProxy":3}
    > ```
    > `ip` debe ser **tu IP pública** (compárala con `curl ifconfig.me`). Si muestra una IP de Cloudflare o privada, sube `TRUST_PROXY` en 1; si muestra una IP que no es tuya, bájalo en 1. El límite por correo funciona igual aunque este valor esté mal; solo el límite por IP depende de él.
 
@@ -465,7 +465,7 @@ S9-02 deja que el paciente responda el recordatorio con un toque —«Confirmo»
 
 1. **Fusionar y desplegar.** Nada cambia para los pacientes: sin las variables, el webhook responde `503` y los recordatorios salen como siempre.
 2. **Definir en Render** `META_APP_SECRET` y `META_WEBHOOK_VERIFY_TOKEN` (7.5). Redespliega solo.
-3. **Configurar el webhook en Meta** (WHATSAPP_META_SETUP.md, paso 12): URL `https://<tu-backend>.onrender.com/api/webhooks/whatsapp` y el mismo token. Meta hace la verificación en ese momento: tiene que decir que se verificó. Luego, suscribir el campo `messages`.
+3. **Configurar el webhook en Meta** (WHATSAPP_META_SETUP.md, paso 12: *Casos de uso → Personalizar → Paso 2: Configuración de producción → Configurar webhooks*): URL `https://<tu-backend>.onrender.com/api/webhooks/whatsapp` y el mismo token. Meta hace la verificación en ese momento: tiene que decir que se verificó (tick verde). Luego, suscribir **solo** el campo `messages`. Hecho y probado el 22-oct-2026 con «Probar → Enviar al servidor». **Ojo:** con la app de Meta sin publicar, Meta advierte que no entrega datos de producción; si un toque real no llega a MedCita, hay que publicar la app (ver el aviso en WHATSAPP_META_SETUP.md, paso 12).
 4. **Registrar la plantilla con botones** (7.4) y esperar a que esté **APPROVED**.
 5. **Recién entonces** definir `META_WHATSAPP_TEMPLATE_REMINDER_BUTTONS` (y `…_DETAILED_BUTTONS` si registraste la de la dirección). Desde el **siguiente recordatorio** de cada cita salen los botones. Los recordatorios ya enviados no cambian.
 
@@ -519,6 +519,121 @@ S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea
 - [ ] `GET /api/health` responde `200`.
 - [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
 - [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
+
+## Despliegue del Sprint 10 completo (v0.10.0): ficha del paciente y primera historia clínica
+
+Esta sección junta todo lo del release; el detalle de cada ticket está en las secciones «Despliegue de…» de abajo. Es el primer release con **datos clínicos**.
+
+**Qué se aplica a la base.** Cinco migraciones, todas **solo agregan** (columnas nulas o tablas nuevas; ninguna toca filas existentes), en este orden: `20261027100000_add_patient_record_fields` (S10-02), `20261028100000_add_clinical_background` (S10-03), `20261029100000_add_consultation_notes` (S10-04), `20261030100000_add_diagnoses` (S10-05) y `20261031100000_add_patient_vitals` (S10-06). S10-01 y S10-07 no cambian el esquema. Se aplican solas con el `prisma migrate deploy` del Build Command; `/api/health` responde `503` mientras falte alguna, así que Render mantiene la versión anterior hasta que la nueva esté sana.
+
+**Antes de fusionar a `main`:**
+
+- [ ] **Una rama de respaldo en Neon** desde producción (por ejemplo `antes-de-v0-10-0`). Con una sola alcanza porque las cinco migraciones se aplican juntas; sirve para restaurar si algo sale mal **antes** de que alguien escriba datos clínicos.
+- [ ] Sin variables de entorno nuevas. **Dependencia nueva** `pdfkit` y dos archivos de fuentes (~1,4 MB) dentro del repositorio: nada que configurar.
+- [ ] Saber que **desde que haya datos clínicos reales no se puede volver atrás sin perderlos**: volver a la versión anterior del código es seguro (simplemente deja de mostrarlos), pero restaurar la base desde la rama de respaldo borra lo escrito después. Y varias cosas son permanentes por diseño: una **nota cerrada**, una **toma de signos vitales** y un paciente o una cita que las tengan no se pueden borrar.
+
+**Después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] La agenda, los pacientes y los recordatorios se ven igual que antes.
+- [ ] Con un administrador y un paciente de prueba, recorrido completo: abrir la ficha, completar sus datos, registrar una alergia y una medicación, abrir una cita → «Consultation note», escribir, registrar signos vitales, cerrar la nota, agregar una adenda, mirar la línea de tiempo y bajar el PDF.
+- [ ] Con una **secretaria**: ve la ficha y las citas, **no** ve nada clínico (ni el aviso de alergias, ni las notas, ni los signos vitales, ni la línea de tiempo).
+- [ ] En *Activity Log*: aparecen las lecturas y los cambios clínicos, **sin el texto de lo escrito**.
+- [ ] **Catálogo CIE-10 (decisión tuya):** la lista no viene con la aplicación. Hasta cargarla, los diagnósticos se escriben como texto libre. Antes de cargarla en producción lee el riesgo de licencia (`docs/TECHNICAL.md`, «Diagnósticos CIE-10») y sigue los pasos de «Despliegue de los diagnósticos CIE-10 (S10-05)».
+
+## Despliegue de la ficha del paciente (S10-02)
+
+S10-02 agrega la migración `20261027100000_add_patient_record_fields`, que solo **añade 12 columnas nulas a `Patient`** (fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro y representante legal): ninguna fila existente cambia y la versión anterior del código no las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/patientRecordMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-02`).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] En *Patients*, abrir un paciente existente: la ficha carga con los datos que ya tenía y los campos nuevos vacíos.
+- [ ] Completar su fecha de nacimiento y guardar: aparece la edad.
+- [ ] Con un paciente de prueba menor de 18 años y sin representante, aparece el aviso; al registrarlo, desaparece.
+- [ ] Con la cuenta de una secretaria: la ficha abre con los datos y las citas (con sus notas de reserva, que son administrativas desde S10-04).
+
+## Despliegue de antecedentes y alergias (S10-03)
+
+S10-03 agrega la migración `20261028100000_add_clinical_background`, que solo **crea tres tablas** (`PatientAllergy`, `PatientMedication`, `PatientBackground`): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/clinicalBackgroundMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-03`).
+
+**Desde este ticket hay datos clínicos en la base.** Un paciente con alergias, medicación o antecedentes ya no se puede borrar; y volver atrás con una versión anterior del código no los borra, solo deja de mostrarlos.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico o el admin: abrir un paciente de prueba, registrar una alergia (aparece el aviso rojo arriba), un medicamento y un antecedente.
+- [ ] Abrir la cita de ese paciente en la agenda: el aviso de alergias aparece.
+- [ ] Con una secretaria: la ficha abre **sin** esas secciones ni el aviso.
+- [ ] En *Activity Log*: aparecen las lecturas y los cambios, sin el texto de lo escrito.
+- [ ] Borrar los datos de prueba (el paciente de prueba no se puede borrar hasta quitar sus entradas).
+
+## Despliegue de la nota de consulta (S10-04)
+
+S10-04 agrega la migración `20261029100000_add_consultation_notes`, que solo **crea dos tablas** (`ConsultationNote` y `ConsultationAddendum`): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro (las notas que existan simplemente dejan de mostrarse). Se probó sobre datos existentes en `backend/tests/consultationNotesMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-04`).
+
+**A partir de aquí una nota cerrada no se puede borrar** (ni desde la aplicación ni de la base, que lo impide con `RESTRICT`), y la cita o el paciente que la tienen tampoco. Úsalo con un paciente de prueba que no te importe dejar para siempre.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico: abrir una cita de un paciente de prueba → «Consultation note» → iniciar con la plantilla general → escribir; en unos segundos dice «Saved». Recargar la página: el texto sigue.
+- [ ] Abrir la misma nota en otra pestaña con el mismo médico y guardar en las dos: la segunda avisa que la nota cambió y no pisa la primera.
+- [ ] Con otro médico o el admin: el borrador se ve pero no se edita («Only they can edit it»).
+- [ ] Cerrar la nota: ya no se edita; agregar una adenda con otro usuario.
+- [ ] Con una secretaria: la dirección de la nota responde «Clinical data is not available to your role».
+- [ ] En *Activity Log*: la creación, el cierre y las adendas (y las lecturas), sin texto.
+- [ ] Las «Internal Notes» de las citas ahora se llaman *Booking notes* y las siguen viendo todos.
+
+## Despliegue de los diagnósticos CIE-10 (S10-05)
+
+S10-05 agrega la migración `20261030100000_add_diagnoses`, que solo **crea dos tablas** (`DiagnosisCode`, la lista, y `ConsultationDiagnosis`, los diagnósticos de las notas): no toca ninguna fila existente y la versión anterior del código nunca las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/diagnosesMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-05`).
+
+**La lista CIE-10 no viene con la aplicación.** Después de desplegar, la búsqueda de diagnósticos no encuentra nada hasta cargarla (el texto libre sí funciona). Antes de cargarla en producción **lee el riesgo de licencia** en `docs/TECHNICAL.md`, «Diagnósticos CIE-10»: no es una licencia de la OMS/OPS.
+
+**Cargar la lista (desde tu máquina, sin guardar el archivo en el repositorio):**
+
+1. Descarga `CIE.sql` de `https://gitlab.com/MSP_EC/rdacaa/-/raw/master/base_rdacaa/Scripts/SCRIPTS_SQLITE/CIE.sql` a una carpeta fuera del repositorio.
+2. Pruébalo primero en una base local o en la rama de respaldo de Neon: `npm run diagnoses:import -- /ruta/CIE.sql` debe decir `Loaded 14462 codes (12656 selectable)`.
+3. En producción, con la cadena de conexión de Neon: `DIAGNOSES_IMPORT_HOST=<host de DATABASE_URL> npm run diagnoses:import -- /ruta/CIE.sql`. Sin `DIAGNOSES_IMPORT_HOST` se niega a escribir en una base que no sea local. Se puede repetir: reemplaza las filas de la misma fuente.
+4. Para quitarla: `DELETE FROM "DiagnosisCode";` (las notas ya escritas conservan su copia del código y el nombre).
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico, en un borrador de nota de un paciente de prueba: buscar «diabetes» antes de cargar la lista dice que no está cargada y ofrece el texto libre.
+- [ ] Después de cargarla: «diabetes mellitus» y «E11» devuelven resultados; elegir uno lo agrega como diagnóstico principal; agregar uno de texto libre; cambiar cuál es el principal.
+- [ ] Cerrar la nota: los diagnósticos ya no se pueden cambiar. La lista de notas de la ficha muestra el principal.
+- [ ] Con una secretaria: `/api/diagnoses/search` responde `403`.
+
+## Despliegue de los signos vitales (S10-06)
+
+S10-06 agrega la migración `20261031100000_add_patient_vitals`, que solo **crea una tabla** (`PatientVitals`): no toca ninguna fila existente y la versión anterior del código nunca la lee, así que seguir con ella o volver atrás es seguro (las tomas que existan simplemente dejan de mostrarse). Se probó sobre datos existentes en `backend/tests/vitalsMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-06`).
+
+**Una toma de signos vitales no se puede borrar** (solo anular), y el paciente o la cita que la tienen tampoco. Prueba con un paciente de prueba que no te importe dejar para siempre.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un médico, en la ficha de un paciente de prueba: «Vital signs» → «Record vitals» → guardar peso, talla y presión: aparecen los últimos valores, el IMC y la gráfica.
+- [ ] Una presión con un solo número, o un peso de 700, se rechazan con un mensaje claro.
+- [ ] Anular una toma: queda tachada en el historial y desaparece de la gráfica.
+- [ ] Desde una cita → nota de consulta → «Vital signs of this visit»: registrar una toma; aparece en esa nota.
+- [ ] Con una secretaria: la ficha no muestra «Vital signs» y `/clinical/vitals` responde `403`.
+- [ ] En *Activity Log*: la creación y la anulación (y las lecturas), sin las medidas.
+
+## Despliegue de la línea de tiempo y la exportación en PDF (S10-07)
+
+S10-07 **no cambia el esquema**: no hay migración ni hace falta una rama de respaldo en Neon. Sí hay **una dependencia nueva** (`pdfkit`, en `backend/package.json`): Render la instala con el `npm install` de cada despliegue. Las dos fuentes del PDF (`backend/src/assets/fonts/`, ~1,4 MB) viajan en el repositorio; no hay nada que configurar.
+
+**Verificar producción después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] Con un admin, en la ficha de un paciente de prueba: «Export PDF» baja `patient-<id>.pdf`; ábrelo: sale en español, con tildes y caracteres como «°C» y «SpO₂» bien impresos, y cada página trae su pie con el número.
+- [ ] En *Activity Log*: la exportación aparece como «Viewed a patient's data».
+- [ ] Con un médico: la ficha muestra «Timeline» pero no «Export PDF»; la línea de tiempo lista visitas, notas, signos vitales y consentimientos en orden, y los filtros funcionan.
+- [ ] Con una secretaria: la dirección `/patients/<id>/timeline` responde «Clinical data is not available to your role».
+- [ ] Un paciente con mucha historia: «Show older» trae la página siguiente sin repetir eventos.
 
 ## Alta de consultorios e invitaciones: necesitan correo (S8-02)
 

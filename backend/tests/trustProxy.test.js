@@ -10,9 +10,9 @@ describe('resolveTrustProxy', () => {
     expect(resolveTrustProxy({ TRUST_PROXY: '' })).toBe(false);
   });
 
-  it('assumes the Cloudflare + Render load balancer chain on Render', () => {
-    expect(RENDER_PROXY_HOPS).toBe(2);
-    expect(resolveTrustProxy({ RENDER: 'true' })).toBe(2);
+  it('assumes the Cloudflare + Render load balancers chain on Render (3 hops since Oct 2026)', () => {
+    expect(RENDER_PROXY_HOPS).toBe(3);
+    expect(resolveTrustProxy({ RENDER: 'true' })).toBe(3);
   });
 
   it.each([
@@ -80,5 +80,23 @@ describe('GET /api/admin/client-ip', () => {
 
     expect(res.body.trustProxy).toBe(2);
     expect(res.body.ip).toBe('198.51.100.23');
+  });
+  it('reads the real client through the chain Render showed on 22 Oct 2026 (client, Cloudflare, Render internal)', async () => {
+    app.set('trust proxy', RENDER_PROXY_HOPS);
+    const admin = await createUser({ role: 'admin' });
+
+    // 157.100.137.15 is the client; the app's own socket is the third proxy (the load balancer)
+    const res = await request(app)
+      .get('/api/admin/client-ip')
+      .set(bearer(admin.token))
+      .set('X-Forwarded-For', '157.100.137.15, 104.23.213.169, 10.26.16.133');
+
+    expect(res.body.trustProxy).toBe(3);
+    expect(res.body.ip).toBe('157.100.137.15');
+
+    // with the old value of 2 the app saw Cloudflare instead
+    app.set('trust proxy', 2);
+    const before = await request(app).get('/api/admin/client-ip').set(bearer(admin.token)).set('X-Forwarded-For', '157.100.137.15, 104.23.213.169, 10.26.16.133');
+    expect(before.body.ip).toBe('104.23.213.169');
   });
 });

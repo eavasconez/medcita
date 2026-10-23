@@ -8,6 +8,15 @@ const { recordAudit, recordRead, diffFields, auditPatientUpsert } = require('../
 const consents = require('../services/patientConsent');
 const { consentDocumentFor, CONSENT_METHODS, CURRENT_CONSENT_VERSION } = require('../legal/healthDataConsent');
 const { inClinic } = require('../utils/clinicScope');
+const clinicalAccess = require('../middleware/clinicalAccess');
+const { clinicalRoleOf } = clinicalAccess;
+const clinicalBackground = require('./clinicalBackground');
+const { buildPatientExport } = require('../services/patientExport');
+const { renderPatientExportPdf } = require('../services/patientExportPdf');
+const { parseProfile, withDerived } = require('../services/patientRecord');
+const { clinicDateString } = require('../utils/clinicTime');
+
+const todayOf = (req) => clinicDateString(new Date(), req.clinicTimezone);
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE_SIZE = 25;
@@ -50,7 +59,7 @@ router.get('/', async (req, res) => {
     ]);
     const standing = await consents.statusByPatient(req.clinicId, patients.map((p) => p.id));
     res.json({
-      patients: patients.map((p) => ({ ...p, consent: standing[p.id] })),
+      patients: patients.map((p) => ({ ...withDerived(p, todayOf(req)), consent: standing[p.id] })),
       ...pageInfo({ total, page, pageSize })
     });
   } catch (err) {
@@ -112,43 +121,76 @@ router.post('/:id/consents', async (req, res) => {
 
 // Everything MedCita holds about one patient, as a file: the answer to a patient who asks
 // for their data (access and portability). Admin only, because it is the whole record, and
-// every export is written to the audit log. The messages are listed without their text
-// (it is never stored) and with the destination masked.
+// every export is written to the audit log. As JSON by default, or as a PDF to read and hand
+// over (?format=pdf, S10-07). See services/patientExport.js for what it holds.
 router.get('/:id/export', async (req, res) => {
   if (req.userRole !== 'admin') return res.status(403).json({ error: 'Only an administrator can export a patient\'s data' });
+  const format = req.query.format === undefined ? 'json' : req.query.format;
+  if (format !== 'json' && format !== 'pdf') return res.status(400).json({ error: 'format must be json or pdf' });
 
+  try {
+    const data = await buildPatientExport(prisma, req, req.params.id);
+    if (!data) return res.status(404).json({ error: 'Patient not found' });
+
+    await recordRead(prisma, req, { entity: 'patient_export', entityId: data.patient.id, changes: { format: { to: format } } });
+
+    if (format === 'pdf') {
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', `attachment; filename="patient-${data.patient.id}.pdf"`);
+      renderPatientExportPdf(data, { exportedBy: req.userName, timezone: req.clinicTimezone }, res);
+      return;
+    }
+    res.set('Content-Disposition', `attachment; filename="patient-${data.patient.id}.json"`);
+    res.json(data);
+  } catch (err) {
+    console.error('Export patient error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
+// Allergies, regular medication and history (S10-03): clinical data, doctors and admins only
+router.use('/:id/clinical', clinicalAccess, clinicalBackground);
+
+// The patient's record in one place: their data, how old they are and their appointments.
+// The notes of an appointment are booking notes (administrative, visible to the whole front
+// desk); what is clinical is written in the consultation note (S10-04), which has its own
+// routes and rules. `canViewClinical` tells the screen whether to ask for the clinical parts.
+router.get('/:id', async (req, res) => {
   try {
     const patient = await prisma.patient.findFirst({
       where: inClinic(req, { id: req.params.id }),
       include: {
-        appointments: { orderBy: [{ date: 'asc' }, { time: 'asc' }], include: { doctor: { select: { name: true } } } },
-        clinic: { select: { name: true } }
+        appointments: {
+          orderBy: [{ date: 'desc' }, { time: 'desc' }],
+          include: {
+            doctor: { select: { id: true, name: true } },
+            type: { select: { name: true, color: true } }
+          }
+        }
       }
     });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-    const messages = await prisma.notificationLog.findMany({
-      where: { clinicId: req.clinicId, recipient: 'patient', appointmentId: { in: patient.appointments.map((a) => a.id) } },
-      orderBy: { createdAt: 'asc' },
-      select: { createdAt: true, kind: true, channel: true, status: true, destination: true, appointmentId: true }
-    });
-    const consentHistory = await consents.history(req.clinicId, patient.id);
+    const clinical = Boolean(await clinicalRoleOf(req));
+    const { appointments, ...fields } = patient;
+    const standing = await consents.statusByPatient(req.clinicId, [patient.id]);
 
-    await recordRead(prisma, req, { entity: 'patient_export', entityId: patient.id });
-
-    res.set('Content-Disposition', `attachment; filename="patient-${patient.id}.json"`);
     res.json({
-      exportedAt: new Date().toISOString(),
-      clinic: patient.clinic.name,
-      patient: { id: patient.id, name: patient.name, cedula: patient.cedula, phone: patient.phone, email: patient.email, createdAt: patient.createdAt },
-      appointments: patient.appointments.map((a) => ({
-        id: a.id, date: a.date, time: a.time, status: a.status, notes: a.notes, doctor: a.doctor.name, createdAt: a.createdAt
+      patient: { ...withDerived(fields, todayOf(req)), consent: standing[patient.id] },
+      appointments: appointments.map((a) => ({
+        id: a.id,
+        date: a.date,
+        time: a.time,
+        status: a.status,
+        durationMinutes: a.durationMinutes,
+        doctor: a.doctor,
+        type: a.type,
+        notes: a.notes
       })),
-      messagesSent: messages,
-      healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
+      canViewClinical: clinical
     });
   } catch (err) {
-    console.error('Export patient error:', err);
+    console.error('Get patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }
 });
@@ -177,6 +219,9 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
+  const record = parseProfile(req.body, todayOf(req));
+  if (record.error) return res.status(400).json({ error: record.error });
+
   try {
     // The record of what staff did is written in the same transaction as the patient
     const patient = await prisma.$transaction(async (tx) => {
@@ -184,7 +229,8 @@ router.post('/', async (req, res) => {
         name: normalizedName,
         phone: normalizedPhone,
         email: normalizedEmail,
-        cedula: normalizedCedula
+        cedula: normalizedCedula,
+        profile: record.data
       });
       await auditPatientUpsert(tx, req, result);
       return result.patient;
@@ -224,6 +270,9 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
+  const record = parseProfile(req.body, todayOf(req));
+  if (record.error) return res.status(400).json({ error: record.error });
+
   try {
     const patient = await prisma.$transaction(async (tx) => {
       const previous = await tx.patient.findFirst({ where: inClinic(req, { id: req.params.id }) });
@@ -235,7 +284,8 @@ router.put('/:id', async (req, res) => {
           ...(normalizedName !== undefined && { name: normalizedName }),
           ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
           ...(email !== undefined && { email: normalizedEmail }),
-          ...(cedula !== undefined && { cedula: normalizedCedula })
+          ...(cedula !== undefined && { cedula: normalizedCedula }),
+          ...record.data
         }
       });
 
@@ -282,6 +332,18 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    // Allergies, medication, history, notes and vital signs are never swept away with the patient (S10-03 to S10-06)
+    const [allergies, medications, backgrounds, notes, readings] = await Promise.all([
+      prisma.patientAllergy.count({ where: { patientId: id } }),
+      prisma.patientMedication.count({ where: { patientId: id } }),
+      prisma.patientBackground.count({ where: { patientId: id } }),
+      prisma.consultationNote.count({ where: { patientId: id } }),
+      prisma.patientVitals.count({ where: { patientId: id } })
+    ]);
+    if (allergies + medications + backgrounds + notes + readings > 0) {
+      return res.status(409).json({ error: 'This patient has clinical data and cannot be deleted.' });
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.patient.delete({ where: { id } });
       await recordAudit(tx, req, { action: 'delete', entity: 'patient', entityId: id });
@@ -290,7 +352,7 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Patient not found' });
     // an appointment was booked for this patient between the check and the delete
-    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history and cannot be deleted.' });
+    if (err.code === 'P2003') return res.status(409).json({ error: 'This patient has appointment history or clinical data and cannot be deleted.' });
     console.error('Delete patient error:', err);
     res.status(500).json({ error: 'An unexpected error occurred' });
   }

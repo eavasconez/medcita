@@ -5,6 +5,10 @@ import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import PatientConsentModal from '../components/PatientConsentModal';
+import ConsentBadge from '../components/ConsentBadge';
+import { formatAge } from '../utils/patientRecord';
+import { downloadPatientExport } from '../utils/patientExport';
+import { Link } from 'react-router-dom';
 import {
   Users,
   Search,
@@ -21,21 +25,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Download
+  Download,
+  FileDown,
+  ClipboardList
 } from 'lucide-react';
-
-const CONSENT_BADGE = {
-  none: ['Consent pending', 'bg-amber-50 text-amber-700'],
-  granted: ['Consent given', 'bg-emerald-50 text-emerald-700'],
-  outdated: ['Consent: old text', 'bg-amber-50 text-amber-700'],
-  withdrawn: ['Consent withdrawn', 'bg-red-50 text-red-600']
-};
-
-const ConsentBadge = ({ consent }) => {
-  const key = !consent ? 'none' : consent.status === 'granted' && !consent.upToDate ? 'outdated' : consent.status;
-  const [label, tone] = CONSENT_BADGE[key];
-  return <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${tone}`}>{label}</span>;
-};
 
 const Patients = () => {
   const [patients, setPatients] = useState([]);
@@ -104,19 +97,10 @@ const Patients = () => {
 
   // The whole record of one patient as a file (access and portability); admins only, and
   // every export is written to the activity log.
-  const handleExport = async (patient) => {
+  const handleExport = async (patient, format = 'json') => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/patients/${patient.id}/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const url = URL.createObjectURL(res.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `patient-${patient.id}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      showToast('Data exported');
+      await downloadPatientExport(patient.id, format, token);
+      showToast(format === 'pdf' ? 'PDF downloaded' : 'Data exported');
     } catch {
       showToast('We couldn\'t export the data', 'error');
     }
@@ -271,6 +255,28 @@ const Patients = () => {
                           <Download size={18} />
                         </button>
                       )}
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExport(p, 'pdf');
+                          }}
+                          aria-label={`Export the record of ${p.name} as PDF`}
+                          title="Export this patient's record as PDF"
+                          className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                        >
+                          <FileDown size={18} />
+                        </button>
+                      )}
+                      <Link
+                        to={`/patients/${p.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Open the record of ${p.name}`}
+                        title="Open the record"
+                        className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                      >
+                        <ClipboardList size={18} />
+                      </Link>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -296,7 +302,10 @@ const Patients = () => {
                     </div>
                   </div>
                   
-                  <h3 className="text-xl font-extrabold text-secondary mb-1 truncate">{p.name}</h3>
+                  <h3 className="text-xl font-extrabold text-secondary mb-1 truncate">
+                    <Link to={`/patients/${p.id}`} className="hover:text-primary transition-colors">{p.name}</Link>
+                  </h3>
+                  {p.age && <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">{formatAge(p.age)}{p.isMinor ? ' · Minor' : ''}</p>}
                   <ConsentBadge consent={p.consent} />
                   <div className="space-y-2 mt-4">
                     <p className="flex items-center gap-2 text-slate-500 text-sm font-medium">

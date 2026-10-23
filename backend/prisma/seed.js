@@ -46,10 +46,19 @@ async function main() {
   await prisma.rateLimitCounter.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
+  // Notes are never swept away with their appointment or patient (RESTRICT), so they go first
+  await prisma.patientVitals.deleteMany();
+  await prisma.consultationDiagnosis.deleteMany();
+  await prisma.consultationAddendum.deleteMany();
+  await prisma.consultationNote.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.appointmentType.deleteMany();
   await prisma.scheduleBlock.deleteMany();
   await prisma.availability.deleteMany();
+  // Clinical data is never swept away with its patient (RESTRICT), so it goes first
+  await prisma.patientAllergy.deleteMany();
+  await prisma.patientMedication.deleteMany();
+  await prisma.patientBackground.deleteMany();
   await prisma.patient.deleteMany();
   await prisma.doctor.deleteMany();
   await prisma.clinic.deleteMany();
@@ -122,16 +131,25 @@ async function main() {
     });
   }
 
-  // Create Patients
+  // Create Patients. Birth dates are relative to today so the demo ages (and who is a minor) hold.
+  const birthYearsAgo = (years, monthDay = '03-09') => `${new Date().getFullYear() - years}-${monthDay}`;
   const patientsData = [
     { name: 'Juan Carlos Cevallos', phone: '+593987654321', cedula: '1723456789', email: 'juan@example.com' },
-    { name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com' },
+    {
+      name: 'María Elena Lasso', phone: '+593900000001', cedula: '1712344321', email: 'maria@example.com',
+      birthDate: birthYearsAgo(41, '06-15'), sex: 'female', address: 'Av. Amazonas N24-03, Quito', occupation: 'Ingeniera civil',
+      emergencyContactName: 'Luis Lasso', emergencyContactPhone: '+593 99 123 4567', insuranceProvider: 'IESS', insuranceNumber: 'A-123456'
+    },
     { name: 'Ricardo Andrade', phone: '+593985729425', cedula: '1755667788', email: 'ricardo@example.com' },
     { name: 'Hugo Paez', phone: '+593911111111', cedula: '1799999999' },
-    { name: 'Valentina Salazar', phone: '+593922222222', cedula: '1733445566', email: 'valentina@example.com' },
+    {
+      name: 'Valentina Salazar', phone: '+593922222222', cedula: '1733445566', email: 'valentina@example.com',
+      birthDate: birthYearsAgo(7), sex: 'female', address: 'Calle Los Pinos 12, Cumbayá', occupation: 'Estudiante',
+      guardianName: 'Carolina Salazar', guardianRelationship: 'Madre', guardianCedula: '1711223344', guardianPhone: '+593 98 555 0101'
+    },
     { name: 'Diego Fernando Ortiz', phone: '+593933333333', cedula: '1744556677', email: 'diego@example.com' },
     { name: 'Gabriela Noboa', phone: '+593944444444', cedula: '1755443322', email: 'gabriela@example.com' },
-    { name: 'Mateo Villacís', phone: '+593955555555', cedula: '1766554433', email: 'mateo@example.com' }
+    { name: 'Mateo Villacís', phone: '+593955555555', cedula: '1766554433', email: 'mateo@example.com', birthDate: birthYearsAgo(3, '11-20'), sex: 'male' }
   ];
 
   await prisma.patient.createMany({ data: patientsData.map(p => ({ ...p, clinicId: clinic.id })) });
@@ -140,6 +158,24 @@ async function main() {
   const allPatients = await Promise.all(patientsData.map(p =>
     prisma.patient.findUniqueOrThrow({ where: { clinicId_phone: { clinicId: clinic.id, phone: p.phone } } })
   ));
+
+  // Background and allergies for María Elena Lasso, recorded by the first pilot doctor
+  const recorder = { recordedById: pilotDoctors[0].id, recordedByName: pilotDoctors[0].name };
+  const mariaKey = { patientId: allPatients[1].id, clinicId: clinic.id, ...recorder };
+  await prisma.patientAllergy.createMany({ data: [
+    { ...mariaKey, substance: 'Penicilina', reaction: 'Urticaria y dificultad para respirar', severity: 'severe' },
+    { ...mariaKey, substance: 'Polvo', reaction: 'Estornudos', severity: 'mild' }
+  ] });
+  await prisma.patientMedication.createMany({ data: [
+    { ...mariaKey, name: 'Metformina', dose: '850 mg', frequency: 'cada 12 horas' },
+    { ...mariaKey, name: 'Losartán', dose: '50 mg', frequency: 'cada día' }
+  ] });
+  await prisma.patientBackground.createMany({ data: [
+    { ...mariaKey, category: 'personal', description: 'Diabetes tipo 2', noted: '2018' },
+    { ...mariaKey, category: 'family', description: 'Madre con hipertensión arterial' },
+    { ...mariaKey, category: 'surgical', description: 'Apendicectomía', noted: '2009' },
+    { ...mariaKey, category: 'habit', description: 'No fuma; camina 30 minutos al día' }
+  ] });
 
   // The kinds of visit of the demo clinic: the default one (30 min) and two more
   const defaultType = await ensureDefaultType(prisma, clinic.id);
@@ -212,6 +248,58 @@ async function main() {
     });
   });
   await prisma.appointment.createMany({ data: history });
+
+  // Consultation notes for María Elena Lasso: a closed one, with an addendum, on her most recent
+  // completed visit; and a draft the doctor has not finished on the one before it
+  const mariaVisits = await prisma.appointment.findMany({
+    where: { patientId: allPatients[1].id, status: 'completed' },
+    orderBy: [{ date: 'desc' }, { time: 'desc' }],
+    include: { doctor: true },
+    take: 2
+  });
+  if (mariaVisits.length === 2) {
+    const [closedVisit, draftVisit] = mariaVisits;
+    const author = (visit) => ({ authorId: visit.doctorId, authorName: visit.doctor.name });
+    const recordedBy = (visit) => ({ recordedById: visit.doctorId, recordedByName: visit.doctor.name });
+    const closedNote = await prisma.consultationNote.create({
+      data: {
+        clinicId: clinic.id, patientId: allPatients[1].id, appointmentId: closedVisit.id, template: 'general', ...author(closedVisit),
+        status: 'closed', revision: 3, closedAt: new Date(), closedById: closedVisit.doctorId, closedByName: closedVisit.doctor.name,
+        subjective: 'Motivo de consulta: control de diabetes tipo 2.\n\nEnfermedad actual: refiere buen apego al tratamiento, sin poliuria ni polidipsia.',
+        objective: 'Examen físico: sin hallazgos. Glucemia en ayunas 118 mg/dl.',
+        assessment: 'Impresión diagnóstica: diabetes mellitus tipo 2 controlada.',
+        plan: 'Tratamiento: continuar metformina 850 mg cada 12 horas.\n\nControl: en 3 meses con HbA1c.'
+      }
+    });
+    // Diagnoses typed as free text: the seed carries no part of the ICD-10 list (docs/TECHNICAL.md)
+    await prisma.consultationDiagnosis.createMany({ data: [
+      { clinicId: clinic.id, patientId: allPatients[1].id, noteId: closedNote.id, name: 'Diabetes mellitus tipo 2 controlada', kind: 'primary', certainty: 'definitive', ...recordedBy(closedVisit) },
+      { clinicId: clinic.id, patientId: allPatients[1].id, noteId: closedNote.id, name: 'Hipertensión arterial en tratamiento', kind: 'secondary', certainty: 'definitive', ...recordedBy(closedVisit) }
+    ] });
+    await prisma.consultationAddendum.create({
+      data: { clinicId: clinic.id, noteId: closedNote.id, text: 'Se aclara que la dosis de metformina es con las comidas.', ...author(closedVisit) }
+    });
+    // Vital signs of María Elena Lasso over the last five months (the last one at the closed visit)
+    const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const vitalsBy = recordedBy(closedVisit);
+    const readings = [
+      { days: 150, weightKg: 71.4, systolic: 138, diastolic: 88, heartRate: 78, temperatureC: 36.6, oxygenSaturation: 97 },
+      { days: 120, weightKg: 70.8, systolic: 136, diastolic: 86, heartRate: 76, temperatureC: 36.5, oxygenSaturation: 98 },
+      { days: 90, weightKg: 69.9, systolic: 132, diastolic: 84, heartRate: 74, temperatureC: 36.7, oxygenSaturation: 98 },
+      { days: 60, weightKg: 69.2, systolic: 130, diastolic: 82, heartRate: 72, temperatureC: 36.6, oxygenSaturation: 98 },
+      { days: 30, weightKg: 68.5, systolic: 128, diastolic: 80, heartRate: 72, temperatureC: 36.4, oxygenSaturation: 99 },
+      { days: 1, weightKg: 68.1, heightCm: 162, systolic: 126, diastolic: 80, heartRate: 70, respiratoryRate: 16, temperatureC: 36.6, oxygenSaturation: 98, appointmentId: closedVisit.id }
+    ];
+    await prisma.patientVitals.createMany({
+      data: readings.map(({ days, ...values }) => ({ heightCm: 162, ...values, measuredAt: daysAgo(days), clinicId: clinic.id, patientId: allPatients[1].id, ...vitalsBy }))
+    });
+    await prisma.consultationNote.create({
+      data: {
+        clinicId: clinic.id, patientId: allPatients[1].id, appointmentId: draftVisit.id, template: 'general', ...author(draftVisit),
+        subjective: 'Motivo de consulta: dolor lumbar de tres días.\n\nEnfermedad actual:', objective: 'Examen físico:', assessment: 'Impresión diagnóstica:', plan: 'Tratamiento:'
+      }
+    });
+  }
 
   // A vacation of one of the doctors, two weeks from now: the blocked days show in the calendar
   // and nobody can book them

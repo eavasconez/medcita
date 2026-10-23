@@ -13,8 +13,9 @@ MedCita es una plataforma de agenda médica para consultorios y clínicas de Ecu
 
 ## 2. Qué datos tratamos
 
-- **De los pacientes:** nombre, número de cédula (opcional), teléfono, correo (opcional), las citas (fecha, hora, estado y las notas que registre el consultorio) y el registro de su consentimiento. Estos pueden incluir datos de salud, que la ley considera una categoría especial.
-- **Del personal del consultorio:** nombre, correo, rol, contraseña (guardada de forma irreversible, nunca en texto claro) y el registro de sus acciones en la aplicación (inicios de sesión, desde qué dirección IP y navegador, y qué hizo con citas, pacientes y cuentas).
+- **De los pacientes:** nombre, número de cédula (opcional), teléfono, correo (opcional), las citas (fecha, hora, estado y las notas de reserva que registre el consultorio) y el registro de su consentimiento. Además, si el consultorio los registra: fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro médico y, para menores de edad, los datos de su representante legal.
+- **De la atención de salud** (historia clínica, si el consultorio la usa): antecedentes, alergias y medicación habitual, las notas de cada consulta y sus correcciones, los diagnósticos y los signos vitales (peso, talla, presión arterial, frecuencias, temperatura, saturación). **Son datos de salud, que la ley considera una categoría especial.** Solo los ven los médicos y administradores del consultorio, no la secretaría.
+- **Del personal del consultorio:** nombre, correo, rol, contraseña (guardada de forma irreversible, nunca en texto claro) y el registro de sus acciones en la aplicación (inicios de sesión, desde qué dirección IP y navegador, qué hizo con citas, pacientes y cuentas y, en la historia clínica, qué paciente consultó o cambió y cuándo; nunca el contenido).
 - **De los mensajes:** que se envió una confirmación o un recordatorio, por qué canal y si salió bien. **No guardamos el texto del mensaje** ni la dirección completa: el destino se guarda parcialmente oculto.
 
 ## 3. Para qué los usamos
@@ -61,7 +62,8 @@ Parte de estos proveedores tiene sus servidores fuera de Ecuador, principalmente
 - Las contraseñas se guardan con cifrado irreversible; los enlaces de un solo uso (alta, invitación, recuperación) se guardan como huella y vencen.
 - Cada consultorio solo ve sus propios datos: la aplicación filtra todo por consultorio y la base de datos rechaza enlazar datos de consultorios distintos.
 - Las conexiones viajan cifradas (HTTPS) y los accesos con sesión caducan.
-- Se registra quién inicia sesión, qué cambia el personal administrativo en citas, pacientes y cuentas, y quién exporta los datos de un paciente.
+- Se registra quién inicia sesión, qué cambia el personal administrativo en citas, pacientes y cuentas, quién exporta los datos de un paciente y quién lee o cambia su historia clínica (sin copiar su contenido).
+- La historia clínica solo es accesible para médicos y administradores, y la aplicación vuelve a comprobar su rol en cada consulta.
 - Hay un procedimiento escrito para actuar ante una vulneración de seguridad, que incluye avisar a la autoridad y a los afectados en el plazo que fija la ley.
 
 Ningún sistema es infalible: si ocurriera un incidente que afecte tus datos, te lo comunicaremos.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { AuthContext } from '../AuthContext';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
@@ -8,6 +9,8 @@ import MessageHistory from '../components/MessageHistory';
 import NotificationAlert from '../components/NotificationAlert';
 import UnclosedVisits from '../components/UnclosedVisits';
 import { STATUS, statusLabel, statusColor, nextSteps } from '../utils/appointmentStatus';
+import ClinicalAlert from '../components/ClinicalAlert';
+import useClinicalSummary from '../utils/useClinicalSummary';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -122,6 +125,12 @@ const Dashboard = () => {
 
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
+  // Allergies and regular medication of the patient of the open appointment, for the roles that
+  // may read clinical data (the secretary never asks: the API would refuse)
+  const clinicalSummary = useClinicalSummary(
+    showEditModal ? selectedEvent?.patientId : null,
+    showEditModal && user?.role !== 'secretary'
+  );
 
   // Add new states for Calendly logic
   const [modalStep, setModalStep] = useState(1); // 1: Patient, 2: Date/Time, 3: Confirm
@@ -1252,11 +1261,11 @@ const Dashboard = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Notes / Observations</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Booking notes</label>
                         <textarea 
                           className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all resize-none"
                           rows="3"
-                          placeholder="Symptoms, previous treatments..."
+                          placeholder="Reason for the visit, who is bringing the patient... Medical details go in the consultation note."
                           value={formData.notes}
                           onChange={(e) => setFormData({...formData, notes: e.target.value})}
                         />
@@ -1345,13 +1354,24 @@ const Dashboard = () => {
                       <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
                     </div>
 
+                    {user?.role !== 'secretary' && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
+
                     <MessageHistory appointmentId={selectedEvent.id} />
 
                     {selectedEvent.notes && (
                       <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/30">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Internal Notes</p>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Booking notes</p>
                         <p className="text-secondary/70 font-medium text-sm italic italic">"{selectedEvent.notes}"</p>
                       </div>
+                    )}
+
+                    {user?.role !== 'secretary' && selectedEvent.status !== 'cancelled' && (
+                      <Link
+                        to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
+                        className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"
+                      >
+                        Consultation note
+                      </Link>
                     )}
 
                     <div className="pt-6 flex flex-wrap gap-3">

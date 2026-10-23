@@ -38,6 +38,13 @@ model Clinic {
   availabilities Availability[]
   invitations    Invitation[]
   consents       PatientConsent[]
+  allergies      PatientAllergy[]
+  medications    PatientMedication[]
+  backgrounds    PatientBackground[]
+  consultationNotes ConsultationNote[]
+  consultationAddenda ConsultationAddendum[]
+  consultationDiagnoses ConsultationDiagnosis[]
+  patientVitals  PatientVitals[]
   appointmentTypes AppointmentType[]
   scheduleBlocks ScheduleBlock[]
 }
@@ -73,10 +80,35 @@ model Patient {
   email        String?
   createdAt    DateTime      @default(now())
   cedula       String?
+
+  // The patient's record (S10-02). All optional: a patient booked by phone has none of it.
+  // Demographic and administrative data, not clinical: the front desk fills it in too.
+  // Birth date is clinic-local text ("2015-03-09", like Appointment.date); the age is derived.
+  birthDate            String?
+  // female | male | other
+  sex                  String?
+  address              String?
+  occupation           String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  insuranceProvider    String?
+  insuranceNumber      String?
+  // Legal representative, for patients under 18
+  guardianName         String?
+  guardianCedula       String?
+  guardianPhone        String?
+  guardianRelationship String?
+
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
   consents     PatientConsent[]
+  allergies    PatientAllergy[]
+  medications  PatientMedication[]
+  backgrounds  PatientBackground[]
+  notes        ConsultationNote[]
+  diagnoses    ConsultationDiagnosis[]
+  vitals       PatientVitals[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -126,6 +158,8 @@ model Appointment {
   // type), so going back to an older release never breaks booking. The app always sets it.
   typeId         String?
   type           AppointmentType? @relation(fields: [typeId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  consultationNote ConsultationNote?
+  vitals         PatientVitals[]
 
   @@index([clinicId, date])
 }
@@ -325,4 +359,223 @@ model PatientConsent {
 
   @@index([patientId, createdAt])
   @@index([clinicId, createdAt])
+}
+
+// What a doctor must know before treating a patient (S10-03). Clinical data: read and written
+// only by the roles of middleware/clinicalAccess.js, every read and change audited. The
+// patient must belong to the same clinic as the row. `onDelete: Restrict` on purpose: a
+// patient with clinical data is never deleted as a "record created by mistake", because
+// those rows would vanish with nobody having looked at them.
+
+// A substance the patient reacts to. Resolved allergies stay (active = false), they are
+// not erased: what a patient once reacted to is part of the history.
+model PatientAllergy {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinicId  String
+  patientId String
+  substance String
+  reaction  String?
+  // mild | moderate | severe
+  severity  String?
+  active    Boolean  @default(true)
+  // Who recorded it, as plain text so the row outlives the account
+  recordedById   String
+  recordedByName String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  patient   Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, active])
+}
+
+// A medicine the patient takes regularly. Stopped ones stay (active = false).
+model PatientMedication {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinicId  String
+  patientId String
+  name      String
+  dose      String?
+  frequency String?
+  active    Boolean  @default(true)
+  recordedById   String
+  recordedByName String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  patient   Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, active])
+}
+
+// One line of the patient's history: personal, family, surgical or a habit.
+model PatientBackground {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clinicId    String
+  patientId   String
+  // personal | family | surgical | habit
+  category    String
+  description String
+  // When, in the doctor's words ("2019", "since childhood"); free text on purpose
+  noted       String?
+  recordedById   String
+  recordedByName String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id])
+  patient     Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, category])
+}
+
+// The doctor's record of one consultation, in the four parts of a SOAP note (S10-04):
+// Subjective (what the patient says), Objective (what is observed and measured), Assessment
+// and Plan. One note per appointment. It starts as a draft that its author edits (the screen
+// saves it as they type) and is closed once: a closed note is never edited again, a correction
+// is an addendum with its own date and author, so what the chart said on a given day can be
+// trusted. Clinical data: same access rule and audit as the rest (middleware/clinicalAccess.js).
+// RESTRICT everywhere on purpose: a patient, or an appointment, with a note is not deleted.
+model ConsultationNote {
+  id            String    @id @default(uuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  clinicId      String
+  patientId     String
+  appointmentId String    @unique
+  // draft | closed
+  status        String    @default("draft")
+  // Counts the saves of the draft. A save that carries an older number is refused (409), so
+  // two open screens cannot silently overwrite each other.
+  revision      Int       @default(1)
+  subjective    String    @default("")
+  objective     String    @default("")
+  assessment    String    @default("")
+  plan          String    @default("")
+  // The template it was started from (general | pediatrics | blank); only informative
+  template      String?
+  // Who wrote it and who closed it, as plain text so the note outlives the account
+  authorId      String
+  authorName    String
+  closedAt      DateTime?
+  closedById    String?
+  closedByName  String?
+  clinic        Clinic    @relation(fields: [clinicId], references: [id])
+  patient       Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  addenda       ConsultationAddendum[]
+  diagnoses     ConsultationDiagnosis[]
+
+  @@index([patientId, createdAt])
+  @@index([clinicId, status])
+}
+
+// A correction or an addition to a closed note. Append-only: never edited, never deleted.
+model ConsultationAddendum {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  clinicId   String
+  noteId     String
+  text       String
+  authorId   String
+  authorName String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id])
+  note       ConsultationNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+
+  @@index([noteId, createdAt])
+}
+
+// The ICD-10 (CIE-10) list the doctor picks diagnoses from (S10-05). One list for the whole
+// platform, not per clinic, and not data of any patient. MedCita does not ship it: it is loaded
+// with `npm run diagnoses:import` from a file (see docs/TECHNICAL.md for where it comes from and
+// the licence caveat), so the repository stays free of the classification itself.
+model DiagnosisCode {
+  id         String  @id @default(uuid())
+  // 'A00.0': the code with the point after the third character, as doctors write it
+  code       String  @unique
+  // 'A000': the same without the point, uppercase, for searching by code
+  codeKey    String
+  name       String
+  // The name lowercased and without accents, for searching by name
+  searchText String
+  // category (three characters, A00) or subcategory (four or more, A00.0)
+  level      String
+  // Whether a diagnosis can be recorded with it. A category that is split into subcategories
+  // (A00 into A00.0, A00.1...) is a heading, not a diagnosis.
+  selectable Boolean @default(true)
+  // Where the row was loaded from (e.g. msp-rdacaa) and the revision of the classification
+  source     String
+  version    String  @default("CIE10")
+
+  @@index([codeKey])
+  @@index([source])
+}
+
+// A diagnosis of a consultation note. The code and the name are COPIED from the catalogue (there
+// is no link to it) so a note keeps saying what it said when it was written, whatever happens
+// to the catalogue later. `code` is empty for a diagnosis typed as free text (a diagnosis that
+// is not in the list, or a clinic that has not loaded it). Only a draft note can change its
+// diagnoses: once it is closed they are as final as the rest of the note.
+model ConsultationDiagnosis {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  clinicId   String
+  patientId  String
+  noteId     String
+  code       String?
+  name       String
+  // primary | secondary. A note has at most one primary diagnosis.
+  kind       String   @default("secondary")
+  // presumptive | definitive
+  certainty  String   @default("presumptive")
+  recordedById   String
+  recordedByName String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id])
+  patient    Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  note       ConsultationNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+
+  // The same code twice in one note makes no sense (free-text rows have no code and may repeat)
+  @@unique([noteId, code])
+  @@index([patientId, createdAt])
+  @@index([code])
+}
+
+// One set of measurements taken on a patient (S10-06): weight, height, blood pressure, heart and
+// breathing rate, temperature and oxygen saturation. Any of them may be missing, never all. The
+// body mass index is not stored: it is worked out from the weight and the height of the same
+// reading. Clinical data (same access rule and audit as the rest). A reading is never edited:
+// one taken by mistake is voided (`voidedAt`), which keeps it in the history but takes it out of
+// the charts and the "latest" values. RESTRICT: a patient or an appointment with readings is not
+// deleted. Metric units only.
+model PatientVitals {
+  id             String    @id @default(uuid())
+  createdAt      DateTime  @default(now())
+  clinicId       String
+  patientId      String
+  // The visit it was taken at, when it was taken at one
+  appointmentId  String?
+  // When it was measured (may be earlier than when it was typed in)
+  measuredAt     DateTime
+  weightKg       Float?
+  heightCm       Float?
+  // mmHg
+  systolic       Int?
+  diastolic      Int?
+  // beats and breaths per minute
+  heartRate      Int?
+  respiratoryRate Int?
+  temperatureC   Float?
+  // percent
+  oxygenSaturation Int?
+  recordedById   String
+  recordedByName String
+  voidedAt       DateTime?
+  voidedById     String?
+  voidedByName   String?
+  voidReason     String?
+  clinic         Clinic    @relation(fields: [clinicId], references: [id])
+  patient        Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, measuredAt])
+  @@index([appointmentId])
 }

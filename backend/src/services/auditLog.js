@@ -11,13 +11,13 @@
 
 const STAFF_ROLES = ['admin', 'secretary'];
 // `read` is for looking at something that must stay traceable: the export of a patient's
-// data today, the clinical history once it exists.
+// data and the clinical record (recordClinicalRead).
 const AUDIT_ACTIONS = [
   'create', 'update', 'cancel', 'delete',
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum', 'patient_vitals'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -25,7 +25,15 @@ const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent
 // never copied into the log.
 const FIELDS = {
   appointment: { shown: ['date', 'time', 'status'], hidden: ['notes', 'typeId'] },
-  patient: { shown: [], hidden: ['name', 'phone', 'email', 'cedula'] },
+  patient: {
+    shown: [],
+    // Personal and family data: only that it changed, never its value
+    hidden: [
+      'name', 'phone', 'email', 'cedula',
+      'birthDate', 'sex', 'address', 'occupation', 'emergencyContactName', 'emergencyContactPhone',
+      'insuranceProvider', 'insuranceNumber', 'guardianName', 'guardianCedula', 'guardianPhone', 'guardianRelationship'
+    ]
+  },
   user: { shown: ['name', 'role'], hidden: ['email', 'password'] },
   // An invitation to join the clinic; the account itself is created by its owner later
   invitation: { shown: ['role'], hidden: ['name', 'email'] },
@@ -34,6 +42,18 @@ const FIELDS = {
   // Days nobody attends; the reason is free text that can say too much, so it is not kept
   schedule_block: { shown: ['startDate', 'endDate'], hidden: [] },
   // How the clinic reminds its patients; the address and the indications are free text
+  // Clinical lines (S10-03): which patient, and whether it is still active. What they say is
+  // health data and never goes into the log; only the names of the fields that changed.
+  patient_allergy: { shown: ['patientId', 'active'], hidden: ['substance', 'reaction', 'severity'] },
+  patient_medication: { shown: ['patientId', 'active'], hidden: ['name', 'dose', 'frequency'] },
+  patient_background: { shown: ['patientId', 'category'], hidden: ['description', 'noted'] },
+  // The SOAP note and its addenda (S10-04). Drafts are saved as the doctor types and are not
+  // logged one by one: the log has the creation, the closing, the deletion of a draft and every
+  // addendum. What the note says never goes in.
+  consultation_note: { shown: ['patientId', 'appointmentId', 'status'], hidden: ['subjective', 'objective', 'assessment', 'plan'] },
+  consultation_addendum: { shown: ['noteId'], hidden: ['text'] },
+  // A set of vital signs (S10-06): which patient and visit; the measurements themselves never go in
+  patient_vitals: { shown: ['patientId', 'appointmentId'], hidden: ['weightKg', 'heightCm', 'systolic', 'diastolic', 'heartRate', 'respiratoryRate', 'temperatureC', 'oxygenSaturation', 'voidReason'] },
   reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 
@@ -102,6 +122,24 @@ async function recordAudit(db, req, { action, entity, entityId, doctorId = null,
   });
 }
 
+// A change to the clinical record (S10-03). Unlike recordAudit it is written for every role:
+// a doctor writing clinical data is exactly what must stay traceable.
+function recordClinicalWrite(db, req, { action, entity, entityId, changes = null }) {
+  return db.auditLog.create({
+    data: {
+      actorId: req.doctorId,
+      actorName: req.userName,
+      actorRole: req.userRole,
+      clinicId: req.clinicId,
+      action,
+      entity,
+      entityId,
+      changes: changes ?? undefined,
+      ...requestOrigin(req)
+    }
+  });
+}
+
 // A patient confirmed or cancelled their own visit from the WhatsApp reminder (S9-02). The
 // patient is not a user, so the entry is written as the patient: their id (never their name or
 // number, the entry is shown to the clinic's admins) and the role 'patient'. `origin` is where
@@ -145,7 +183,7 @@ function recordAccountEvent(db, req, account, action) {
 
 // Someone looked at a record that must stay traceable (today: the export of a patient's
 // data; later the clinical history). Recorded for every role, since reading is the point.
-function recordRead(db, req, { entity, entityId, doctorId = null }) {
+function recordRead(db, req, { entity, entityId, doctorId = null, changes = undefined }) {
   return db.auditLog.create({
     data: {
       actorId: req.doctorId,
@@ -156,8 +194,20 @@ function recordRead(db, req, { entity, entityId, doctorId = null }) {
       entity,
       entityId,
       doctorId,
+      ...(changes && { changes }),
       ...requestOrigin(req)
     }
+  });
+}
+
+// Someone looked at part of a patient's clinical record (S10-01). One entry per patient,
+// with the part that was opened ("notes", "allergies"...) and never its content.
+// `db` is the transaction when the read happens inside one.
+function recordClinicalRead(db, req, { patientId, section }) {
+  return recordRead(db, req, {
+    entity: 'clinical_record',
+    entityId: patientId,
+    changes: { section: { to: section } }
   });
 }
 
@@ -185,5 +235,7 @@ module.exports = {
   recordPatientAction,
   recordAccountEvent,
   recordRead,
+  recordClinicalRead,
+  recordClinicalWrite,
   auditPatientUpsert
 };
