@@ -14,7 +14,8 @@ import VitalsSection from '../components/VitalsSection';
 import useVitals from '../utils/useVitals';
 import { statusLabel, statusColor } from '../utils/appointmentStatus';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
-import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText } from 'lucide-react';
+import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
+import { downloadPatientExport } from '../utils/patientExport';
 import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
 
 const Field = ({ label, children }) => (
@@ -48,7 +49,7 @@ const Input = ({ label, name, form, setForm, type = 'text', required, placeholde
 
 const PatientRecord = () => {
   const { id } = useParams();
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -79,6 +80,16 @@ const PatientRecord = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The whole record of the patient as a file (admins; written to the activity log)
+  const exportAs = async (format) => {
+    try {
+      await downloadPatientExport(id, format, token);
+      showToast(format === 'pdf' ? 'PDF downloaded' : 'Data exported');
+    } catch {
+      showToast('We couldn\'t export the data', 'error');
+    }
+  };
 
   const startEditing = () => {
     setForm(recordForm(data.patient));
@@ -153,6 +164,16 @@ const PatientRecord = () => {
                 </div>
               </div>
               <div className="flex gap-3 w-full sm:w-auto">
+                {canViewClinical && (
+                  <Link to={`/patients/${id}/timeline`} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
+                    <History size={18} /> Timeline
+                  </Link>
+                )}
+                {user?.role === 'admin' && (
+                  <button onClick={() => exportAs('pdf')} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
+                    <Download size={18} /> Export PDF
+                  </button>
+                )}
                 <button onClick={() => setShowConsent(true)} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
                   <ShieldCheck size={18} /> Consent
                 </button>

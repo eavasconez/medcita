@@ -7,6 +7,7 @@ import LoadError from '../components/LoadError';
 import PatientConsentModal from '../components/PatientConsentModal';
 import ConsentBadge from '../components/ConsentBadge';
 import { formatAge } from '../utils/patientRecord';
+import { downloadPatientExport } from '../utils/patientExport';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -25,6 +26,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Download,
+  FileDown,
   ClipboardList
 } from 'lucide-react';
 
@@ -95,19 +97,10 @@ const Patients = () => {
 
   // The whole record of one patient as a file (access and portability); admins only, and
   // every export is written to the activity log.
-  const handleExport = async (patient) => {
+  const handleExport = async (patient, format = 'json') => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/patients/${patient.id}/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const url = URL.createObjectURL(res.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `patient-${patient.id}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      showToast('Data exported');
+      await downloadPatientExport(patient.id, format, token);
+      showToast(format === 'pdf' ? 'PDF downloaded' : 'Data exported');
     } catch {
       showToast('We couldn\'t export the data', 'error');
     }
@@ -260,6 +253,19 @@ const Patients = () => {
                           className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
                         >
                           <Download size={18} />
+                        </button>
+                      )}
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExport(p, 'pdf');
+                          }}
+                          aria-label={`Export the record of ${p.name} as PDF`}
+                          title="Export this patient's record as PDF"
+                          className="text-primary transition-colors p-2 hover:bg-primary/5 rounded-xl"
+                        >
+                          <FileDown size={18} />
                         </button>
                       )}
                       <Link

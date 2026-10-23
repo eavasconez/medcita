@@ -18,6 +18,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Patients = lazy(() => import('./pages/Patients'));
 const PatientRecord = lazy(() => import('./pages/PatientRecord'));
 const ConsultationNote = lazy(() => import('./pages/ConsultationNote'));
+const PatientTimeline = lazy(() => import('./pages/PatientTimeline'));
 const Availability = lazy(() => import('./pages/Availability'));
 const AdminDoctors = lazy(() => import('./pages/AdminDoctors'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -180,6 +181,7 @@ function App() {
               <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
               <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
               <Route path="/patients/:id" element={token ? <PatientRecord /> : <Navigate to="/login" />} />
+              <Route path="/patients/:id/timeline" element={token ? <PatientTimeline /> : <Navigate to="/login" />} />
               <Route path="/patients/:id/appointments/:appointmentId/note" element={token ? <ConsultationNote /> : <Navigate to="/login" />} />
               <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
               <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
