@@ -4,10 +4,10 @@
 
 ## 0. Qué hace MedCita con los datos (resumen para quien revisa)
 
-- Pacientes de cada consultorio: nombre, cédula (opcional), teléfono, correo (opcional), citas con notas libres que escribe el personal (pueden contener datos de salud) y el registro del consentimiento.
+- Pacientes de cada consultorio: nombre, cédula (opcional), teléfono, correo (opcional), citas con notas de reserva administrativas, el registro del consentimiento y, desde el Sprint 10, su **ficha** (fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro y, para menores, representante legal).
 - Envía confirmaciones y recordatorios por WhatsApp (Meta) y correo (Brevo, con SendGrid y Twilio de respaldo). No guarda el texto de los mensajes ni la dirección completa.
 - Servidor en Render y base en Neon (Estados Unidos `[verificar la región exacta]`). Archivos clínicos: aún no se suben; el almacenamiento (bucket S3) está listo pero vacío.
-- Todavía **no hay historia clínica** (notas de evolución, diagnósticos, recetas): está planificada para después de esta revisión.
+- Desde el Sprint 10 **hay una primera historia clínica**: antecedentes y alergias, medicación habitual, notas de consulta (formato SOAP) con sus adendas, diagnósticos codificados (CIE-10) y signos vitales. La ven y escriben **solo los médicos y administradores del consultorio** (la secretaría no) y cada lectura y cada cambio quedan en el registro de actividad, sin el contenido. Una nota cerrada no se edita (se corrige con una adenda) ni se borra, y un signo vital solo se anula. **Todavía no hay recetas, certificados ni archivos adjuntos.**
 
 ## 1. Preguntas que el abogado debe responder
 
@@ -50,12 +50,16 @@
 |---|---|
 | Consentimiento de datos de salud con versión, fecha, método y quién lo registró; historial que no se edita; retiro como evento nuevo | Hecho (Pacientes → «Consent») |
 | Aviso de pacientes con consentimiento pendiente, retirado o desactualizado | Hecho (etiqueta en Pacientes) |
-| Exportación de todos los datos de un paciente (acceso y portabilidad), solo administradores, con registro de auditoría | Hecho (`GET /api/patients/:id/export`) |
+| Exportación de todos los datos de un paciente (acceso y portabilidad), solo administradores, con registro de auditoría; incluye lo clínico y se descarga en JSON o en un PDF en español para entregar al paciente | Hecho (`GET /api/patients/:id/export`, `?format=pdf`) |
 | Registro de quién entra y quién cambia qué (administración), IP y navegador | Hecho (S8-03) |
 | Separación de datos entre consultorios, garantizada por la base de datos | Hecho (S8-01) |
 | Contraseñas cifradas; enlaces de un solo uso guardados como huella | Hecho |
 | Historial de mensajes sin su texto y con el destino parcialmente oculto | Hecho (S8-04) |
 | Almacenamiento privado con URLs firmadas de 5 minutos | Listo, sin uso (S8-06) |
+| Acceso a lo clínico solo para médicos y administradores, comprobado en cada petición con el rol actual de la cuenta (no el del token); pruebas de acceso cruzado entre roles y entre consultorios | Hecho (S10-01) |
+| Auditoría de **lecturas** de datos clínicos (quién, cuándo, de qué paciente y qué parte; nunca el contenido) y de cada cambio clínico, también los de un médico | Hecho (S10-01 a S10-07) |
+| Una nota de consulta cerrada es definitiva: solo adendas con fecha y autor; no se borra | Hecho (S10-04) |
+| Un paciente con datos clínicos, y una cita con nota o signos vitales, no se pueden borrar (la base de datos lo impide) | Hecho (S10-03 a S10-06) |
 | Política de privacidad y términos públicos (`/privacy`, `/terms`) con aviso de borrador | Hecho; **falta la aprobación legal** |
 
 ## 3. Lo que NO está y conviene decidir
@@ -65,6 +69,8 @@
 - Un registro de solicitudes de titulares dentro de la aplicación.
 - Borrado/anonimización automática al vencer plazos.
 - Aceptación registrada de términos.
+- Recetas, certificados y archivos clínicos adjuntos (Sprint 11).
+- Derecho de **eliminación** de datos clínicos: hoy ni el consultorio puede borrar una nota cerrada ni un signo vital; falta definir con el abogado cuándo procede borrar o anonimizar y cómo.
 
 ## 4. Cómo cerrar este ticket de verdad
 

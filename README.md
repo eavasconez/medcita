@@ -101,10 +101,18 @@ Debes tener dos terminales abiertas:
 - **Recordatorios configurables:** cron que corre cada hora y avisa una sola vez (`reminderSentAt`) de las citas `pending_approval`, `scheduled` y `confirmed` que están por empezar. Cada consultorio decide en *Settings → Reminders* si recuerda, cuánto antes (2, 24 o 48 horas), si manda un segundo recordatorio más cerca de la cita, por qué canal (WhatsApp, correo) y qué dirección e indicaciones se añaden; por defecto, uno por WhatsApp y correo a las 24 h. Usa la hora del consultorio (`Clinic.timezone`).
 - **Disparo manual:** `POST /api/tasks/reminders` (requiere rol admin/secretaria) — endpoint de backend para forzar el proceso de recordatorios sin esperar al cron; no tiene un botón dedicado en la interfaz todavía.
 
+## 🩺 Ficha del paciente e historia clínica (Sprint 10)
+
+- **Ficha ampliada** (`/patients/:id`): fecha de nacimiento con edad, sexo, dirección, ocupación, contacto de emergencia, seguro y, para menores, representante legal.
+- **Clínico = solo médicos y administradores.** La secretaría agenda y ve la ficha administrativa, pero **no** ve nada clínico; un paciente de otro consultorio no existe para quien pregunta. Cada lectura y cada cambio clínico queda en el Activity Log **sin el texto**.
+- **Antecedentes y alergias** (con aviso en rojo antes de recetar), **nota de consulta SOAP** (borrador con autoguardado, cierre definitivo y adendas), **diagnósticos CIE-10** (la lista se carga aparte: `npm run diagnoses:import`), **signos vitales** con IMC y gráficas, **línea de tiempo** y exportación de los datos del paciente en **JSON o PDF**.
+- Lo clínico **no se borra**: una nota cerrada y una toma de signos vitales (que solo se anula) se conservan, y el paciente o la cita que las tengan tampoco se pueden borrar.
+- Detalle y reglas: `docs/TECHNICAL.md` (secciones del Sprint 10); despliegue: `docs/DEPLOY.md`, «Despliegue del Sprint 10 completo».
+
 ## 🔐 Seguridad y trazabilidad
 - **Login:** límite de intentos fallidos por correo (5 en 15 min) y por IP, y recuperación de contraseña por correo con enlace de un solo uso (60 min).
 - **Contraseña:** cada usuario puede cambiarla en *Settings*; al hacerlo, las sesiones anteriores dejan de valer.
-- **Registro de auditoría:** lo que hacen administradores y secretarias con citas, pacientes y cuentas queda guardado en la tabla `AuditLog`, en la misma transacción que la acción. Lo consulta un administrador con `GET /api/admin/audit-log` (aún no tiene pantalla). Detalle en `docs/TECHNICAL.md`.
+- **Registro de auditoría:** lo que hacen administradores y secretarias con citas, pacientes y cuentas queda guardado en la tabla `AuditLog`, en la misma transacción que la acción. Lo consulta un administrador en *Activity Log* (o con `GET /api/admin/audit-log`). Detalle en `docs/TECHNICAL.md`.
 - **Salud:** `GET /api/health` responde `503` si la base de datos está inalcanzable o va atrasada respecto al código, y las pantallas muestran un error con reintento en vez de «sin datos».
 
 ## 📚 Documentación adicional
@@ -115,7 +123,7 @@ Debes tener dos terminales abiertas:
 - **`docs/qa/`** — reportes de testing, seguridad, performance y validación en producción de cada sprint, con capturas.
 - **`docs/qa/S6-01-demo-script.md`** + **`docs/qa/S6-03-demo-deck.html`** — guión y deck para demos con médicos candidatos.
 - **`docs/qa/S6-10-backlog-v1.md`** — backlog priorizado de lo que falta para una v1.0 real (actualizado al cierre del Sprint 7: lo resuelto, el incidente del 20-oct y lo pendiente).
-- **`CHANGELOG.md`** — notas del release del Sprint 7: novedades, checklist de despliegue y lo que queda fuera del código.
+- **`CHANGELOG.md`** — notas de cada sprint: novedades, migraciones, checklist de despliegue y lo que queda fuera del código.
 - **`docs/qa/S7-12-production-evidence.md`** — evidencia de la ejecución en producción el 21-oct-2026, con capturas del flujo completo, el WhatsApp y el correo recibidos.
 
 ## 🚧 Lo que falta (según el plan original)

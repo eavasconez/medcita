@@ -14,10 +14,10 @@ Un paciente puede pedir **acceso** a sus datos, su **rectificación**, su **elim
 
 | Derecho | Cómo se atiende en MedCita |
 |---|---|
-| **Acceso** y **portabilidad** | Un administrador abre Pacientes → el paciente → **«Export data»**. Descarga un archivo JSON con sus datos, citas (con las notas), mensajes enviados (sin su texto) y el historial de consentimientos. Se entrega en persona o por un canal seguro. **Cada exportación queda en Activity Log** («Exported a patient's data», con quién y cuándo) |
-| **Rectificación** | Pacientes → editar. Los cambios del personal administrativo quedan en Activity Log |
+| **Acceso** y **portabilidad** | Un administrador abre Pacientes → el paciente → **«Export PDF»** (un documento en español para leer y entregar) o el icono de descarga de JSON (para portabilidad). Incluye sus datos y ficha, citas (con las notas de reserva), mensajes enviados (sin su texto), el historial de consentimientos y **toda su historia clínica**: antecedentes, alergias, medicación, notas de consulta con sus diagnósticos y adendas, y signos vitales. Se entrega en persona o por un canal seguro. **Cada exportación queda en Activity Log** («Exported a patient's data», con quién y cuándo) |
+| **Rectificación** | Pacientes → abrir la ficha → «Edit record». Los cambios del personal administrativo quedan en Activity Log. Una **nota de consulta cerrada no se edita**: el médico agrega una **adenda** con la corrección (queda con su fecha y su autor); un signo vital tomado por error se **anula** y se registra uno nuevo |
 | **Retirar el consentimiento** | Pacientes → «Consent» → «Withdraw consent». Es una fila nueva en el historial; la anterior no se borra. El retiro no afecta la atención ni lo ya tratado |
-| **Eliminación** | Un paciente **sin citas** se puede borrar (Pacientes → borrar). Uno **con citas** no: su historial es parte del registro de la atención y debe conservarse el plazo legal. [PENDIENTE de revisión legal: cuándo procede borrar o anonimizar, y qué hacer al vencer el plazo de conservación] |
+| **Eliminación** | Un paciente **sin citas ni datos clínicos** se puede borrar (Pacientes → borrar). Uno **con citas, notas, alergias, antecedentes o signos vitales** no: son parte del registro de la atención y deben conservarse el plazo legal. [PENDIENTE de revisión legal: cuándo procede borrar o anonimizar, y qué hacer al vencer el plazo de conservación] |
 | **Oposición** / **suspensión** | Se anota la solicitud y el consultorio decide si procede. Hoy MedCita no tiene un interruptor por paciente: lo más cercano es no agendarle mensajes. [PENDIENTE: definir si hace falta] |
 
 4. **Responder por escrito** al paciente, dentro del plazo, diciendo qué se hizo o por qué no procede (por ejemplo, datos que la ley obliga a conservar).
@@ -31,4 +31,4 @@ Puede acudir a la **Superintendencia de Protección de Datos Personales**. Conse
 
 - Un botón de «eliminar todos los datos de un paciente» (por la conservación obligatoria de la historia clínica).
 - Un registro de solicitudes de titulares dentro de la aplicación.
-- La exportación en un formato distinto del JSON.
+- Borrar o anonimizar datos clínicos al vencer el plazo de conservación (hoy no se puede borrar una nota cerrada ni un signo vital).

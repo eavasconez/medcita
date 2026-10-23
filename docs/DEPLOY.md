@@ -520,6 +520,27 @@ S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea
 - [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
 - [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
 
+## Despliegue del Sprint 10 completo (v0.10.0): ficha del paciente y primera historia clínica
+
+Esta sección junta todo lo del release; el detalle de cada ticket está en las secciones «Despliegue de…» de abajo. Es el primer release con **datos clínicos**.
+
+**Qué se aplica a la base.** Cinco migraciones, todas **solo agregan** (columnas nulas o tablas nuevas; ninguna toca filas existentes), en este orden: `20261027100000_add_patient_record_fields` (S10-02), `20261028100000_add_clinical_background` (S10-03), `20261029100000_add_consultation_notes` (S10-04), `20261030100000_add_diagnoses` (S10-05) y `20261031100000_add_patient_vitals` (S10-06). S10-01 y S10-07 no cambian el esquema. Se aplican solas con el `prisma migrate deploy` del Build Command; `/api/health` responde `503` mientras falte alguna, así que Render mantiene la versión anterior hasta que la nueva esté sana.
+
+**Antes de fusionar a `main`:**
+
+- [ ] **Una rama de respaldo en Neon** desde producción (por ejemplo `antes-de-v0-10-0`). Con una sola alcanza porque las cinco migraciones se aplican juntas; sirve para restaurar si algo sale mal **antes** de que alguien escriba datos clínicos.
+- [ ] Sin variables de entorno nuevas. **Dependencia nueva** `pdfkit` y dos archivos de fuentes (~1,4 MB) dentro del repositorio: nada que configurar.
+- [ ] Saber que **desde que haya datos clínicos reales no se puede volver atrás sin perderlos**: volver a la versión anterior del código es seguro (simplemente deja de mostrarlos), pero restaurar la base desde la rama de respaldo borra lo escrito después. Y varias cosas son permanentes por diseño: una **nota cerrada**, una **toma de signos vitales** y un paciente o una cita que las tengan no se pueden borrar.
+
+**Después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] La agenda, los pacientes y los recordatorios se ven igual que antes.
+- [ ] Con un administrador y un paciente de prueba, recorrido completo: abrir la ficha, completar sus datos, registrar una alergia y una medicación, abrir una cita → «Consultation note», escribir, registrar signos vitales, cerrar la nota, agregar una adenda, mirar la línea de tiempo y bajar el PDF.
+- [ ] Con una **secretaria**: ve la ficha y las citas, **no** ve nada clínico (ni el aviso de alergias, ni las notas, ni los signos vitales, ni la línea de tiempo).
+- [ ] En *Activity Log*: aparecen las lecturas y los cambios clínicos, **sin el texto de lo escrito**.
+- [ ] **Catálogo CIE-10 (decisión tuya):** la lista no viene con la aplicación. Hasta cargarla, los diagnósticos se escriben como texto libre. Antes de cargarla en producción lee el riesgo de licencia (`docs/TECHNICAL.md`, «Diagnósticos CIE-10») y sigue los pasos de «Despliegue de los diagnósticos CIE-10 (S10-05)».
+
 ## Despliegue de la ficha del paciente (S10-02)
 
 S10-02 agrega la migración `20261027100000_add_patient_record_fields`, que solo **añade 12 columnas nulas a `Patient`** (fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro y representante legal): ninguna fila existente cambia y la versión anterior del código no las lee, así que seguir con ella o volver atrás es seguro. Se probó sobre datos existentes en `backend/tests/patientRecordMigration.test.js`. Aun así, por la regla de los cambios de esquema, **crea antes una rama de respaldo en Neon** (por ejemplo `antes-de-s10-02`).
@@ -530,7 +551,7 @@ S10-02 agrega la migración `20261027100000_add_patient_record_fields`, que solo
 - [ ] En *Patients*, abrir un paciente existente: la ficha carga con los datos que ya tenía y los campos nuevos vacíos.
 - [ ] Completar su fecha de nacimiento y guardar: aparece la edad.
 - [ ] Con un paciente de prueba menor de 18 años y sin representante, aparece el aviso; al registrarlo, desaparece.
-- [ ] Con la cuenta de una secretaria: la ficha abre y las citas **no** muestran notas.
+- [ ] Con la cuenta de una secretaria: la ficha abre con los datos y las citas (con sus notas de reserva, que son administrativas desde S10-04).
 
 ## Despliegue de antecedentes y alergias (S10-03)
 
