@@ -146,6 +146,7 @@ router.get('/:id/export', async (req, res) => {
       prisma.patientMedication.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } }),
       prisma.patientBackground.findMany({ where: clinicalWhere, orderBy: { createdAt: 'asc' } })
     ]);
+    const vitalSigns = await prisma.patientVitals.findMany({ where: clinicalWhere, orderBy: [{ measuredAt: 'asc' }, { createdAt: 'asc' }] });
     const consultationNotes = await prisma.consultationNote.findMany({
       where: clinicalWhere,
       orderBy: { createdAt: 'asc' },
@@ -169,6 +170,7 @@ router.get('/:id/export', async (req, res) => {
       medications,
       backgrounds,
       consultationNotes,
+      vitalSigns,
       messagesSent: messages,
       healthDataConsent: { status: consentHistory.status, currentVersion: CURRENT_CONSENT_VERSION, events: consentHistory.history }
     });
@@ -362,14 +364,15 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Allergies, medication, history and notes are never swept away with the patient (S10-03, S10-04)
-    const [allergies, medications, backgrounds, notes] = await Promise.all([
+    // Allergies, medication, history, notes and vital signs are never swept away with the patient (S10-03 to S10-06)
+    const [allergies, medications, backgrounds, notes, readings] = await Promise.all([
       prisma.patientAllergy.count({ where: { patientId: id } }),
       prisma.patientMedication.count({ where: { patientId: id } }),
       prisma.patientBackground.count({ where: { patientId: id } }),
-      prisma.consultationNote.count({ where: { patientId: id } })
+      prisma.consultationNote.count({ where: { patientId: id } }),
+      prisma.patientVitals.count({ where: { patientId: id } })
     ]);
-    if (allergies + medications + backgrounds + notes > 0) {
+    if (allergies + medications + backgrounds + notes + readings > 0) {
       return res.status(409).json({ error: 'This patient has clinical data and cannot be deleted.' });
     }
 
