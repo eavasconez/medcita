@@ -10,6 +10,8 @@ import PatientConsentModal from '../components/PatientConsentModal';
 import ClinicalAlert from '../components/ClinicalAlert';
 import ClinicalBackground from '../components/ClinicalBackground';
 import useClinicalSummary from '../utils/useClinicalSummary';
+import VitalsSection from '../components/VitalsSection';
+import useVitals from '../utils/useVitals';
 import { statusLabel, statusColor } from '../utils/appointmentStatus';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
 import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText } from 'lucide-react';
@@ -111,6 +113,7 @@ const PatientRecord = () => {
   const noteOf = (appointmentId) => notes.find((n) => n.appointmentId === appointmentId);
   // Allergies, medication and history: only for the roles that may read clinical data
   const clinical = useClinicalSummary(id, data?.canViewClinical === true);
+  const vitals = useVitals(id, data?.canViewClinical === true);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -256,6 +259,13 @@ const PatientRecord = () => {
                 ) : (
                   <p className="text-slate-300 font-semibold animate-pulse">Loading...</p>
                 )}
+              </section>
+            )}
+
+            {canViewClinical && (
+              <section className="mt-8">
+                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Vital signs</h3>
+                <VitalsSection patientId={id} vitals={vitals} onError={(message) => showToast(message, 'error')} />
               </section>
             )}
 

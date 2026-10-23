@@ -47,6 +47,7 @@ async function main() {
   await prisma.invitation.deleteMany();
   await prisma.signupRequest.deleteMany();
   // Notes are never swept away with their appointment or patient (RESTRICT), so they go first
+  await prisma.patientVitals.deleteMany();
   await prisma.consultationDiagnosis.deleteMany();
   await prisma.consultationAddendum.deleteMany();
   await prisma.consultationNote.deleteMany();
@@ -277,6 +278,20 @@ async function main() {
     ] });
     await prisma.consultationAddendum.create({
       data: { clinicId: clinic.id, noteId: closedNote.id, text: 'Se aclara que la dosis de metformina es con las comidas.', ...author(closedVisit) }
+    });
+    // Vital signs of María Elena Lasso over the last five months (the last one at the closed visit)
+    const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const vitalsBy = recordedBy(closedVisit);
+    const readings = [
+      { days: 150, weightKg: 71.4, systolic: 138, diastolic: 88, heartRate: 78, temperatureC: 36.6, oxygenSaturation: 97 },
+      { days: 120, weightKg: 70.8, systolic: 136, diastolic: 86, heartRate: 76, temperatureC: 36.5, oxygenSaturation: 98 },
+      { days: 90, weightKg: 69.9, systolic: 132, diastolic: 84, heartRate: 74, temperatureC: 36.7, oxygenSaturation: 98 },
+      { days: 60, weightKg: 69.2, systolic: 130, diastolic: 82, heartRate: 72, temperatureC: 36.6, oxygenSaturation: 98 },
+      { days: 30, weightKg: 68.5, systolic: 128, diastolic: 80, heartRate: 72, temperatureC: 36.4, oxygenSaturation: 99 },
+      { days: 1, weightKg: 68.1, heightCm: 162, systolic: 126, diastolic: 80, heartRate: 70, respiratoryRate: 16, temperatureC: 36.6, oxygenSaturation: 98, appointmentId: closedVisit.id }
+    ];
+    await prisma.patientVitals.createMany({
+      data: readings.map(({ days, ...values }) => ({ heightCm: 162, ...values, measuredAt: daysAgo(days), clinicId: clinic.id, patientId: allPatients[1].id, ...vitalsBy }))
     });
     await prisma.consultationNote.create({
       data: {

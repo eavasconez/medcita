@@ -7,6 +7,9 @@ import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import ClinicalAlert from '../components/ClinicalAlert';
 import NoteDiagnoses from '../components/NoteDiagnoses';
+import VitalsForm from '../components/VitalsForm';
+import useVitals from '../utils/useVitals';
+import { describeReading } from '../utils/vitals';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
 import { formatAge } from '../utils/patientRecord';
@@ -38,6 +41,8 @@ const ConsultationNote = () => {
   const latest = useRef({ values, revision: 1, dirty: false, saving: false });
   const timer = useRef(null);
   const { summary } = useClinicalSummary(patientId, loadState === 'ready');
+  const vitals = useVitals(patientId, loadState === 'ready');
+  const [recordingVitals, setRecordingVitals] = useState(false);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -275,6 +280,32 @@ const ConsultationNote = () => {
                     Written by {note.authorName}, closed {formatDateTime(note.closedAt)}. It cannot be edited; add an addendum to correct or complete it.
                   </p>
                 )}
+
+                <section className="mb-5 bg-white rounded-3xl border border-slate-100 p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-black text-secondary uppercase tracking-widest">Vital signs of this visit</h3>
+                    {!recordingVitals && (
+                      <button onClick={() => setRecordingVitals(true)} className="text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Record vitals</button>
+                    )}
+                  </div>
+                  {recordingVitals && (
+                    <VitalsForm patientId={patientId} appointmentId={appointmentId} onCancel={() => setRecordingVitals(false)} onSaved={async () => { await vitals.reload(); setRecordingVitals(false); }} />
+                  )}
+                  {(() => {
+                    const mine = (vitals.readings || []).filter((r) => r.appointmentId === appointmentId && !r.voidedAt);
+                    if (vitals.error) return <p className="text-sm font-semibold text-red-600">We couldn't load the vital signs.</p>;
+                    if (mine.length === 0) return <p className="text-sm font-medium text-slate-300">No measurements recorded at this visit</p>;
+                    return (
+                      <ul className="space-y-2">
+                        {mine.map((r) => (
+                          <li key={r.id} className="text-sm font-semibold text-secondary">
+                            {describeReading(r)} <span className="text-[11px] font-semibold text-slate-400">· {r.recordedByName}, {formatDateTime(r.measuredAt)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </section>
 
                 <div className="space-y-5">
                   {SECTIONS.map((s) => (

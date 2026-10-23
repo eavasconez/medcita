@@ -17,7 +17,7 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum', 'patient_vitals'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -52,6 +52,8 @@ const FIELDS = {
   // addendum. What the note says never goes in.
   consultation_note: { shown: ['patientId', 'appointmentId', 'status'], hidden: ['subjective', 'objective', 'assessment', 'plan'] },
   consultation_addendum: { shown: ['noteId'], hidden: ['text'] },
+  // A set of vital signs (S10-06): which patient and visit; the measurements themselves never go in
+  patient_vitals: { shown: ['patientId', 'appointmentId'], hidden: ['weightKg', 'heightCm', 'systolic', 'diastolic', 'heartRate', 'respiratoryRate', 'temperatureC', 'oxygenSaturation', 'voidReason'] },
   reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 

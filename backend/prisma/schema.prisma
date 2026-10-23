@@ -44,6 +44,7 @@ model Clinic {
   consultationNotes ConsultationNote[]
   consultationAddenda ConsultationAddendum[]
   consultationDiagnoses ConsultationDiagnosis[]
+  patientVitals  PatientVitals[]
   appointmentTypes AppointmentType[]
   scheduleBlocks ScheduleBlock[]
 }
@@ -107,6 +108,7 @@ model Patient {
   backgrounds  PatientBackground[]
   notes        ConsultationNote[]
   diagnoses    ConsultationDiagnosis[]
+  vitals       PatientVitals[]
 
   // A phone or a cedula identifies a patient inside one clinic, not across clinics
   @@unique([clinicId, phone])
@@ -157,6 +159,7 @@ model Appointment {
   typeId         String?
   type           AppointmentType? @relation(fields: [typeId, clinicId], references: [id, clinicId], onDelete: Restrict)
   consultationNote ConsultationNote?
+  vitals         PatientVitals[]
 
   @@index([clinicId, date])
 }
@@ -534,4 +537,45 @@ model ConsultationDiagnosis {
   @@unique([noteId, code])
   @@index([patientId, createdAt])
   @@index([code])
+}
+
+// One set of measurements taken on a patient (S10-06): weight, height, blood pressure, heart and
+// breathing rate, temperature and oxygen saturation. Any of them may be missing, never all. The
+// body mass index is not stored: it is worked out from the weight and the height of the same
+// reading. Clinical data (same access rule and audit as the rest). A reading is never edited:
+// one taken by mistake is voided (`voidedAt`), which keeps it in the history but takes it out of
+// the charts and the "latest" values. RESTRICT: a patient or an appointment with readings is not
+// deleted. Metric units only.
+model PatientVitals {
+  id             String    @id @default(uuid())
+  createdAt      DateTime  @default(now())
+  clinicId       String
+  patientId      String
+  // The visit it was taken at, when it was taken at one
+  appointmentId  String?
+  // When it was measured (may be earlier than when it was typed in)
+  measuredAt     DateTime
+  weightKg       Float?
+  heightCm       Float?
+  // mmHg
+  systolic       Int?
+  diastolic      Int?
+  // beats and breaths per minute
+  heartRate      Int?
+  respiratoryRate Int?
+  temperatureC   Float?
+  // percent
+  oxygenSaturation Int?
+  recordedById   String
+  recordedByName String
+  voidedAt       DateTime?
+  voidedById     String?
+  voidedByName   String?
+  voidReason     String?
+  clinic         Clinic    @relation(fields: [clinicId], references: [id])
+  patient        Patient   @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, measuredAt])
+  @@index([appointmentId])
 }
