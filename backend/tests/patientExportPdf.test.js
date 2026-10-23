@@ -1,4 +1,5 @@
 const { PassThrough } = require('stream');
+const PDFDocument = require('pdfkit');
 const request = require('supertest');
 const app = require('../src/server');
 const { prisma, resetDb } = require('./helpers/db');
@@ -88,6 +89,21 @@ describe('what the PDF says', () => {
     expect(texts(buildBlocks(data, META))).toContain('BORRADOR sin cerrar · escrita por Dra. Vega');
   });
 
+  it('lists the notes by the day of the visit, not by when each note was written', async () => {
+    const ctx = await setup(); // its note is for 2026-09-10
+    const earlier = await createAppointment({ doctor: ctx.doctor.user, patient: ctx.patient, date: '2026-08-01', time: '08:00' });
+    const sameDayLater = await createAppointment({ doctor: ctx.doctor.user, patient: ctx.patient, date: '2026-09-10', time: '16:00' });
+    // written last, for the oldest visit
+    for (const visit of [sameDayLater, earlier]) {
+      await prisma.consultationNote.create({ data: { clinicId: ctx.clinic.id, patientId: ctx.patient.id, appointmentId: visit.id, authorId: ctx.doctor.user.id, authorName: 'Dra. Vega', plan: 'x' } });
+    }
+    const data = await buildPatientExport(prisma, { clinicId: ctx.clinic.id }, ctx.patient.id);
+
+    const titles = buildBlocks(data, META).filter((b) => b.kind === 'h3' && b.text.startsWith('Consulta del')).map((b) => b.text.slice(0, 29));
+
+    expect(titles).toEqual(['Consulta del 2026-08-01 08:00', 'Consulta del 2026-09-10 09:00', 'Consulta del 2026-09-10 16:00']);
+  });
+
   it('says so when there is nothing, and leaves the guardian out of an adult', async () => {
     const clinic = await createClinic({ name: 'Consultorio Vacío' });
     const patient = await createPatient({ clinic });
@@ -126,6 +142,49 @@ describe('drawing the PDF', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(5000);
     expect(pdf.toString('latin1')).toContain('DejaVuSans');
+  });
+
+  it('never leaves a title as the last thing on a page, wherever the page happens to break', async () => {
+    const ctx = await setup();
+    const base = await buildPatientExport(prisma, { clinicId: ctx.clinic.id }, ctx.patient.id);
+    const reading = (i) => ({ ...base.vitalSigns[0], id: `v${i}`, voidedAt: null, voidedByName: null, voidReason: null });
+    const note = base.consultationNotes[0];
+    const heading = /^(NOTAS DE CONSULTA|Consulta del |SUBJETIVO|OBJETIVO|ANÁLISIS|PLAN$|DIAGNÓSTICOS|ADENDAS)/;
+    const footer = /^(Consultorio Prueba ·|Página \d)/;
+    const orphans = [];
+    // the text each page ends with, noted as it is drawn (the page is not known afterwards)
+    let lastOnPage;
+    const draw = PDFDocument.prototype.text;
+    const spy = jest.spyOn(PDFDocument.prototype, 'text').mockImplementation(function text(content, ...rest) {
+      if (typeof content === 'string' && !footer.test(content)) lastOnPage.set(this.page, content);
+      return draw.call(this, content, ...rest);
+    });
+
+    try {
+      // a reading and a background are lines of different height: together they move the start of
+      // the notes down the page in steps of a few points, so every position gets visited
+      for (let step = 0; step < 5 * 60; step += 1) {
+        const readings = step % 60;
+        const backgrounds = Math.floor(step / 60);
+        lastOnPage = new Map();
+        const data = {
+          ...base,
+          vitalSigns: Array.from({ length: readings }, (_, i) => reading(i)),
+          backgrounds: Array.from({ length: backgrounds }, () => base.backgrounds[0]),
+          consultationNotes: [note, { ...note, id: 'n2', appointmentId: 'none' }]
+        };
+        const stream = new PassThrough();
+        stream.resume();
+        const done = new Promise((resolve) => stream.on('end', resolve));
+        renderPatientExportPdf(data, META, stream);
+        await done;
+        for (const content of lastOnPage.values()) if (heading.test(content.trim())) orphans.push({ readings, backgrounds, content });
+      }
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(orphans).toEqual([]);
   });
 
   it('a long record takes more than one page and every page has its footer', async () => {
