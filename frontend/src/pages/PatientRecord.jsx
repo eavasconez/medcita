@@ -13,7 +13,7 @@ import useClinicalSummary from '../utils/useClinicalSummary';
 import { statusLabel, statusColor } from '../utils/appointmentStatus';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
 import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText } from 'lucide-react';
-import { formatDateTime } from '../utils/consultationNote';
+import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
 
 const Field = ({ label, children }) => (
   <div>
@@ -271,6 +271,7 @@ const PatientRecord = () => {
                         <span className="font-black text-secondary w-40">{n.appointment.date} · {n.appointment.time}</span>
                         <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
                           {n.authorName} · {formatDateTime(n.status === 'closed' ? n.closedAt : n.updatedAt)}
+                          {n.principalDiagnosis ? ` · ${n.principalDiagnosis.code ? `${n.principalDiagnosis.code} ` : ''}${diagnosisLabel(n.principalDiagnosis.name)}` : ''}
                           {n.addendaCount > 0 ? ` · ${n.addendaCount} ${n.addendaCount === 1 ? 'addendum' : 'addenda'}` : ''}
                         </span>
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${n.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
