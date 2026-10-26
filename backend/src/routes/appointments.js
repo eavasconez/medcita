@@ -12,16 +12,12 @@ const { inClinic, findDoctorInClinic } = require('../utils/clinicScope');
 const appointmentTypes = require('../services/appointmentTypes');
 const scheduleBlocks = require('../services/scheduleBlocks');
 const { runSerializableTransaction } = require('../utils/serializableTransaction');
+const { ATTENDED_STATUSES, CLOSED_STATUSES, OPEN_STATUSES } = require('../utils/appointmentStatus');
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const VALID_STATUSES = ['scheduled', 'pending_approval', 'confirmed', 'arrived', 'in_progress', 'completed', 'no_show', 'cancelled'];
-// The patient came (or is being seen) / the visit is over, one way or the other
-const ATTENDED_STATUSES = ['arrived', 'in_progress', 'completed'];
-const CLOSED_STATUSES = ['completed', 'no_show'];
-// Still waiting for the visit to happen; once its time has passed it should have been closed
-const OPEN_STATUSES = ['pending_approval', 'scheduled', 'confirmed', 'arrived', 'in_progress'];
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Only the patient fields actually consumed by callers (frontend Dashboard,

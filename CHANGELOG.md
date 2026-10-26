@@ -1,5 +1,9 @@
 # Cambios de MedCita
 
+## Sprint 10.5 — rediseño de la interfaz (en curso)
+
+- **Defectos de la prueba en producción (S10.5-01, #150).** Tres correcciones sin migración. **PDF de la historia:** el título «Notas de consulta» (y cualquier título de sección, de consulta o de una de las cuatro partes) ya no queda solo al pie de una página con su contenido en la siguiente, y las notas salen **ordenadas por la fecha y hora de la visita**, no por cuándo se escribió cada una. **Cerrar la nota de una consulta ahora completa la cita:** pasa a «Atendida» (`completed`) si seguía abierta, así que deja de aparecer en las citas sin cerrar y cuenta en los reportes de asistencia sin pulsar **Seen**; las citas `no_show` o canceladas no se tocan, y el cambio queda en el Activity Log. Detalle: `docs/TECHNICAL.md`, «Nota de consulta SOAP» y «Exportación en PDF».
+
 ## Sprint 10 — 23-oct-2026 (v0.10.0)
 
 Ficha del paciente y primera historia clínica: permisos clínicos por rol con auditoría de lecturas, ficha ampliada con edad y representante legal, antecedentes y alergias con aviso antes de recetar, nota de consulta SOAP con borrador, cierre y adendas, diagnósticos CIE-10, signos vitales con gráficas, y la línea de tiempo del paciente con la exportación de sus datos en PDF. Cinco migraciones, todas solo agregan columnas o tablas. **Es el primer release con datos clínicos:** una nota cerrada y una toma de signos vitales no se pueden borrar, y un paciente o una cita que las tengan tampoco. **Pendiente de decidir:** la lista CIE-10 no viene con la aplicación (se carga con `npm run diagnoses:import`) y su licencia de uso comercial no está resuelta (`docs/TECHNICAL.md`, «Diagnósticos CIE-10»). Quedan fuera del sprint la retención de registros (S9-07) y la aceptación de términos (S9-10).
