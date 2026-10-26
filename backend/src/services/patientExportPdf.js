@@ -197,8 +197,10 @@ function renderPatientExportPdf(data, meta, stream) {
     }
   };
   // A heading never ends a page: it travels with the block after it. A section's title keeps
-  // its first sub-title, the line under a consultation's title and the label above a text.
-  const keepsWithNext = (block, previous) => ['h2', 'h3', 'label'].includes(block.kind) || (block.kind === 'muted' && previous?.kind === 'h3');
+  // its first sub-title, the line under a consultation's title and the label above a text; the
+  // line that explains a section goes with its first item (unless the section is empty).
+  const keepsWithNext = (block, previous, next) => ['h2', 'h3', 'label'].includes(block.kind)
+    || (block.kind === 'muted' && (previous?.kind === 'h3' || (previous?.kind === 'h2' && next && next.kind !== 'h2')));
   const firstLines = (block) => {
     doc.font(REGULAR).fontSize(9.5);
     // at least what a plain block asks for before it stays on the page (see `ensure(14)` below)
@@ -207,8 +209,8 @@ function renderPatientExportPdf(data, meta, stream) {
   const spaceFor = (index) => {
     const block = blocks[index];
     const next = blocks[index + 1];
-    if (!next || !keepsWithNext(block, blocks[index - 1])) return heightOf(block);
-    return heightOf(block) + (keepsWithNext(next, block) ? spaceFor(index + 1) : firstLines(next));
+    if (!next || !keepsWithNext(block, blocks[index - 1], next)) return heightOf(block);
+    return heightOf(block) + (keepsWithNext(next, block, blocks[index + 2]) ? spaceFor(index + 1) : firstLines(next));
   };
 
   blocks.forEach((block, index) => {
@@ -250,7 +252,7 @@ function renderPatientExportPdf(data, meta, stream) {
         doc.moveDown(0.3).font(BOLD).fontSize(9).fillColor(COLORS.muted).text(block.text, { characterSpacing: 0.5 });
         break;
       case 'muted':
-        ensure(keepsWithNext(block, blocks[index - 1]) ? spaceFor(index) : 14);
+        ensure(keepsWithNext(block, blocks[index - 1], blocks[index + 1]) ? spaceFor(index) : 14);
         doc.font(REGULAR).fontSize(9.5).fillColor(COLORS.muted).text(block.text);
         break;
       default: // body

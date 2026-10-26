@@ -149,7 +149,7 @@ describe('drawing the PDF', () => {
     const base = await buildPatientExport(prisma, { clinicId: ctx.clinic.id }, ctx.patient.id);
     const reading = (i) => ({ ...base.vitalSigns[0], id: `v${i}`, voidedAt: null, voidedByName: null, voidReason: null });
     const note = base.consultationNotes[0];
-    const heading = /^(NOTAS DE CONSULTA|Consulta del |SUBJETIVO|OBJETIVO|ANÁLISIS|PLAN$|DIAGNÓSTICOS|ADENDAS)/;
+    const heading = /^(NOTAS DE CONSULTA|MENSAJES ENVIADOS|Se registra que se envió|Consulta del |SUBJETIVO|OBJETIVO|ANÁLISIS|PLAN$|DIAGNÓSTICOS|ADENDAS)/;
     const footer = /^(Consultorio Prueba ·|Página \d)/;
     const orphans = [];
     // the text each page ends with, noted as it is drawn (the page is not known afterwards)
