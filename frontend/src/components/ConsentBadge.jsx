@@ -8,10 +8,10 @@ const CONSENT_BADGE = {
   withdrawn: ['Consent withdrawn', 'danger']
 };
 
-const ConsentBadge = ({ consent }) => {
+const ConsentBadge = ({ consent, size }) => {
   const key = !consent ? 'none' : consent.status === 'granted' && !consent.upToDate ? 'outdated' : consent.status;
   const [label, tone] = CONSENT_BADGE[key];
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone} size={size} className="whitespace-nowrap">{label}</Badge>;
 };
 
 export default ConsentBadge;
