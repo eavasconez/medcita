@@ -42,7 +42,9 @@ import {
   ChevronRight,
   Search,
   User,
-  UserX
+  UserX,
+  UserRound,
+  FileText
 } from 'lucide-react';
 import { debounce } from 'lodash';
 
@@ -1317,6 +1319,23 @@ const Dashboard = () => {
               </div>
 
               <div className="space-y-6">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link
+                    to={`/patients/${selectedEvent.patientId}`}
+                    className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-slate-200 text-secondary font-black text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+                  >
+                    <UserRound size={16} aria-hidden="true" /> Patient record
+                  </Link>
+                  {canViewClinical(user) && selectedEvent.status !== 'cancelled' && (
+                    <Link
+                      to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
+                      className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"
+                    >
+                      <FileText size={16} aria-hidden="true" /> Consultation note
+                    </Link>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp</p>
@@ -1342,15 +1361,6 @@ const Dashboard = () => {
                     <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Booking notes</p>
                     <p className="text-secondary/70 font-medium text-sm italic italic">"{selectedEvent.notes}"</p>
                   </div>
-                )}
-
-                {canViewClinical(user) && selectedEvent.status !== 'cancelled' && (
-                  <Link
-                    to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
-                    className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"
-                  >
-                    Consultation note
-                  </Link>
                 )}
 
                 <div className="pt-6 flex flex-wrap gap-3">
