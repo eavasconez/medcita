@@ -32,18 +32,69 @@ export const METRICS = [
 // The readings that count: voided ones stay in the history but out of the charts and the latest values.
 export const activeReadings = (readings) => readings.filter((r) => !r.voidedAt);
 
-// The newest value of every measurement, each with the day it was taken (a weight may be from a
-// month ago and a heart rate from today).
-export function latestValues(readings) {
-  const latest = {};
-  for (const reading of activeReadings(readings)) { // newest first
-    for (const key of ['weightKg', 'heightCm', 'bmi', 'heartRate', 'respiratoryRate', 'temperatureC', 'oxygenSaturation']) {
-      if (latest[key] === undefined && reading[key] !== null && reading[key] !== undefined) latest[key] = { value: reading[key], at: reading.measuredAt };
-    }
-    if (latest.bp === undefined && reading.systolic !== null) latest.bp = { value: `${reading.systolic}/${reading.diastolic}`, at: reading.measuredAt };
-  }
-  return latest;
+// The measurements shown as a card and a column, in the order the record lists them. `metric` is the
+// chart that follows it (the height has none: it hardly changes). `bp` is the blood pressure, both numbers.
+export const MEASURES = [
+  { key: 'weightKg', label: 'Weight', unit: 'kg', metric: 'weight' },
+  { key: 'heightCm', label: 'Height', unit: 'cm', metric: null },
+  { key: 'bmi', label: 'BMI', unit: 'kg/m²', metric: 'bmi' },
+  { key: 'bp', label: 'Blood pressure', short: 'BP', unit: 'mmHg', metric: 'bp' },
+  { key: 'heartRate', label: 'Heart rate', short: 'HR', unit: 'bpm', metric: 'hr' },
+  { key: 'respiratoryRate', label: 'Respiratory rate', short: 'RR', unit: 'rpm', metric: 'rr' },
+  { key: 'temperatureC', label: 'Temperature', short: 'Temp', unit: '°C', metric: 'temp' },
+  { key: 'oxygenSaturation', label: 'Oxygen saturation', short: 'SpO₂', unit: '%', metric: 'spo2' }
+];
+
+const SCALARS = ['weightKg', 'heightCm', 'bmi', 'heartRate', 'respiratoryRate', 'temperatureC', 'oxygenSaturation'];
+const present = (value) => value !== null && value !== undefined;
+const round = (n) => Math.round(n * 100) / 100;
+
+// The value of one measurement in a reading as text ("81.2", "124/80"), or null if it was not taken.
+export function cellOf(reading, key) {
+  if (key === 'bp') return present(reading.systolic) ? `${reading.systolic}/${reading.diastolic}` : null;
+  return present(reading[key]) ? String(reading[key]) : null;
 }
+
+// How a measurement moved between two readings: { delta: number } or, for the blood pressure,
+// { systolic, diastolic }.
+const changeBetween = (key, latest, previous) =>
+  key === 'bp'
+    ? { systolic: round(latest.systolic - previous.systolic), diastolic: round(latest.diastolic - previous.diastolic) }
+    : { delta: round(latest.number - previous.number) };
+
+// For every measurement: its newest value and date and, if there is an earlier one, that one and what
+// changed since. The earlier one is the previous reading that has the same measurement (a weight may
+// be from a month ago and a heart rate from today). Voided readings count for nothing.
+export function trends(readings) {
+  const seen = {};
+  for (const reading of activeReadings(readings)) { // newest first
+    for (const key of SCALARS) {
+      if (present(reading[key])) (seen[key] ||= []).push({ value: reading[key], number: reading[key], at: reading.measuredAt });
+    }
+    if (present(reading.systolic)) {
+      (seen.bp ||= []).push({ value: `${reading.systolic}/${reading.diastolic}`, systolic: reading.systolic, diastolic: reading.diastolic, at: reading.measuredAt });
+    }
+  }
+  return Object.fromEntries(Object.entries(seen).map(([key, [latest, previous = null]]) => [
+    key,
+    { latest, previous, change: previous ? changeBetween(key, latest, previous) : null }
+  ]));
+}
+
+// The newest value of every measurement, each with the day it was taken
+export function latestValues(readings) {
+  return Object.fromEntries(Object.entries(trends(readings)).map(([key, t]) => [key, { value: t.latest.value, at: t.latest.at }]));
+}
+
+// A change as text: "+1.2", "−4", "−4/−2", or "No change"
+export function describeChange(change) {
+  const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
+  if (change.delta !== undefined) return change.delta === 0 ? 'No change' : signed(change.delta);
+  return change.systolic === 0 && change.diastolic === 0 ? 'No change' : `${signed(change.systolic)}/${signed(change.diastolic)}`;
+}
+
+// Which way a change went: 1, -1 or 0 (the blood pressure goes by its systolic number)
+export const directionOf = (change) => Math.sign(change.delta !== undefined ? change.delta : change.systolic);
 
 // A reading as one line of text for the history: "70.5 kg · 170 cm · 120/80 mmHg ..."
 export function describeReading(reading) {

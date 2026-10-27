@@ -9,7 +9,7 @@ import PatientHeader from '../components/PatientHeader';
 import NoteDiagnoses from '../components/NoteDiagnoses';
 import VitalsForm from '../components/VitalsForm';
 import useVitals from '../utils/useVitals';
-import { describeReading } from '../utils/vitals';
+import VisitVitals from '../components/VisitVitals';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
 import { canViewClinical } from '../utils/clinicalAccess';
@@ -273,20 +273,16 @@ const ConsultationNote = () => {
                   {recordingVitals && (
                     <VitalsForm patientId={patientId} appointmentId={appointmentId} onCancel={() => setRecordingVitals(false)} onSaved={async () => { await vitals.reload(); setRecordingVitals(false); }} />
                   )}
-                  {(() => {
-                    const mine = (vitals.readings || []).filter((r) => r.appointmentId === appointmentId && !r.voidedAt);
-                    if (vitals.error) return <p className="text-sm font-semibold text-red-600">We couldn't load the vital signs.</p>;
-                    if (mine.length === 0) return <p className="text-sm font-medium text-slate-300">No measurements recorded at this visit</p>;
-                    return (
-                      <ul className="space-y-2">
-                        {mine.map((r) => (
-                          <li key={r.id} className="text-sm font-semibold text-secondary">
-                            {describeReading(r)} <span className="text-[11px] font-semibold text-slate-400">· {r.recordedByName}, {formatDateTime(r.measuredAt)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    );
-                  })()}
+                  {vitals.error ? (
+                    <p className="text-sm font-semibold text-red-600">We couldn't load the vital signs.</p>
+                  ) : !vitals.readings ? (
+                    <Skeleton className="h-16 w-full rounded-2xl" />
+                  ) : (
+                    <VisitVitals
+                      readings={vitals.readings.filter((r) => r.appointmentId === appointmentId && !r.voidedAt)}
+                      onRecord={recordingVitals ? undefined : () => setRecordingVitals(true)}
+                    />
+                  )}
                 </section>
 
                 <div className="space-y-5">
