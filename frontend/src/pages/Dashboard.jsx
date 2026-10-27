@@ -12,6 +12,7 @@ import { STATUS, statusLabel, statusColor, nextSteps } from '../utils/appointmen
 import ClinicalAlert from '../components/ClinicalAlert';
 import { Modal, useConfirm, useToast } from '../components/ui';
 import useClinicalSummary from '../utils/useClinicalSummary';
+import { canViewClinical } from '../utils/clinicalAccess';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -131,7 +132,7 @@ const Dashboard = () => {
   // may read clinical data (the secretary never asks: the API would refuse)
   const clinicalSummary = useClinicalSummary(
     showEditModal ? selectedEvent?.patientId : null,
-    showEditModal && user?.role !== 'secretary'
+    showEditModal && canViewClinical(user)
   );
 
   // Add new states for Calendly logic
@@ -1332,7 +1333,7 @@ const Dashboard = () => {
                   <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
                 </div>
 
-                {user?.role !== 'secretary' && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
+                {canViewClinical(user) && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
 
                 <MessageHistory appointmentId={selectedEvent.id} />
 
@@ -1343,7 +1344,7 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {user?.role !== 'secretary' && selectedEvent.status !== 'cancelled' && (
+                {canViewClinical(user) && selectedEvent.status !== 'cancelled' && (
                   <Link
                     to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
                     className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"

@@ -5,16 +5,16 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
-import ClinicalAlert from '../components/ClinicalAlert';
+import PatientHeader from '../components/PatientHeader';
 import NoteDiagnoses from '../components/NoteDiagnoses';
 import VitalsForm from '../components/VitalsForm';
 import useVitals from '../utils/useVitals';
 import { describeReading } from '../utils/vitals';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
-import { formatAge } from '../utils/patientRecord';
+import { canViewClinical } from '../utils/clinicalAccess';
 import { EmptyState, NoteStatusBadge, Skeleton, useConfirm, useToast } from '../components/ui';
-import { ArrowLeft, Lock, FileText } from 'lucide-react';
+import { Lock, FileText } from 'lucide-react';
 
 const AUTOSAVE_DELAY_MS = 1500;
 
@@ -31,7 +31,9 @@ const ConsultationNote = () => {
   const [templates, setTemplates] = useState([]);
   const [note, setNote] = useState(null); // null: not started; the full note once it exists
   const [values, setValues] = useState({ subjective: '', objective: '', assessment: '', plan: '' });
-  const [loadState, setLoadState] = useState('loading'); // loading | ready | error | denied | notfound
+  // The secretary never reads clinical data: the screen does not ask, it just says so
+  const allowed = canViewClinical(user);
+  const [loadState, setLoadState] = useState(allowed ? 'loading' : 'denied'); // loading | ready | error | denied | notfound
   const [saveState, setSaveState] = useState({ kind: 'idle' }); // idle | dirty | saving | saved | error | conflict
   const [template, setTemplate] = useState('general');
   const [addendumText, setAddendumText] = useState('');
@@ -48,6 +50,7 @@ const ConsultationNote = () => {
   const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
+    if (!allowed) return;
     try {
       const [patientRes, list, tpl] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/patients/${patientId}`, { headers }),
@@ -73,7 +76,7 @@ const ConsultationNote = () => {
       setLoadState(status === 403 ? 'denied' : status === 404 ? 'notfound' : 'error');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, appointmentId, token]);
+  }, [patientId, appointmentId, token, allowed]);
 
   useEffect(() => {
     load();
@@ -205,23 +208,17 @@ const ConsultationNote = () => {
     }
   };
 
-  const backTo = `/patients/${patientId}`;
-
   return (
     <Layout>
       <div className="page-shell max-w-4xl">
-        <Link to={backTo} className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
-          <ArrowLeft size={16} /> {patient?.name || 'Patient'}
-        </Link>
+        <PatientHeader
+          patient={loadState === 'ready' ? patient : null}
+          loading={loadState === 'loading'}
+          summary={summary}
+          crumb="Consultation note"
+        />
 
-        {loadState === 'loading' && (
-          <div aria-busy="true" className="space-y-4">
-            <span className="sr-only">Loading note...</span>
-            <Skeleton className="h-10 w-72" />
-            <Skeleton className="h-4 w-56" />
-            <Skeleton className="h-64 w-full rounded-3xl" />
-          </div>
-        )}
+        {loadState === 'loading' && <Skeleton className="h-64 w-full rounded-3xl" />}
         {loadState === 'denied' && <EmptyState icon={Lock} title="Clinical data is not available to your role" />}
         {loadState === 'notfound' && <EmptyState title="Patient not found" />}
         {loadState === 'error' && <LoadError message="We couldn't load the note." onRetry={load} />}
@@ -231,15 +228,12 @@ const ConsultationNote = () => {
             <header className="page-header">
               <div>
                 <h2 className="page-title">Consultation note</h2>
-                <p className="text-slate-500 font-medium mt-1">
-                  {patient.name}{patient.age ? ` · ${formatAge(patient.age)}` : ''}
-                  {appointment ? ` · ${appointment.date} ${appointment.time} · ${appointment.doctor.name}` : ''}
-                </p>
+                {appointment && (
+                  <p className="text-slate-500 font-medium mt-1">{appointment.date} {appointment.time} · {appointment.doctor.name}</p>
+                )}
               </div>
               {note && <NoteStatusBadge status={note.status} size="lg" />}
             </header>
-
-            {summary && <div className="mb-6"><ClinicalAlert summary={summary} /></div>}
 
             {!appointment ? (
               <EmptyState title="Appointment not found for this patient" />
