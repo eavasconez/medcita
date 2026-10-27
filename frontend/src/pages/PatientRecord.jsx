@@ -5,16 +5,16 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
-import ConsentBadge from '../components/ConsentBadge';
+import PatientHeader from '../components/PatientHeader';
 import PatientConsentModal from '../components/PatientConsentModal';
-import ClinicalAlert from '../components/ClinicalAlert';
 import ClinicalBackground from '../components/ClinicalBackground';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import VitalsSection from '../components/VitalsSection';
 import useVitals from '../utils/useVitals';
-import { AppointmentStatusBadge, EmptyState, MinorBadge, NoteStatusBadge, SectionHeader, Skeleton, useToast } from '../components/ui';
+import { AppointmentStatusBadge, EmptyState, NoteStatusBadge, SectionHeader, Skeleton, useToast } from '../components/ui';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
-import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
+import { canViewClinical as roleCanViewClinical } from '../utils/clinicalAccess';
+import { Edit, ShieldCheck, AlertTriangle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
 import { downloadPatientExport } from '../utils/patientExport';
 import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
 
@@ -46,6 +46,8 @@ const Input = ({ label, name, form, setForm, type = 'text', required, placeholde
     />
   </div>
 );
+
+const secondaryAction = 'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors';
 
 const PatientRecord = () => {
   const { id } = useParams();
@@ -108,7 +110,8 @@ const PatientRecord = () => {
   };
 
   const patient = data?.patient;
-  const canViewClinical = data?.canViewClinical === true;
+  // The role decides what to ask for; the answer of the API (re-read on every request) can only narrow it
+  const canViewClinical = roleCanViewClinical(user) && data?.canViewClinical === true;
 
   // The consultation notes of the patient, without their text (S10-04): who wrote each one and its state
   useEffect(() => {
@@ -119,65 +122,53 @@ const PatientRecord = () => {
   }, [id, token, canViewClinical]);
   const noteOf = (appointmentId) => notes.find((n) => n.appointmentId === appointmentId);
   // Allergies, medication and history: only for the roles that may read clinical data
-  const clinical = useClinicalSummary(id, data?.canViewClinical === true);
-  const vitals = useVitals(id, data?.canViewClinical === true);
+  const clinical = useClinicalSummary(id, canViewClinical);
+  const vitals = useVitals(id, canViewClinical);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <Layout>
       <div className="page-shell">
-        <Link to="/patients" className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
-          <ArrowLeft size={16} /> Patients
-        </Link>
+        {notFound || loadError ? (
+          <PatientHeader patient={null} />
+        ) : (
+          <PatientHeader
+            patient={patient}
+            loading={!patient}
+            summary={canViewClinical ? clinical.summary : null}
+            actions={patient && (
+              <>
+                {canViewClinical && (
+                  <Link to={`/patients/${id}/timeline`} className={secondaryAction}>
+                    <History size={18} /> Timeline
+                  </Link>
+                )}
+                {user?.role === 'admin' && (
+                  <button onClick={() => exportAs('pdf')} className={secondaryAction}>
+                    <Download size={18} /> Export PDF
+                  </button>
+                )}
+                <button onClick={() => setShowConsent(true)} className={secondaryAction}>
+                  <ShieldCheck size={18} /> Consent
+                </button>
+                {!editing && (
+                  <button onClick={startEditing} className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 shadow-lg shadow-primary/20">
+                    <Edit size={18} /> Edit record
+                  </button>
+                )}
+              </>
+            )}
+          />
+        )}
 
         {notFound ? (
           <EmptyState title="Patient not found" />
         ) : loadError ? (
           <LoadError message="We couldn't load the patient." onRetry={load} />
         ) : !patient ? (
-          <div aria-busy="true" className="space-y-4">
-            <span className="sr-only">Loading record...</span>
-            <Skeleton className="h-10 w-72" />
-            <Skeleton className="h-4 w-56" />
-            <Skeleton className="h-64 w-full rounded-3xl" />
-          </div>
+          <Skeleton className="h-64 w-full rounded-3xl" />
         ) : (
           <>
-            <header className="page-header">
-              <div>
-                <h2 className="text-3xl font-black text-secondary tracking-tight">{patient.name}</h2>
-                <p className="text-slate-500 font-medium mt-1">
-                  {[formatAge(patient.age), patient.sex && SEX_LABEL[patient.sex], patient.cedula].filter(Boolean).join(' · ') || 'Patient record'}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <ConsentBadge consent={patient.consent} />
-                  {patient.isMinor && <MinorBadge />}
-                </div>
-              </div>
-              <div className="flex gap-3 w-full sm:w-auto">
-                {canViewClinical && (
-                  <Link to={`/patients/${id}/timeline`} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
-                    <History size={18} /> Timeline
-                  </Link>
-                )}
-                {user?.role === 'admin' && (
-                  <button onClick={() => exportAs('pdf')} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
-                    <Download size={18} /> Export PDF
-                  </button>
-                )}
-                <button onClick={() => setShowConsent(true)} className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors">
-                  <ShieldCheck size={18} /> Consent
-                </button>
-                {!editing && (
-                  <button onClick={startEditing} className="btn-primary flex items-center justify-center gap-2 px-6 py-3 shadow-lg shadow-primary/20">
-                    <Edit size={18} /> Edit record
-                  </button>
-                )}
-              </div>
-            </header>
-
-            {data.canViewClinical && clinical.summary && <div className="mb-6"><ClinicalAlert summary={clinical.summary} /></div>}
-
             {patient.missingGuardian && (
               <div role="alert" className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
                 <AlertTriangle size={20} className="mt-0.5 shrink-0" />

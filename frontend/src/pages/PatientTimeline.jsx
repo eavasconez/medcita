@@ -5,11 +5,14 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import PatientHeader from '../components/PatientHeader';
+import useClinicalSummary from '../utils/useClinicalSummary';
+import { canViewClinical } from '../utils/clinicalAccess';
 import { AppointmentStatusBadge, EmptyState } from '../components/ui';
 import { describeReading } from '../utils/vitals';
 import { diagnosisLabel, formatDateTime } from '../utils/consultationNote';
 import { METHOD_LABEL } from '../utils/consent';
-import { ArrowLeft, CalendarDays, FileText, Activity, ShieldCheck, MessageSquarePlus, Lock, Star } from 'lucide-react';
+import { CalendarDays, FileText, Activity, ShieldCheck, MessageSquarePlus, Lock, Star } from 'lucide-react';
 
 const FILTERS = [
   { key: '', label: 'Everything' },
@@ -100,18 +103,21 @@ const Event = ({ event, patientId }) => {
 // consent events. For doctors and admins; every time it is opened is a read the clinic audits.
 const PatientTimeline = () => {
   const { id } = useParams();
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
+  // The secretary never reads clinical data: the screen does not ask, it just says so
+  const allowed = canViewClinical(user);
   const [patient, setPatient] = useState(null);
   const [events, setEvents] = useState([]);
   const [nextBefore, setNextBefore] = useState(null);
   const [filter, setFilter] = useState('');
-  const [state, setState] = useState('loading'); // loading | ready | error | denied | notfound
+  const [state, setState] = useState(allowed ? 'loading' : 'denied'); // loading | ready | error | denied | notfound
   const [loadingMore, setLoadingMore] = useState(false);
 
   const headers = { Authorization: `Bearer ${token}` };
   const url = `${API_BASE_URL}/api/patients/${id}/clinical/timeline`;
 
   const load = useCallback(async () => {
+    if (!allowed) return;
     setState('loading');
     try {
       const [who, page] = await Promise.all([
@@ -127,7 +133,7 @@ const PatientTimeline = () => {
       setState(status === 403 ? 'denied' : status === 404 ? 'notfound' : 'error');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, token, filter]);
+  }, [id, token, filter, allowed]);
 
   useEffect(() => {
     load();
@@ -146,19 +152,24 @@ const PatientTimeline = () => {
     }
   };
 
+  const { summary } = useClinicalSummary(id, allowed && Boolean(patient));
+
   let lastMonth = null;
 
   return (
     <Layout>
       <div className="page-shell max-w-4xl">
-        <Link to={`/patients/${id}`} className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
-          <ArrowLeft size={16} /> {patient?.name || 'Patient'}
-        </Link>
+        <PatientHeader
+          patient={patient}
+          loading={state === 'loading' && !patient}
+          summary={summary}
+          crumb="Timeline"
+        />
 
         <header className="page-header">
           <div>
             <h2 className="page-title">Timeline</h2>
-            <p className="text-slate-500 font-medium mt-1">{patient ? `${patient.name} — everything in order, newest first` : ' '}</p>
+            <p className="text-slate-500 font-medium mt-1">Everything in order, newest first</p>
           </div>
         </header>
 
