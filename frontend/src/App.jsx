@@ -5,6 +5,7 @@ import axios from 'axios';
 import { API_BASE_URL } from './config/api';
 import { IS_STAGING } from './config/environment';
 import EnvironmentBanner from './components/EnvironmentBanner';
+import { ConfirmProvider, ToastProvider } from './components/ui';
 // Route-level code splitting: each page (and its own dependencies, e.g.
 // Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
 // all being bundled into the initial load.
@@ -164,35 +165,39 @@ function App() {
 
   return (
     <AuthContext.Provider value={{ user, token, login, startSession, logout, updateUser, updateToken }}>
-      <Router>
-        <EnvironmentBanner />
-        <RouteErrorBoundary>
-          <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
-            <Routes>
-              <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
-              <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
-              <Route path="/forgot-password" element={!token ? <ForgotPassword /> : <Navigate to="/dashboard" />} />
-              {/* Open to everyone, even with a session: whoever follows the emailed link must be able to use it */}
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/privacy" element={<LegalDocument document="privacy" />} />
-              <Route path="/terms" element={<LegalDocument document="terms" />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/accept-invitation" element={<AcceptInvitation />} />
-              <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
-              <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
-              <Route path="/patients/:id" element={token ? <PatientRecord /> : <Navigate to="/login" />} />
-              <Route path="/patients/:id/timeline" element={token ? <PatientTimeline /> : <Navigate to="/login" />} />
-              <Route path="/patients/:id/appointments/:appointmentId/note" element={token ? <ConsultationNote /> : <Navigate to="/login" />} />
-              <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
-              <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
-              <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
-              <Route path="/activity" element={token && user?.role === 'admin' ? <AuditLog /> : <Navigate to="/dashboard" />} />
-              <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
-              <Route path="*" element={<Navigate to="/dashboard" />} />
-            </Routes>
-          </Suspense>
-        </RouteErrorBoundary>
-      </Router>
+      <ToastProvider>
+        <ConfirmProvider>
+          <Router>
+            <EnvironmentBanner />
+            <RouteErrorBoundary>
+              <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
+                <Routes>
+                  <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
+                  <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
+                  <Route path="/forgot-password" element={!token ? <ForgotPassword /> : <Navigate to="/dashboard" />} />
+                  {/* Open to everyone, even with a session: whoever follows the emailed link must be able to use it */}
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/privacy" element={<LegalDocument document="privacy" />} />
+                  <Route path="/terms" element={<LegalDocument document="terms" />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
+                  <Route path="/accept-invitation" element={<AcceptInvitation />} />
+                  <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
+                  <Route path="/patients" element={token ? <Patients /> : <Navigate to="/login" />} />
+                  <Route path="/patients/:id" element={token ? <PatientRecord /> : <Navigate to="/login" />} />
+                  <Route path="/patients/:id/timeline" element={token ? <PatientTimeline /> : <Navigate to="/login" />} />
+                  <Route path="/patients/:id/appointments/:appointmentId/note" element={token ? <ConsultationNote /> : <Navigate to="/login" />} />
+                  <Route path="/availability" element={token ? <Availability /> : <Navigate to="/login" />} />
+                  <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
+                  <Route path="/admin" element={token && user?.role === 'admin' ? <AdminDoctors /> : <Navigate to="/dashboard" />} />
+                  <Route path="/activity" element={token && user?.role === 'admin' ? <AuditLog /> : <Navigate to="/dashboard" />} />
+                  <Route path="/reports" element={token && user?.role === 'admin' ? <Reports /> : <Navigate to="/dashboard" />} />
+                  <Route path="*" element={<Navigate to="/dashboard" />} />
+                </Routes>
+              </Suspense>
+            </RouteErrorBoundary>
+          </Router>
+        </ConfirmProvider>
+      </ToastProvider>
     </AuthContext.Provider>
   );
 }

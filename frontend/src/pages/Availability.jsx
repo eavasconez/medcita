@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import ScheduleBlocksSection from '../components/ScheduleBlocksSection';
-import { Clock, Plus, Trash2, Save, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { useToast } from '../components/ui';
+import { Clock, Plus, Trash2, Save, X } from 'lucide-react';
 
 const DAYS = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
@@ -15,19 +16,11 @@ const Availability = () => {
   const [schedules, setSchedules] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
-  const [toast, setToast] = useState(null);
   const [loadError, setLoadError] = useState(false);
-  const toastTimeoutRef = useRef(null);
   const { user, token } = useContext(AuthContext);
   const isSpecialRole = user?.role === 'admin' || user?.role === 'secretary';
 
-  const showToast = useCallback((message, type = 'success') => {
-    // Clear any pending dismissal so an in-flight timer from a prior toast
-    // can't clear this newer one out from under it.
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast({ message, type });
-    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
-  }, []);
+  const { showToast } = useToast();
 
   const fetchAvailability = useCallback(async (doctorId) => {
     try {
@@ -100,26 +93,10 @@ const Availability = () => {
 
   return (
     <Layout>
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300 text-white font-bold max-w-sm
-          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
-        `}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} aria-label="Dismiss notification" className="ml-auto hover:opacity-75 transition-opacity">
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="page-shell max-w-4xl">
         <header className="page-header mb-12">
           <div>
-            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">Working Hours</h2>
+            <h2 className="page-title">Working Hours</h2>
             <p className="text-slate-500 font-medium mt-1">Define when the clinic is available for appointments</p>
           </div>
 

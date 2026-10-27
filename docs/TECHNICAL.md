@@ -640,6 +640,25 @@ La primera migración, `20261019202135_baseline`, es el esquema completo tal com
 - Si no importa perder los datos locales: `npx prisma migrate reset` borra la base, aplica las migraciones y vuelve a cargar el seed.
 - Para conservarlos: `npx prisma migrate resolve --applied 20261019202135_baseline`. Solo anota el historial y no toca los datos. (Si tu base está desactualizada respecto del esquema, ponla al día antes con `npx prisma db push`.)
 
+## 9. Componentes base de la interfaz (S10.5-02)
+
+La interfaz tiene un sistema de diseño mínimo y propio (Tailwind, sin librerías de componentes). **Tokens:** `frontend/src/index.css` define los colores como triples HSL (`--primary`, `--secondary` y, para cada estado `success`, `warning`, `danger`, `info` y `neutral`, cuatro valores: el color fuerte, `-soft` para el fondo, `-line` para el borde y `-ink` para el texto sobre el fondo suave), los radios (`--radius-card`, `--radius-control`) y la tipografía (`--font-sans`). `tailwind.config.js` los lee como `bg-success-soft`, `text-danger-ink`, `rounded-card`…, y la opacidad (`bg-primary/10`) sigue funcionando. Cambiar un valor en `index.css` cambia toda la app. Las clases `page-title`, `section-title` y `eyebrow` dan un mismo título a cada pantalla. El plugin `tailwindcss-animate` (devDependency) hace que `animate-in`, `zoom-in-95` o `slide-in-from-bottom-5` funcionen: antes se usaban y no hacían nada.
+
+**Componentes** (`frontend/src/components/ui/`, se importan de `components/ui`):
+
+| Componente | Para qué |
+|---|---|
+| `Modal` | El único diálogo de la app: se pinta en un portal, tiene `role="dialog"` y `aria-modal`, se cierra con Escape, mantiene el Tab dentro, **devuelve el foco** a lo que lo abrió y bloquea el scroll de la página. Si hay varios abiertos, solo reacciona el último (la pregunta que sale dentro del modal de una cita). Hacer clic fuera **no** lo cierra salvo `closeOnOverlayClick` |
+| `ConfirmDialog` + `useConfirm()` | Reemplaza `window.confirm` y `window.prompt`. `await confirm({ title, message, confirmLabel, tone })` devuelve `true`/`false`; `await askReason({ title, reason: { label } })` devuelve el texto (puede ir vacío) o `null` si se cancela. `tone="danger"` empieza con el foco en Cancelar |
+| `Toast` + `useToast()` | Un solo aviso para toda la app (`showToast(mensaje, 'success' \| 'error')`, con identidad estable): sobrevive a un cambio de página, se va solo a los 4 s, los errores se anuncian con `role="alert"` |
+| `Badge`, `AppointmentStatusBadge`, `NoteStatusBadge`, `MinorBadge` (+ `ConsentBadge`) | Un solo color y una sola etiqueta para cada estado: cita (los colores del calendario), borrador/cerrada, menor, consentimiento |
+| `EmptyState` | «No hay nada aquí», con icono, texto y una acción; para una petición que **falló** sigue `LoadError` |
+| `SectionHeader` | Encabezado de un bloque (título, línea, icono, acciones); `variant="label"` es el título pequeño en mayúsculas |
+| `Skeleton` | Marcador gris mientras carga, con el tamaño de lo que llegará |
+| `useFocusTrap` | El foco atrapado de `Modal` y del cajón del menú en móvil (`Sidebar`) |
+
+Reglas: no usar `window.confirm`, `window.prompt` ni `window.alert` (no se pueden ver ni probar, ni respetan el diseño); no volver a crear un toast ni un modal por página. Los pills de rol de `AdminDoctors` y los de acción de `AuditLog` conservan sus colores propios (naranja, morado…) porque no son estados.
+
 ## 8. Idioma del producto
 
 Decisión (S7-05): el producto es **bilingüe según quién lee el texto**, no monolingüe.

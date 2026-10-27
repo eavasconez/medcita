@@ -10,6 +10,7 @@ import NotificationAlert from '../components/NotificationAlert';
 import UnclosedVisits from '../components/UnclosedVisits';
 import { STATUS, statusLabel, statusColor, nextSteps } from '../utils/appointmentStatus';
 import ClinicalAlert from '../components/ClinicalAlert';
+import { Modal, useConfirm, useToast } from '../components/ui';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
@@ -100,7 +101,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   // The calendar list or the KPIs could not be loaded (as opposed to being empty)
   const [loadError, setLoadError] = useState(false);
-  const [toast, setToast] = useState(null);
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const [stats, setStats] = useState({ totalAppointments: 0, newPatients: 0, effectiveness: '—', noShow: 0 });
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -190,11 +192,6 @@ const Dashboard = () => {
   }, [user, isSpecialRole]);
 
   const [weeklyAvailability, setWeeklyAvailability] = useState([]);
-
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  }, []);
 
   // Uses axios' `params` (not string interpolation) so a query containing
   // &/#/+ doesn't get mangled, and cancels any still-in-flight previous
@@ -299,14 +296,14 @@ const Dashboard = () => {
 
   const handleSelectSlot = ({ start }) => {
     if (start < new Date()) {
-      setToast({ message: 'You cannot schedule appointments in the past', type: 'error' });
+      showToast('You cannot schedule appointments in the past', 'error');
       return;
     }
 
     const selectedDate = format(start, 'yyyy-MM-dd');
     const selectedTime = format(start, 'HH:mm');
     if (closedDays.has(selectedDate)) {
-      setToast({ message: 'The doctor does not attend on this date', type: 'error' });
+      showToast('The doctor does not attend on this date', 'error');
       return;
     }
 
@@ -513,18 +510,18 @@ const Dashboard = () => {
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setToast({ message: 'Appointment rescheduled successfully', type: 'success' });
+      showToast('Appointment rescheduled successfully', 'success');
       fetchAppointments(); // Refresh to be safe
       fetchStats();
     } catch (err) {
-      setToast({ message: err.response?.data?.error || 'Error rescheduling appointment', type: 'error' });
+      showToast(err.response?.data?.error || 'Error rescheduling appointment', 'error');
       fetchAppointments(); // Rollback
     }
   };
 
   const handleSelectEvent = (event) => {
     if (event.resource?.isBlock) {
-      setToast({ message: `${event.title}: nobody can book these days`, type: 'error' });
+      showToast(`${event.title}: nobody can book these days`, 'error');
       return;
     }
     setSelectedEvent(event.resource);
@@ -539,28 +536,28 @@ const Dashboard = () => {
       await axios.put(`${API_BASE_URL}/api/appointments/${id}`, { status }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setToast({ message: `Appointment ${status === 'confirmed' ? 'confirmed' : 'marked as ' + statusLabel(status).toLowerCase()}`, type: 'success' });
+      showToast(`Appointment ${status === 'confirmed' ? 'confirmed' : 'marked as ' + statusLabel(status).toLowerCase()}`, 'success');
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
     } catch (err) {
-      setToast({ message: err.response?.data?.error || 'Error updating appointment', type: 'error' });
+      showToast(err.response?.data?.error || 'Error updating appointment', 'error');
       fetchAppointments();
     }
   };
 
   const handleDeleteAppointment = async (id) => {
-    if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
+    if (!(await confirm({ title: 'Cancel this appointment?', message: 'The time is released and the patient is told it was cancelled.', confirmLabel: 'Cancel appointment', cancelLabel: 'Keep it' }))) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/appointments/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setToast({ message: 'Appointment cancelled', type: 'success' });
+      showToast('Appointment cancelled', 'success');
       setShowEditModal(false);
       fetchAppointments();
       fetchStats();
     } catch {
-      setToast({ message: 'Error cancelling appointment', type: 'error' });
+      showToast('Error cancelling appointment', 'error');
     }
   };
 
@@ -652,19 +649,6 @@ const Dashboard = () => {
 
   return (
     <Layout>
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
-          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
-        `}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75 transition-opacity">
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="page-shell">
         {user?.role === 'admin' && <NotificationAlert />}
         <UnclosedVisits doctorId={formData.doctorId} refreshKey={appointments} onChange={() => { fetchAppointments(); fetchStats(); }} />
@@ -672,7 +656,7 @@ const Dashboard = () => {
         {/* Header with Stats */}
         <header className="page-header mb-10">
           <div>
-            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">
+            <h2 className="page-title">
               {isSpecialRole ? 'Administrative Center' : 'My Schedule'}
             </h2>
             <p className="text-slate-500 font-medium text-base sm:text-lg">
@@ -990,414 +974,406 @@ const Dashboard = () => {
           </div>
         </div>
       </div>      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-panel max-w-3xl rounded-[3rem] animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-auto max-h-[95vh]">
-            
-            {/* Sidebar Info (Calendly Style) */}
-            <div className="bg-slate-50 md:w-72 p-6 sm:p-10 border-r border-slate-100 flex flex-col">
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-primary/20">
-                  <CalendarIcon size={24} />
-                </div>
-                <h3 className="text-2xl font-black tracking-tight text-secondary">New Appointment</h3>
-                <p className="text-slate-400 font-medium text-sm mt-1">MedCita Quick Scheduler</p>
+        <Modal onClose={() => setShowModal(false)} labelledBy="new-appointment-title" panelClassName="max-w-3xl rounded-[3rem] flex flex-col md:flex-row h-auto max-h-[95vh]">
+          
+          {/* Sidebar Info (Calendly Style) */}
+          <div className="bg-slate-50 md:w-72 p-6 sm:p-10 border-r border-slate-100 flex flex-col">
+            <div className="mb-8">
+              <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-primary/20">
+                <CalendarIcon size={24} />
               </div>
-
-              {formData.patientName && (
-                <div className="mb-6 animate-in fade-in slide-in-from-left-2">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Patient</p>
-                  <p className="text-secondary font-bold flex items-center gap-2">
-                    <User size={14} className="text-primary" /> {formData.patientName}
-                  </p>
-                </div>
-              )}
-
-              {selectedType && modalStep > 1 && appointmentTypes.length > 1 && (
-                <div className="mb-6 animate-in fade-in slide-in-from-left-2">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Type of visit</p>
-                  <p className="text-secondary font-bold flex items-center gap-2">
-                    <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: selectedType.color }}></span>
-                    {selectedType.name} · {selectedType.durationMinutes} min
-                  </p>
-                </div>
-              )}
-
-              {formData.date && modalStep > 1 && (
-                <div className="mb-6 animate-in fade-in slide-in-from-left-2">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Date & Time</p>
-                  <p className="text-secondary font-bold flex items-center gap-2">
-                    <Clock size={14} className="text-primary" /> {formData.date} {formData.time && `@ ${formData.time}`}
-                  </p>
-                </div>
-              )}
-
-              <div className="mt-auto pt-8">
-                <div className="flex gap-1.5">
-                  {[1, 2, 3].map(s => (
-                    <div key={s} className={`h-1.5 rounded-full flex-1 transition-all ${modalStep >= s ? 'bg-primary' : 'bg-slate-200'}`} />
-                  ))}
-                </div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mt-3 tracking-widest text-center">Step {modalStep} of 3</p>
-              </div>
+              <h3 id="new-appointment-title" className="text-2xl font-black tracking-tight text-secondary">New Appointment</h3>
+              <p className="text-slate-400 font-medium text-sm mt-1">MedCita Quick Scheduler</p>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col relative">
-              <button
-                onClick={() => setShowModal(false)}
-                aria-label="Close"
-                className="absolute right-5 top-5 sm:right-8 sm:top-8 p-2 rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-secondary transition-colors z-10"
-              >
-                <X size={20} />
-              </button>
+            {formData.patientName && (
+              <div className="mb-6 animate-in fade-in slide-in-from-left-2">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Patient</p>
+                <p className="text-secondary font-bold flex items-center gap-2">
+                  <User size={14} className="text-primary" /> {formData.patientName}
+                </p>
+              </div>
+            )}
 
-              <div className="p-6 sm:p-10 flex-1 overflow-y-auto">
-                
-                {/* Step 1: Select Doctor & Patient */}
-                {modalStep === 1 && (
-                  <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <h4 className="text-xl font-black text-secondary mb-6 tracking-tight">Who are we seeing?</h4>
-                    
-                    {isSpecialRole && (
-                      <div className="mb-6 animate-in slide-in-from-top-2">
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Select Doctor</label>
-                        <select 
-                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10"
-                          value={formData.doctorId}
-                          onChange={(e) => setFormData({...formData, doctorId: e.target.value})}
-                        >
-                          {doctors.map(d => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+            {selectedType && modalStep > 1 && appointmentTypes.length > 1 && (
+              <div className="mb-6 animate-in fade-in slide-in-from-left-2">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Type of visit</p>
+                <p className="text-secondary font-bold flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: selectedType.color }}></span>
+                  {selectedType.name} · {selectedType.durationMinutes} min
+                </p>
+              </div>
+            )}
 
-                    <div className="relative mb-6">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <input 
-                        type="text"
-                        placeholder="Search existing patient..."
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 transition-all font-bold"
-                        onChange={(e) => debouncedSearch(e.target.value)}
-                      />
-                    </div>
+            {formData.date && modalStep > 1 && (
+              <div className="mb-6 animate-in fade-in slide-in-from-left-2">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Date & Time</p>
+                <p className="text-secondary font-bold flex items-center gap-2">
+                  <Clock size={14} className="text-primary" /> {formData.date} {formData.time && `@ ${formData.time}`}
+                </p>
+              </div>
+            )}
 
-                    <div className="space-y-3 max-h-60 overflow-y-auto mb-6 pr-2 custom-scrollbar">
-                      {patients.map(p => (
-                        <button 
-                          key={p.id}
-                          onClick={() => selectPatient(p)}
-                          className="w-full text-left p-4 rounded-2xl border border-slate-50 hover:border-primary/30 hover:bg-primary/5 flex items-center justify-between group transition-all"
-                        >
-                          <div>
-                            <p className="font-bold text-secondary">{p.name}</p>
-                            <p className="text-xs text-slate-400">{p.phone}</p>
-                          </div>
-                          <ChevronRight size={18} className="text-slate-200 group-hover:text-primary transition-colors" />
-                        </button>
-                      ))}
-                    </div>
+            <div className="mt-auto pt-8">
+              <div className="flex gap-1.5">
+                {[1, 2, 3].map(s => (
+                  <div key={s} className={`h-1.5 rounded-full flex-1 transition-all ${modalStep >= s ? 'bg-primary' : 'bg-slate-200'}`} />
+                ))}
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase mt-3 tracking-widest text-center">Step {modalStep} of 3</p>
+            </div>
+          </div>
 
-                    <div className="pt-6 border-t border-slate-50">
-                      <p className="text-sm text-slate-400 font-medium mb-4 text-center">Not on the list?</p>
-                      <button 
-                        onClick={skipPatientStep}
-                        className="w-full py-4 bg-white border-2 border-primary text-primary font-black rounded-2xl hover:bg-primary hover:text-white transition-all transform active:scale-[0.98]"
-                      >
-                        Create New Patient
-                      </button>
-                    </div>
-                  </div>
-                )}
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col relative">
+            <button
+              onClick={() => setShowModal(false)}
+              aria-label="Close"
+              className="absolute right-5 top-5 sm:right-8 sm:top-8 p-2 rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-secondary transition-colors z-10"
+            >
+              <X size={20} />
+            </button>
 
-                {/* Step 2: Date & Time */}
-                {modalStep === 2 && (
-                  <div className="animate-in fade-in slide-in-from-right-4 duration-300 flex flex-col h-full">
-                    <h4 className="text-xl font-black text-secondary mb-6">When?</h4>
-
-                    {appointmentTypes.length > 1 && (
-                      <div className="mb-6">
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Type of visit</label>
-                        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Type of visit">
-                          {appointmentTypes.map((type) => (
-                            <button
-                              key={type.id}
-                              type="button"
-                              role="radio"
-                              aria-checked={formData.typeId === type.id}
-                              onClick={() => setFormData({ ...formData, typeId: type.id, time: '' })}
-                              className={`px-3 py-2 rounded-xl border-2 text-xs font-black flex items-center gap-2 transition-all ${
-                                formData.typeId === type.id
-                                  ? 'border-secondary bg-secondary/5 text-secondary'
-                                  : 'border-slate-100 text-slate-500 hover:border-slate-300'
-                              }`}
-                            >
-                              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: type.color }}></span>
-                              {type.name}
-                              <span className="font-bold text-slate-400">{type.durationMinutes} min</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mb-6">
-                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Select Date</label>
-                      <input 
-                        type="date"
+            <div className="p-6 sm:p-10 flex-1 overflow-y-auto">
+              
+              {/* Step 1: Select Doctor & Patient */}
+              {modalStep === 1 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                  <h4 className="text-xl font-black text-secondary mb-6 tracking-tight">Who are we seeing?</h4>
+                  
+                  {isSpecialRole && (
+                    <div className="mb-6 animate-in slide-in-from-top-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Select Doctor</label>
+                      <select 
                         className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10"
-                        value={formData.date}
-                        min={format(new Date(), 'yyyy-MM-dd')}
-                        onChange={(e) => setFormData({...formData, date: e.target.value})}
-                      />
+                        value={formData.doctorId}
+                        onChange={(e) => setFormData({...formData, doctorId: e.target.value})}
+                      >
+                        {doctors.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
                     </div>
+                  )}
 
-                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Available Slots</label>
-                    {loadingSlots ? (
-                      <div className="grid grid-cols-3 gap-3 animate-pulse">
-                        {[1,2,3,4,5,6].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl" />)}
-                      </div>
-                    ) : modalBlock ? (
-                      <div role="status" className="p-8 text-center bg-orange-50 rounded-2xl border border-orange-100">
-                        <AlertCircle className="mx-auto text-orange-400 mb-2" />
-                        <p className="text-sm font-bold text-orange-600">
-                          {modalBlock.scope === 'clinic' ? 'The clinic is closed' : `${modalBlock.doctorName} is off`} on this date
-                        </p>
-                        <p className="text-xs font-bold text-orange-400 mt-1">{modalBlock.reason}</p>
-                      </div>
-                    ) : availableSlots.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto max-h-64 pr-2 custom-scrollbar">
-                        {availableSlots.map(slot => (
-                          <button 
-                            key={slot.time}
-                            disabled={slot.status === 'booked'}
-                            onClick={() => {
-                              setFormData({...formData, time: slot.time});
-                              setModalStep(3);
-                            }}
-                            className={`p-2 rounded-xl border-2 font-black transition-all text-xs flex flex-col items-center justify-center gap-0.5 ${
-                              slot.status === 'booked'
-                              ? 'bg-orange-50 border-orange-100 text-orange-400 cursor-not-allowed opacity-70'
-                              : formData.time === slot.time 
-                                ? 'bg-[#10b981] border-[#10b981] text-white scale-105 shadow-lg shadow-[#10b981]/20' 
-                                : 'bg-green-50/30 border-green-100 text-[#10b981] hover:border-[#10b981] hover:bg-green-50'
+                  <div className="relative mb-6">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input 
+                      type="text"
+                      placeholder="Search existing patient..."
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 transition-all font-bold"
+                      onChange={(e) => debouncedSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 max-h-60 overflow-y-auto mb-6 pr-2 custom-scrollbar">
+                    {patients.map(p => (
+                      <button 
+                        key={p.id}
+                        onClick={() => selectPatient(p)}
+                        className="w-full text-left p-4 rounded-2xl border border-slate-50 hover:border-primary/30 hover:bg-primary/5 flex items-center justify-between group transition-all"
+                      >
+                        <div>
+                          <p className="font-bold text-secondary">{p.name}</p>
+                          <p className="text-xs text-slate-400">{p.phone}</p>
+                        </div>
+                        <ChevronRight size={18} className="text-slate-200 group-hover:text-primary transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-6 border-t border-slate-50">
+                    <p className="text-sm text-slate-400 font-medium mb-4 text-center">Not on the list?</p>
+                    <button 
+                      onClick={skipPatientStep}
+                      className="w-full py-4 bg-white border-2 border-primary text-primary font-black rounded-2xl hover:bg-primary hover:text-white transition-all transform active:scale-[0.98]"
+                    >
+                      Create New Patient
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Date & Time */}
+              {modalStep === 2 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300 flex flex-col h-full">
+                  <h4 className="text-xl font-black text-secondary mb-6">When?</h4>
+
+                  {appointmentTypes.length > 1 && (
+                    <div className="mb-6">
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Type of visit</label>
+                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Type of visit">
+                        {appointmentTypes.map((type) => (
+                          <button
+                            key={type.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={formData.typeId === type.id}
+                            onClick={() => setFormData({ ...formData, typeId: type.id, time: '' })}
+                            className={`px-3 py-2 rounded-xl border-2 text-xs font-black flex items-center gap-2 transition-all ${
+                              formData.typeId === type.id
+                                ? 'border-secondary bg-secondary/5 text-secondary'
+                                : 'border-slate-100 text-slate-500 hover:border-slate-300'
                             }`}
                           >
-                            <span>{slot.time}</span>
-                            <span className="text-[8px] uppercase tracking-tighter opacity-70">
-                              {slot.status === 'booked' ? 'Booked' : 'Free'}
-                            </span>
+                            <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: type.color }}></span>
+                            {type.name}
+                            <span className="font-bold text-slate-400">{type.durationMinutes} min</span>
                           </button>
                         ))}
                       </div>
-                    ) : (
-                      <div className="p-8 text-center bg-red-50 rounded-2xl border border-red-100">
-                        <AlertCircle className="mx-auto text-red-400 mb-2" />
-                        <p className="text-sm font-bold text-red-500">No availability for this date</p>
+                    </div>
+                  )}
+
+                  <div className="mb-6">
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Select Date</label>
+                    <input 
+                      type="date"
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10"
+                      value={formData.date}
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      onChange={(e) => setFormData({...formData, date: e.target.value})}
+                    />
+                  </div>
+
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Available Slots</label>
+                  {loadingSlots ? (
+                    <div className="grid grid-cols-3 gap-3 animate-pulse">
+                      {[1,2,3,4,5,6].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl" />)}
+                    </div>
+                  ) : modalBlock ? (
+                    <div role="status" className="p-8 text-center bg-orange-50 rounded-2xl border border-orange-100">
+                      <AlertCircle className="mx-auto text-orange-400 mb-2" />
+                      <p className="text-sm font-bold text-orange-600">
+                        {modalBlock.scope === 'clinic' ? 'The clinic is closed' : `${modalBlock.doctorName} is off`} on this date
+                      </p>
+                      <p className="text-xs font-bold text-orange-400 mt-1">{modalBlock.reason}</p>
+                    </div>
+                  ) : availableSlots.length > 0 ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto max-h-64 pr-2 custom-scrollbar">
+                      {availableSlots.map(slot => (
+                        <button 
+                          key={slot.time}
+                          disabled={slot.status === 'booked'}
+                          onClick={() => {
+                            setFormData({...formData, time: slot.time});
+                            setModalStep(3);
+                          }}
+                          className={`p-2 rounded-xl border-2 font-black transition-all text-xs flex flex-col items-center justify-center gap-0.5 ${
+                            slot.status === 'booked'
+                            ? 'bg-orange-50 border-orange-100 text-orange-400 cursor-not-allowed opacity-70'
+                            : formData.time === slot.time 
+                              ? 'bg-[#10b981] border-[#10b981] text-white scale-105 shadow-lg shadow-[#10b981]/20' 
+                              : 'bg-green-50/30 border-green-100 text-[#10b981] hover:border-[#10b981] hover:bg-green-50'
+                          }`}
+                        >
+                          <span>{slot.time}</span>
+                          <span className="text-[8px] uppercase tracking-tighter opacity-70">
+                            {slot.status === 'booked' ? 'Booked' : 'Free'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-red-50 rounded-2xl border border-red-100">
+                      <AlertCircle className="mx-auto text-red-400 mb-2" />
+                      <p className="text-sm font-bold text-red-500">No availability for this date</p>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => setModalStep(1)}
+                    className="mt-auto pt-6 text-slate-400 font-bold text-sm hover:text-primary transition-colors text-center"
+                  >
+                    &larr; Back to Patient
+                  </button>
+                </div>
+              )}
+
+              {/* Step 3: Final Confirm */}
+              {modalStep === 3 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                  <h4 className="text-xl font-black text-secondary mb-6">Last details</h4>
+                  
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {!formData.patientId && (
+                      <div className="space-y-4 animate-in fade-in duration-500">
+                        <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Full Name</label>
+                          <input 
+                            required
+                            placeholder="e.g. John Doe"
+                            className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
+                            value={formData.patientName}
+                            onChange={(e) => setFormData({...formData, patientName: e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">WhatsApp Number</label>
+                          <input 
+                            required
+                            placeholder="+593..."
+                            className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
+                            value={formData.patientPhone}
+                            onChange={(e) => setFormData({...formData, patientPhone: e.target.value})}
+                          />
+                        </div>
                       </div>
                     )}
 
-                    <button 
-                      onClick={() => setModalStep(1)}
-                      className="mt-auto pt-6 text-slate-400 font-bold text-sm hover:text-primary transition-colors text-center"
-                    >
-                      &larr; Back to Patient
-                    </button>
-                  </div>
-                )}
-
-                {/* Step 3: Final Confirm */}
-                {modalStep === 3 && (
-                  <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <h4 className="text-xl font-black text-secondary mb-6">Last details</h4>
-                    
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      {!formData.patientId && (
-                        <div className="space-y-4 animate-in fade-in duration-500">
-                          <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Full Name</label>
-                            <input 
-                              required
-                              placeholder="e.g. John Doe"
-                              className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                              value={formData.patientName}
-                              onChange={(e) => setFormData({...formData, patientName: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">WhatsApp Number</label>
-                            <input 
-                              required
-                              placeholder="+593..."
-                              className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                              value={formData.patientPhone}
-                              onChange={(e) => setFormData({...formData, patientPhone: e.target.value})}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Identification (Cédula)</label>
-                          <input 
-                            className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                            placeholder="Optional ID Number"
-                            value={formData.patientCedula}
-                            onChange={(e) => setFormData({...formData, patientCedula: e.target.value})}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Email Address</label>
-                          <input 
-                            type="email"
-                            className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                            placeholder="Optional Email for Notifications"
-                            value={formData.patientEmail}
-                            onChange={(e) => setFormData({...formData, patientEmail: e.target.value})}
-                          />
-                        </div>
-                      </div>
-
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Booking notes</label>
-                        <textarea 
-                          className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all resize-none"
-                          rows="3"
-                          placeholder="Reason for the visit, who is bringing the patient... Medical details go in the consultation note."
-                          value={formData.notes}
-                          onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Identification (Cédula)</label>
+                        <input 
+                          className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
+                          placeholder="Optional ID Number"
+                          value={formData.patientCedula}
+                          onChange={(e) => setFormData({...formData, patientCedula: e.target.value})}
                         />
                       </div>
-
-                      <div className="pt-6 flex flex-wrap gap-3">
-                        <button 
-                          type="button"
-                          onClick={() => setModalStep(2)}
-                          className="flex-1 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:bg-slate-50 rounded-2xl transition-all"
-                        >
-                          Change Date
-                        </button>
-                        <button 
-                          type="submit"
-                          className="flex-[2] py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm uppercase tracking-widest"
-                        >
-                          Confirm Appointment
-                        </button>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Email Address</label>
+                        <input 
+                          type="email"
+                          className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all"
+                          placeholder="Optional Email for Notifications"
+                          value={formData.patientEmail}
+                          onChange={(e) => setFormData({...formData, patientEmail: e.target.value})}
+                        />
                       </div>
-                    </form>
-                  </div>
-                )}
-              </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1 tracking-widest">Booking notes</label>
+                      <textarea 
+                        className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-base focus:ring-4 focus:ring-primary/10 outline-none transition-all resize-none"
+                        rows="3"
+                        placeholder="Reason for the visit, who is bringing the patient... Medical details go in the consultation note."
+                        value={formData.notes}
+                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="pt-6 flex flex-wrap gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => setModalStep(2)}
+                        className="flex-1 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:bg-slate-50 rounded-2xl transition-all"
+                      >
+                        Change Date
+                      </button>
+                      <button 
+                        type="submit"
+                        className="flex-[2] py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm uppercase tracking-widest"
+                      >
+                        Confirm Appointment
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
       {/* Edit/Manage Appointment Modal */}
       {showEditModal && selectedEvent && (
-        <div className="fixed inset-0 z-[150] overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 py-8">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowEditModal(false)}></div>
-            
-            <div className="modal-panel relative rounded-[3rem] max-w-2xl animate-in zoom-in-95 duration-300">
-              <div className="flex flex-col md:flex-row">
-                {/* Status Sidebar */}
-                <div
-                  className="w-full md:w-1/3 p-6 sm:p-8 flex flex-row md:flex-col items-center gap-4 md:gap-0 justify-center text-white text-center"
-                  style={{ backgroundColor: statusColor(selectedEvent.status) }}
-                >
-                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center md:mb-4 backdrop-blur-md shrink-0">
-                    <User size={32} />
+        <Modal onClose={() => setShowEditModal(false)} label="Appointment details" closeOnOverlayClick panelClassName="relative rounded-[3rem] max-w-2xl">
+          <div className="flex flex-col md:flex-row">
+            {/* Status Sidebar */}
+            <div
+              className="w-full md:w-1/3 p-6 sm:p-8 flex flex-row md:flex-col items-center gap-4 md:gap-0 justify-center text-white text-center"
+              style={{ backgroundColor: statusColor(selectedEvent.status) }}
+            >
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center md:mb-4 backdrop-blur-md shrink-0">
+                <User size={32} />
+              </div>
+              <div className="text-left md:text-center">
+                <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-1">Appointment</h3>
+                <p className="text-2xl font-black leading-tight">{statusLabel(selectedEvent.status)}</p>
+              </div>
+            </div>
+
+            {/* Details Area */}
+            <div className="flex-1 p-6 sm:p-10">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h4 className="text-2xl font-black text-secondary">{selectedEvent.Patient?.name}</h4>
+                  <div className="flex items-center gap-2 text-slate-400 font-bold text-xs mt-1">
+                    <CalendarIcon size={14} />
+                    <span>{selectedEvent.date}</span>
+                    <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                    <Clock size={14} />
+                    <span>{selectedEvent.time}</span>
+                    <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: selectedEvent.type?.color || defaultType?.color || '#0ea5e9' }}></span>
+                    <span>{selectedEvent.type?.name || defaultType?.name || 'Consultation'} · {selectedEvent.durationMinutes || 30} min</span>
                   </div>
-                  <div className="text-left md:text-center">
-                    <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-1">Appointment</h3>
-                    <p className="text-2xl font-black leading-tight">{statusLabel(selectedEvent.status)}</p>
+                </div>
+                <button type="button" aria-label="Close" onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-all">
+                  <X size={20} className="text-slate-400" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp</p>
+                    <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.phone}</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cédula</p>
+                    <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.cedula || '---'}</p>
                   </div>
                 </div>
 
-                {/* Details Area */}
-                <div className="flex-1 p-6 sm:p-10">
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <h4 className="text-2xl font-black text-secondary">{selectedEvent.Patient?.name}</h4>
-                      <div className="flex items-center gap-2 text-slate-400 font-bold text-xs mt-1">
-                        <CalendarIcon size={14} />
-                        <span>{selectedEvent.date}</span>
-                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                        <Clock size={14} />
-                        <span>{selectedEvent.time}</span>
-                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: selectedEvent.type?.color || defaultType?.color || '#0ea5e9' }}></span>
-                        <span>{selectedEvent.type?.name || defaultType?.name || 'Consultation'} · {selectedEvent.durationMinutes || 30} min</span>
-                      </div>
-                    </div>
-                    <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-all">
-                      <X size={20} className="text-slate-400" />
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Patient Email</p>
+                  <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
+                </div>
+
+                {user?.role !== 'secretary' && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
+
+                <MessageHistory appointmentId={selectedEvent.id} />
+
+                {selectedEvent.notes && (
+                  <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/30">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Booking notes</p>
+                    <p className="text-secondary/70 font-medium text-sm italic italic">"{selectedEvent.notes}"</p>
+                  </div>
+                )}
+
+                {user?.role !== 'secretary' && selectedEvent.status !== 'cancelled' && (
+                  <Link
+                    to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
+                    className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"
+                  >
+                    Consultation note
+                  </Link>
+                )}
+
+                <div className="pt-6 flex flex-wrap gap-3">
+                  {nextSteps(selectedEvent.status, { started: new Date(`${selectedEvent.date}T${selectedEvent.time}`) <= new Date() }).map(([next, label], index) => (
+                    <button
+                      key={next}
+                      onClick={() => handleUpdateStatus(selectedEvent.id, next)}
+                      style={{ backgroundColor: statusColor(next) }}
+                      className={`${index === 0 ? 'flex-[2]' : 'flex-1'} py-4 text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2`}
+                    >
+                      <CheckCircle2 size={18} className="shrink-0" /> {label}
                     </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp</p>
-                        <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.phone}</p>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cédula</p>
-                        <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.cedula || '---'}</p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Patient Email</p>
-                      <p className="text-secondary font-bold text-sm">{selectedEvent.Patient?.email || 'No email provided'}</p>
-                    </div>
-
-                    {user?.role !== 'secretary' && clinicalSummary.summary && <ClinicalAlert summary={clinicalSummary.summary} compact />}
-
-                    <MessageHistory appointmentId={selectedEvent.id} />
-
-                    {selectedEvent.notes && (
-                      <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/30">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Booking notes</p>
-                        <p className="text-secondary/70 font-medium text-sm italic italic">"{selectedEvent.notes}"</p>
-                      </div>
-                    )}
-
-                    {user?.role !== 'secretary' && selectedEvent.status !== 'cancelled' && (
-                      <Link
-                        to={`/patients/${selectedEvent.patientId}/appointments/${selectedEvent.id}/note`}
-                        className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-primary/20 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary/5 transition-colors"
-                      >
-                        Consultation note
-                      </Link>
-                    )}
-
-                    <div className="pt-6 flex flex-wrap gap-3">
-                      {nextSteps(selectedEvent.status, { started: new Date(`${selectedEvent.date}T${selectedEvent.time}`) <= new Date() }).map(([next, label], index) => (
-                        <button
-                          key={next}
-                          onClick={() => handleUpdateStatus(selectedEvent.id, next)}
-                          style={{ backgroundColor: statusColor(next) }}
-                          className={`${index === 0 ? 'flex-[2]' : 'flex-1'} py-4 text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2`}
-                        >
-                          <CheckCircle2 size={18} className="shrink-0" /> {label}
-                        </button>
-                      ))}
-                      <button 
-                         onClick={() => handleDeleteAppointment(selectedEvent.id)}
-                         className="flex-1 py-4 border-2 border-red-100 text-red-400 font-black rounded-2xl hover:bg-red-50 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
-                      >
-                        <AlertCircle size={18} /> Cancel
-                      </button>
-                    </div>
-                  </div>
+                  ))}
+                  <button 
+                     onClick={() => handleDeleteAppointment(selectedEvent.id)}
+                     className="flex-1 py-4 border-2 border-red-100 text-red-400 font-black rounded-2xl hover:bg-red-50 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+                  >
+                    <AlertCircle size={18} /> Cancel
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </Layout>
   );
