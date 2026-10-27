@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
@@ -7,59 +7,56 @@ import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import PatientHeader from '../components/PatientHeader';
 import PatientConsentModal from '../components/PatientConsentModal';
+import PatientDataSection, { EditRecordModal } from '../components/PatientDataSection';
+import RecordNav from '../components/RecordNav';
+import RecordSummary from '../components/RecordSummary';
 import ClinicalBackground from '../components/ClinicalBackground';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import VitalsSection from '../components/VitalsSection';
 import useVitals from '../utils/useVitals';
+import useSectionSpy from '../utils/useSectionSpy';
 import { AppointmentStatusBadge, EmptyState, NoteStatusBadge, SectionHeader, Skeleton, useToast } from '../components/ui';
-import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
 import { canViewClinical as roleCanViewClinical } from '../utils/clinicalAccess';
-import { Edit, ShieldCheck, AlertTriangle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
+import { Edit, ShieldCheck, AlertTriangle, CalendarDays, FileText, History, Download, LayoutDashboard, ClipboardList, Activity, UserRound } from 'lucide-react';
 import { downloadPatientExport } from '../utils/patientExport';
 import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
-
-const Field = ({ label, children }) => (
-  <div>
-    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{label}</p>
-    <p className="text-secondary font-semibold mt-0.5 break-words">{children || <span className="text-slate-300">—</span>}</p>
-  </div>
-);
-
-const Card = ({ title, children, tone = 'border-slate-100' }) => (
-  <section className={`bg-white rounded-3xl border p-6 ${tone}`}>
-    <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-5">{title}</h3>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">{children}</div>
-  </section>
-);
-
-const Input = ({ label, name, form, setForm, type = 'text', required, placeholder }) => (
-  <div>
-    <label className="form-label" htmlFor={`rec-${name}`}>{label}</label>
-    <input
-      id={`rec-${name}`}
-      type={type}
-      required={required}
-      placeholder={placeholder}
-      className="form-input text-sm"
-      value={form[name]}
-      onChange={(e) => setForm({ ...form, [name]: e.target.value })}
-    />
-  </div>
-);
+import { byVisit } from '../utils/recordSummary';
 
 const secondaryAction = 'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors';
 
+// The sections of the record, in order. The secretary only gets the ones that are not clinical.
+const SECTIONS = [
+  { id: 'summary', label: 'Summary', icon: LayoutDashboard, clinical: true },
+  { id: 'background', label: 'Background', icon: ClipboardList, clinical: true },
+  { id: 'vitals', label: 'Vital signs', icon: Activity, clinical: true },
+  { id: 'consultations', label: 'Consultations', icon: FileText, clinical: true },
+  { id: 'appointments', label: 'Appointments', icon: CalendarDays },
+  { id: 'data', label: 'Patient data', icon: UserRound }
+];
+
+// One section of the page: what the navigation jumps to. Leaves room above it for the header.
+const RecordSection = ({ id, title, count, icon, actions, children }) => (
+  <section id={id} aria-label={title} className="mb-10">
+    <SectionHeader as="h3" icon={icon} title={count === undefined ? title : `${title} (${count})`} actions={actions} className="mb-4" />
+    {children}
+  </section>
+);
+
+// The record of a patient: a header that stays in place and, under it, the navigation of the sections
+// next to the content, which is the only part that scrolls (from `md` up; on a phone the page scrolls
+// and the navigation is a row of pills pinned under the header).
 const PatientRecord = () => {
   const { id } = useParams();
+  const { hash } = useLocation();
   const { token, user } = useContext(AuthContext);
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
-  const [notes, setNotes] = useState([]);
+  const [notes, setNotes] = useState(null);
+  const scrollerRef = useRef(null);
+  const pillsRef = useRef(null);
 
   const { showToast } = useToast();
 
@@ -89,26 +86,6 @@ const PatientRecord = () => {
     }
   };
 
-  const startEditing = () => {
-    setForm(recordForm(data.patient));
-    setEditing(true);
-  };
-
-  const save = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await axios.put(`${API_BASE_URL}/api/patients/${id}`, form, { headers: { Authorization: `Bearer ${token}` } });
-      setEditing(false);
-      await load();
-      showToast('Record updated');
-    } catch (err) {
-      showToast(err.response?.data?.error || 'We couldn\'t save the record', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const patient = data?.patient;
   // The role decides what to ask for; the answer of the API (re-read on every request) can only narrow it
   const canViewClinical = roleCanViewClinical(user) && data?.canViewClinical === true;
@@ -120,15 +97,33 @@ const PatientRecord = () => {
       .then((res) => setNotes(res.data))
       .catch(() => setNotes([]));
   }, [id, token, canViewClinical]);
-  const noteOf = (appointmentId) => notes.find((n) => n.appointmentId === appointmentId);
+  const noteOf = (appointmentId) => (notes || []).find((n) => n.appointmentId === appointmentId);
   // Allergies, medication and history: only for the roles that may read clinical data
   const clinical = useClinicalSummary(id, canViewClinical);
   const vitals = useVitals(id, canViewClinical);
-  const today = new Date().toISOString().slice(0, 10);
+
+  const sections = SECTIONS.filter((s) => canViewClinical || !s.clinical);
+  const ids = sections.map((s) => s.id);
+  const ready = Boolean(patient);
+  const { active, goTo } = useSectionSpy(ids, { scrollerRef, pinnedRef: pillsRef, enabled: ready });
+
+  // A link with #section opens the record there. It waits until what the clinical sections show has
+  // arrived, so they have their final height and the section does not slide away afterwards.
+  const settled = ready && (!canViewClinical || ((clinical.summary || clinical.error) && (vitals.readings || vitals.error) && notes !== null));
+  useEffect(() => {
+    const target = hash.slice(1);
+    if (settled && ids.includes(target)) goTo(target, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled, hash]);
+
+  const timelineTo = canViewClinical ? `/patients/${id}/timeline` : null;
+  const nav = (pills) => (
+    <RecordNav items={sections} active={active} onSelect={goTo} timelineTo={timelineTo} pills={pills} navRef={pills ? pillsRef : undefined} />
+  );
 
   return (
-    <Layout>
-      <div className="page-shell">
+    <Layout fullHeight>
+      <div className="page-shell md:h-full md:flex md:flex-col md:pb-0 lg:pb-0">
         {notFound || loadError ? (
           <PatientHeader patient={null} />
         ) : (
@@ -139,7 +134,7 @@ const PatientRecord = () => {
             actions={patient && (
               <>
                 {canViewClinical && (
-                  <Link to={`/patients/${id}/timeline`} className={secondaryAction}>
+                  <Link to={timelineTo} className={secondaryAction}>
                     <History size={18} /> Timeline
                   </Link>
                 )}
@@ -151,14 +146,14 @@ const PatientRecord = () => {
                 <button onClick={() => setShowConsent(true)} className={secondaryAction}>
                   <ShieldCheck size={18} /> Consent
                 </button>
-                {!editing && (
-                  <button onClick={startEditing} className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 shadow-lg shadow-primary/20">
-                    <Edit size={18} /> Edit record
-                  </button>
-                )}
+                <button onClick={() => setEditing(true)} className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 shadow-lg shadow-primary/20">
+                  <Edit size={18} /> Edit record
+                </button>
               </>
             )}
-          />
+          >
+            {ready && nav(true)}
+          </PatientHeader>
         )}
 
         {notFound ? (
@@ -168,167 +163,114 @@ const PatientRecord = () => {
         ) : !patient ? (
           <Skeleton className="h-64 w-full rounded-3xl" />
         ) : (
-          <>
-            {patient.missingGuardian && (
-              <div role="alert" className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
-                <AlertTriangle size={20} className="mt-0.5 shrink-0" />
-                <p className="text-sm font-semibold">
-                  {patient.name} is under 18 and has no legal representative registered. Add one before recording consent or any treatment.
-                </p>
-              </div>
-            )}
+          <div className="md:flex md:flex-1 md:min-h-0 md:gap-8">
+            <aside className="hidden md:block w-52 shrink-0 pb-8 md:overflow-y-auto">{nav(false)}</aside>
 
-            {editing ? (
-              <form onSubmit={save} className="space-y-6">
-                <section className="bg-white rounded-3xl border border-slate-100 p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <h3 className="sm:col-span-2 text-sm font-black text-secondary uppercase tracking-widest">Personal data</h3>
-                  <Input label="Full name" name="name" form={form} setForm={setForm} required />
-                  <Input label="ID card" name="cedula" form={form} setForm={setForm} />
-                  <Input label="WhatsApp" name="phone" form={form} setForm={setForm} required />
-                  <Input label="Email" name="email" form={form} setForm={setForm} type="email" />
-                  <div>
-                    <label className="form-label" htmlFor="rec-birthDate">Date of birth</label>
-                    <input id="rec-birthDate" type="date" max={today} className="form-input text-sm" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="form-label" htmlFor="rec-sex">Sex</label>
-                    <select id="rec-sex" className="form-input text-sm" value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value })}>
-                      <option value="">Not specified</option>
-                      {Object.entries(SEX_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                  </div>
-                  <Input label="Address" name="address" form={form} setForm={setForm} />
-                  <Input label="Occupation" name="occupation" form={form} setForm={setForm} />
-                </section>
-
-                <section className="bg-white rounded-3xl border border-slate-100 p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <h3 className="sm:col-span-2 text-sm font-black text-secondary uppercase tracking-widest">Emergency contact and insurance</h3>
-                  <Input label="Emergency contact" name="emergencyContactName" form={form} setForm={setForm} />
-                  <Input label="Emergency phone" name="emergencyContactPhone" form={form} setForm={setForm} />
-                  <Input label="Insurance" name="insuranceProvider" form={form} setForm={setForm} placeholder="Ex: IESS, private insurer" />
-                  <Input label="Policy or affiliation number" name="insuranceNumber" form={form} setForm={setForm} />
-                </section>
-
-                <section className={`bg-white rounded-3xl border p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 ${patient.missingGuardian ? 'border-amber-300' : 'border-slate-100'}`}>
-                  <h3 className="sm:col-span-2 text-sm font-black text-secondary uppercase tracking-widest">Legal representative (patients under 18)</h3>
-                  <Input label="Full name" name="guardianName" form={form} setForm={setForm} />
-                  <Input label="Relationship" name="guardianRelationship" form={form} setForm={setForm} placeholder="Ex: Mother" />
-                  <Input label="ID card" name="guardianCedula" form={form} setForm={setForm} />
-                  <Input label="Phone" name="guardianPhone" form={form} setForm={setForm} />
-                </section>
-
-                <div className="flex gap-3 justify-end">
-                  <button type="button" onClick={() => setEditing(false)} className="px-6 py-3 text-slate-400 font-black hover:bg-slate-50 rounded-xl uppercase tracking-widest text-[10px]">Cancel</button>
-                  <button type="submit" disabled={saving} className="px-8 py-3 bg-primary text-white font-black rounded-xl shadow-xl shadow-primary/30 uppercase tracking-widest text-xs disabled:opacity-60">
-                    {saving ? 'Saving...' : 'Save record'}
-                  </button>
+            <div ref={scrollerRef} className="md:flex-1 md:min-w-0 md:overflow-y-auto md:pr-3 md:pb-16">
+              {patient.missingGuardian && (
+                <div role="alert" className="mb-8 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+                  <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+                  <p className="text-sm font-semibold">
+                    {patient.name} is under 18 and has no legal representative registered. Add one before recording consent or any treatment.
+                  </p>
                 </div>
-              </form>
-            ) : (
-              <div className="space-y-6">
-                <Card title="Personal data">
-                  <Field label="Date of birth">{patient.birthDate}</Field>
-                  <Field label="Age">{formatAge(patient.age)}</Field>
-                  <Field label="Sex">{SEX_LABEL[patient.sex]}</Field>
-                  <Field label="Occupation">{patient.occupation}</Field>
-                  <Field label="WhatsApp">{patient.phone}</Field>
-                  <Field label="Email">{patient.email}</Field>
-                  <Field label="Address">{patient.address}</Field>
-                </Card>
-                <Card title="Emergency contact and insurance">
-                  <Field label="Emergency contact">{patient.emergencyContactName}</Field>
-                  <Field label="Emergency phone">{patient.emergencyContactPhone}</Field>
-                  <Field label="Insurance">{patient.insuranceProvider}</Field>
-                  <Field label="Policy or affiliation number">{patient.insuranceNumber}</Field>
-                </Card>
-                {(patient.isMinor || patient.guardianName) && (
-                  <Card title="Legal representative" tone={patient.missingGuardian ? 'border-amber-300' : 'border-slate-100'}>
-                    <Field label="Full name">{patient.guardianName}</Field>
-                    <Field label="Relationship">{patient.guardianRelationship}</Field>
-                    <Field label="ID card">{patient.guardianCedula}</Field>
-                    <Field label="Phone">{patient.guardianPhone}</Field>
-                  </Card>
-                )}
-              </div>
-            )}
-
-            {data.canViewClinical && (
-              <section className="mt-8">
-                <SectionHeader as="h3" variant="label" title="Clinical background" className="mb-4" />
-                {clinical.summary ? (
-                  <ClinicalBackground patientId={id} summary={clinical.summary} onChange={clinical.reload} onError={(message) => showToast(message, 'error')} />
-                ) : clinical.error ? (
-                  <LoadError message="We couldn't load the clinical background." onRetry={clinical.reload} />
-                ) : (
-                  <div aria-busy="true">
-                    <span className="sr-only">Loading...</span>
-                    <Skeleton className="h-24 w-full rounded-3xl" />
-                  </div>
-                )}
-              </section>
-            )}
-
-            {canViewClinical && (
-              <section className="mt-8">
-                <SectionHeader as="h3" variant="label" title="Vital signs" className="mb-4" />
-                <VitalsSection patientId={id} vitals={vitals} onError={(message) => showToast(message, 'error')} />
-              </section>
-            )}
-
-            {canViewClinical && notes.length > 0 && (
-              <section className="mt-8">
-                <SectionHeader as="h3" variant="label" icon={FileText} title={`Consultation notes (${notes.length})`} className="mb-4" />
-                <ul className="space-y-3">
-                  {notes.map((n) => (
-                    <li key={n.id}>
-                      <Link to={`/patients/${id}/appointments/${n.appointmentId}/note`} className="bg-white rounded-2xl border border-slate-100 hover:border-primary p-4 flex flex-wrap items-center gap-x-6 gap-y-1 transition-colors">
-                        <span className="font-black text-secondary w-40">{n.appointment.date} · {n.appointment.time}</span>
-                        <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
-                          {n.authorName} · {formatDateTime(n.status === 'closed' ? n.closedAt : n.updatedAt)}
-                          {n.principalDiagnosis ? ` · ${n.principalDiagnosis.code ? `${n.principalDiagnosis.code} ` : ''}${diagnosisLabel(n.principalDiagnosis.name)}` : ''}
-                          {n.addendaCount > 0 ? ` · ${n.addendaCount} ${n.addendaCount === 1 ? 'addendum' : 'addenda'}` : ''}
-                        </span>
-                        <NoteStatusBadge status={n.status} />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            <section className="mt-8">
-              <SectionHeader as="h3" variant="label" icon={CalendarDays} title={`Appointments (${data.appointments.length})`} className="mb-4" />
-              {data.appointments.length === 0 ? (
-                <EmptyState className="py-8">No appointments yet</EmptyState>
-              ) : (
-                <ul className="space-y-3">
-                  {data.appointments.map((a) => (
-                    <li key={a.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-                      <span className="font-black text-secondary w-40">{a.date} · {a.time}</span>
-                      <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
-                        {a.doctor.name}{a.type ? ` · ${a.type.name}` : ''}
-                      </span>
-                      <AppointmentStatusBadge status={a.status} />
-                      {canViewClinical && a.status !== 'cancelled' && (
-                        <Link
-                          to={`/patients/${id}/appointments/${a.id}/note`}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-black text-primary hover:border-primary transition-colors"
-                        >
-                          <FileText size={14} />
-                          {!noteOf(a.id) ? 'Write note' : noteOf(a.id).status === 'closed' ? 'Open note' : 'Continue draft'}
-                        </Link>
-                      )}
-                      {a.notes && <p className="basis-full text-sm text-slate-500 border-t border-slate-50 pt-2"><span className="font-black text-slate-400 text-[10px] uppercase tracking-widest mr-2">Booking note</span>{a.notes}</p>}
-                    </li>
-                  ))}
-                </ul>
               )}
-            </section>
-          </>
+
+              {canViewClinical && (
+                <>
+                  <RecordSection id="summary" title="Summary" icon={LayoutDashboard}>
+                    <RecordSummary patientId={id} notes={notes} readings={vitals.error ? [] : vitals.readings} summary={clinical.summary} onGoTo={goTo} />
+                  </RecordSection>
+
+                  <RecordSection id="background" title="Background" icon={ClipboardList}>
+                    {clinical.summary ? (
+                      <ClinicalBackground patientId={id} summary={clinical.summary} onChange={clinical.reload} onError={(message) => showToast(message, 'error')} />
+                    ) : clinical.error ? (
+                      <LoadError message="We couldn't load the clinical background." onRetry={clinical.reload} />
+                    ) : (
+                      <div aria-busy="true">
+                        <span className="sr-only">Loading...</span>
+                        <Skeleton className="h-24 w-full rounded-3xl" />
+                      </div>
+                    )}
+                  </RecordSection>
+
+                  <RecordSection id="vitals" title="Vital signs" icon={Activity}>
+                    <VitalsSection patientId={id} vitals={vitals} onError={(message) => showToast(message, 'error')} />
+                  </RecordSection>
+
+                  <RecordSection id="consultations" title="Consultations" count={notes ? notes.length : undefined} icon={FileText}>
+                    {!notes ? (
+                      <div aria-busy="true"><span className="sr-only">Loading...</span><Skeleton className="h-20 w-full rounded-2xl" /></div>
+                    ) : notes.length === 0 ? (
+                      <EmptyState
+                        className="py-8"
+                        title="No consultations yet"
+                        action={<button onClick={() => goTo('appointments')} className="text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Pick a visit to write the first note</button>}
+                      />
+                    ) : (
+                      <ul className="space-y-3">
+                        {byVisit(notes).map((n) => (
+                          <li key={n.id}>
+                            <Link to={`/patients/${id}/appointments/${n.appointmentId}/note`} className="bg-white rounded-2xl border border-slate-100 hover:border-primary p-4 flex flex-wrap items-center gap-x-6 gap-y-1 transition-colors">
+                              <span className="font-black text-secondary w-48 shrink-0">{n.appointment.date} · {n.appointment.time}</span>
+                              <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
+                                {n.authorName} · {formatDateTime(n.status === 'closed' ? n.closedAt : n.updatedAt)}
+                                {n.principalDiagnosis ? ` · ${n.principalDiagnosis.code ? `${n.principalDiagnosis.code} ` : ''}${diagnosisLabel(n.principalDiagnosis.name)}` : ''}
+                                {n.addendaCount > 0 ? ` · ${n.addendaCount} ${n.addendaCount === 1 ? 'addendum' : 'addenda'}` : ''}
+                              </span>
+                              <NoteStatusBadge status={n.status} />
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </RecordSection>
+                </>
+              )}
+
+              <RecordSection id="appointments" title="Appointments" count={data.appointments.length} icon={CalendarDays}>
+                {data.appointments.length === 0 ? (
+                  <EmptyState
+                    className="py-8"
+                    title="No appointments yet"
+                    action={<Link to="/dashboard" className="inline-block text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Open the schedule to book the first one</Link>}
+                  />
+                ) : (
+                  <ul className="space-y-3">
+                    {data.appointments.map((a) => (
+                      <li key={a.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <span className="font-black text-secondary w-48 shrink-0">{a.date} · {a.time}</span>
+                        <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
+                          {a.doctor.name}{a.type ? ` · ${a.type.name}` : ''}
+                        </span>
+                        <AppointmentStatusBadge status={a.status} />
+                        {canViewClinical && a.status !== 'cancelled' && (
+                          <Link
+                            to={`/patients/${id}/appointments/${a.id}/note`}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-black text-primary hover:border-primary transition-colors"
+                          >
+                            <FileText size={14} />
+                            {!noteOf(a.id) ? 'Write note' : noteOf(a.id).status === 'closed' ? 'Open note' : 'Continue draft'}
+                          </Link>
+                        )}
+                        {a.notes && <p className="basis-full text-sm text-slate-500 border-t border-slate-50 pt-2"><span className="font-black text-slate-400 text-[10px] uppercase tracking-widest mr-2">Booking note</span>{a.notes}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </RecordSection>
+
+              <RecordSection id="data" title="Patient data" icon={UserRound}>
+                <PatientDataSection patient={patient} />
+              </RecordSection>
+            </div>
+          </div>
         )}
       </div>
 
       {showConsent && <PatientConsentModal patient={patient} onClose={() => setShowConsent(false)} onChange={load} />}
+      {editing && <EditRecordModal patient={patient} onClose={() => setEditing(false)} onSaved={load} />}
     </Layout>
   );
 };
