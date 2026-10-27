@@ -106,10 +106,10 @@ const NoteDiagnoses = ({ patientId, noteId, diagnoses, editable, onChange, onErr
               ) : (
                 <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest">Free text</span>
               )}
-              <span className="font-bold text-secondary flex-1 min-w-48 break-words">{diagnosisLabel(d.name)}</span>
+              <span className="font-bold text-secondary flex-1 min-w-40 break-words">{diagnosisLabel(d.name)}</span>
               {d.kind === 'primary' && <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest"><Star size={11} /> Main</span>}
               {editable ? (
-                <>
+                <div className="flex shrink-0 items-center gap-2">
                   <select
                     aria-label={`Certainty of ${diagnosisLabel(d.name)}`}
                     className="form-input text-xs py-1.5 w-36"
@@ -122,7 +122,7 @@ const NoteDiagnoses = ({ patientId, noteId, diagnoses, editable, onChange, onErr
                     <button onClick={() => update(d, { kind: 'primary' })} className="text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Make main</button>
                   )}
                   <button onClick={() => remove(d)} aria-label={`Remove ${diagnosisLabel(d.name)}`} className="p-2 text-red-500 hover:bg-red-50 rounded-xl"><X size={16} /></button>
-                </>
+                </div>
               ) : (
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{CERTAINTY_LABEL[d.certainty]}</span>
               )}

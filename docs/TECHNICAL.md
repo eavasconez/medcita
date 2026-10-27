@@ -689,6 +689,16 @@ Solo cambia cómo se ven; **sin backend ni migración** (las rutas, la validaci�
 - **Registrar.** Sin cambios: desde la ficha no guarda `appointmentId`; desde la nota sí (verificado contra la API). Los estados vacíos ofrecen la acción («Record the first vital signs»).
 - **En la nota** («Vital signs of this visit», `components/VisitVitals.jsx`): cada toma de esa visita sale con quién y cuándo y una pastilla por valor con su unidad («WEIGHT 80.6 kg», «BP 118/76 mmHg»); sin tomas, «Record the first measurements» abre el formulario. Mientras cargan se ve un esqueleto (antes aparecía un instante el mensaje de «sin tomas»).
 
+### Pantalla de la nota de consulta (S10.5-06)
+
+`/patients/:id/appointments/:appointmentId/note` (`frontend/src/pages/ConsultationNote.jsx`). Solo cambia cómo se ve y se maneja; **sin backend ni migración**, y se conserva todo el comportamiento de S10-04 (autoguardado a 1500 ms, `revision` y el `409` de conflicto con «Reload», el aviso `beforeunload`, el borrador de otro médico de solo lectura, quién edita y quién cierra).
+
+- **Estructura.** `Layout fullHeight` como la ficha: desde `md` la cabecera (`PatientHeader` con el banner de alertas, la fecha y el médico de la visita y la insignia Draft/Closed) y la **barra de acciones** quedan fijas y solo se desplaza el contenido; en el móvil se desplaza la ventana, la cabecera sigue fija y la barra es `sticky bottom-0`. El texto SOAP va al centro (`max-w-3xl`), los signos de la visita y los diagnósticos conservan su lugar.
+- **Barra fija abajo.** Estado de guardado (los mismos mensajes de antes, con `role="status"`; el conflicto en rojo y su «Reload»), el botón del panel de contexto (`aria-expanded`, `aria-controls`), y, solo para el autor de un borrador, «Delete draft» y «Close note». Una nota cerrada o un borrador ajeno muestran en la barra «Closed … · autor» o «Draft by … — read only» y solo el botón del contexto. La nota cerrada sigue mostrando autor, fecha de cierre y adendas, y **agregar una adenda no pide confirmación**.
+- **Panel de contexto** (`NoteContextPanel`): antecedentes, últimos signos vitales (de cualquier visita) y el diagnóstico principal de las consultas anteriores (con enlace a su nota). **No pide nada nuevo**: usa el resumen clínico y los signos que la pantalla ya carga y la lista de notas que ya se pedía al abrir, y no frena la escritura (muestra esqueletos mientras llegan). En escritorio es una columna a la derecha, **abierta al empezar**; en el móvil es un **cajón** (`role="dialog"`, foco atrapado, Escape lo cierra) que **empieza cerrado**. Abrirlo o cerrarlo no desmonta el texto de la nota (el estado vive en la pantalla).
+- **Cierre y borrado con resumen** (`ConfirmDialog`): «This note has 1 diagnosis and 1 set of vital signs of this visit. Once closed it cannot be edited again: later corrections are added as addenda.» (o «no diagnoses and no vital signs of this visit»); al borrar: «This deletes its four parts and its N diagnoses. The vital signs recorded at this visit are kept.» Las tomas no se tocan al borrar un borrador (comprobado en la ruta).
+- Los controles de cada diagnóstico (certeza, «Make main», quitar) van juntos y ya no dejan la «×» sola en una línea cuando la columna es angosta.
+
 ## 8. Idioma del producto
 
 Decisión (S7-05): el producto es **bilingüe según quién lee el texto**, no monolingüe.
