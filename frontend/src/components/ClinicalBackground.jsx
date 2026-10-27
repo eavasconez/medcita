@@ -3,7 +3,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import { SEVERITY_LABEL } from '../utils/patientRecord';
-import { Badge, SectionHeader, useConfirm } from './ui';
+import { Badge, EmptyState, SectionHeader, useConfirm } from './ui';
 import { Plus, Edit, Trash2, Check } from 'lucide-react';
 
 const CATEGORY_LABEL = { personal: 'Personal', family: 'Family', surgical: 'Surgical', habit: 'Habits' };
@@ -13,6 +13,7 @@ const KINDS = {
   allergies: {
     title: 'Allergies',
     empty: 'No allergies recorded',
+    first: 'Add the first allergy',
     stopLabel: ['Resolved', 'Reactivate'],
     fields: [
       { name: 'substance', label: 'Substance', required: true, placeholder: 'Ex: Penicillin' },
@@ -25,6 +26,7 @@ const KINDS = {
   medications: {
     title: 'Regular medication',
     empty: 'No regular medication recorded',
+    first: 'Add the first medicine',
     stopLabel: ['Stopped', 'Resume'],
     fields: [
       { name: 'name', label: 'Medicine', required: true, placeholder: 'Ex: Metformin' },
@@ -37,6 +39,7 @@ const KINDS = {
   backgrounds: {
     title: 'History',
     empty: 'No history recorded',
+    first: 'Add the first entry',
     fields: [
       { name: 'category', label: 'Type', required: true, options: CATEGORY_LABEL },
       { name: 'description', label: 'Description', required: true, placeholder: 'Ex: Appendectomy' },
@@ -152,7 +155,17 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
             )}
 
             {rows.length === 0 ? (
-              <p className="text-sm font-medium text-slate-300">{config.empty}</p>
+              !editing && (
+                <EmptyState
+                  className="py-8 px-4"
+                  title={config.empty}
+                  action={(
+                    <button onClick={() => setForm({ kind, values: { ...config.blank } })} className="inline-flex items-center gap-1 text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">
+                      <Plus size={14} /> {config.first}
+                    </button>
+                  )}
+                />
+              )
             ) : (
               <ul className="divide-y divide-slate-50">
                 {rows.map((row) => {

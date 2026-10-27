@@ -35,14 +35,15 @@ const Crumbs = ({ patient, crumb }) => (
 //
 // Layout: from `md` the whole block is one sticky grid. Below `md` the wrapper is `display:
 // contents`, so the identity and the alert become siblings that stick under the mobile top bar
-// (the breadcrumb and the actions scroll away, not to take the phone's screen).
-const PatientHeader = ({ patient, loading = false, summary = null, actions = null, crumb = null }) => {
+// (the breadcrumb and the actions scroll away, not to take the phone's screen). `children` go
+// inside that pinned part, under the banner (the record's section pills on a phone).
+const PatientHeader = ({ patient, loading = false, summary = null, actions = null, crumb = null, children = null }) => {
   if (!patient && !loading) {
     return <div className="mb-6"><Crumbs patient={null} /></div>;
   }
 
   return (
-    <div className="contents md:grid md:grid-cols-[minmax(0,1fr)_auto] md:gap-x-6 md:sticky md:top-0 md:z-10 md:bg-slate-50 md:pt-3 md:pb-3 md:mb-6 md:border-b md:border-slate-200">
+    <div className="contents md:shrink-0 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:gap-x-6 md:sticky md:top-0 md:z-10 md:bg-slate-50 md:pt-3 md:pb-3 md:mb-6 md:border-b md:border-slate-200">
       <Crumbs patient={patient} crumb={crumb} />
 
       <div className="sticky top-[calc(3rem+24px)] z-10 mb-4 border-b border-slate-200 bg-slate-50 pb-3 pt-2 md:contents">
@@ -67,6 +68,7 @@ const PatientHeader = ({ patient, loading = false, summary = null, actions = nul
         <div className="md:col-span-2 md:row-start-3">
           <ClinicalAlert summary={summary} banner />
         </div>
+        {children}
       </div>
 
       {actions && <div className="mb-6 flex flex-wrap gap-2 md:col-start-2 md:row-start-2 md:mb-0 md:items-start">{actions}</div>}

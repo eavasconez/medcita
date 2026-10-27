@@ -6,7 +6,7 @@ import LoadError from './LoadError';
 import VitalsForm from './VitalsForm';
 import { METRICS, latestValues, describeReading } from '../utils/vitals';
 import { formatDateTime } from '../utils/consultationNote';
-import { Skeleton, useConfirm } from './ui';
+import { EmptyState, Skeleton, useConfirm } from './ui';
 import { Plus, Ban } from 'lucide-react';
 
 // The charts bring a heavy library: only downloaded when a patient has something to chart
@@ -72,7 +72,17 @@ const VitalsSection = ({ patientId, vitals, onError }) => {
       {adding && <VitalsForm patientId={patientId} onSaved={async () => { await reload(); setAdding(false); }} onCancel={() => setAdding(false)} />}
 
       {readings.length === 0 ? (
-        <p className="text-sm font-medium text-slate-300">No vital signs recorded</p>
+        !adding && (
+          <EmptyState
+            className="py-8 px-4"
+            title="No vital signs recorded"
+            action={(
+              <button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">
+                <Plus size={14} /> Record the first vital signs
+              </button>
+            )}
+          />
+        )
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
