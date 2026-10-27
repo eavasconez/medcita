@@ -6,6 +6,7 @@ import { API_BASE_URL } from './config/api';
 import { IS_STAGING } from './config/environment';
 import EnvironmentBanner from './components/EnvironmentBanner';
 import { ConfirmProvider, ToastProvider } from './components/ui';
+import { clearRecentPatients } from './utils/recentPatients';
 // Route-level code splitting: each page (and its own dependencies, e.g.
 // Dashboard's react-big-calendar + lodash) ships in its own chunk instead of
 // all being bundled into the initial load.
@@ -79,6 +80,7 @@ axios.interceptors.response.use(
     if (error.response?.status === 401 && hadAuthHeader) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      clearRecentPatients();
       sessionStorage.setItem('authMessage', SESSION_EXPIRED_MESSAGE);
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
@@ -125,6 +127,7 @@ function App() {
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    clearRecentPatients();
   };
 
   // Merge fresh fields into the cached user (e.g. after a profile update) so the

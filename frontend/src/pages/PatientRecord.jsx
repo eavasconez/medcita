@@ -21,6 +21,7 @@ import { Edit, ShieldCheck, AlertTriangle, CalendarDays, FileText, History, Down
 import { downloadPatientExport } from '../utils/patientExport';
 import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
 import { byVisit } from '../utils/recordSummary';
+import { rememberPatient } from '../utils/recentPatients';
 
 const secondaryAction = 'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-secondary hover:border-primary hover:text-primary transition-colors';
 
@@ -87,6 +88,12 @@ const PatientRecord = () => {
   };
 
   const patient = data?.patient;
+  // The list of patients shows the ones opened lately
+  const patientId = patient?.id;
+  const patientName = patient?.name;
+  useEffect(() => {
+    if (patientId) rememberPatient(user, { id: patientId, name: patientName });
+  }, [patientId, patientName, user]);
   // The role decides what to ask for; the answer of the API (re-read on every request) can only narrow it
   const canViewClinical = roleCanViewClinical(user) && data?.canViewClinical === true;
 
