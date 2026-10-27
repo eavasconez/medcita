@@ -47,6 +47,24 @@ async function statusByPatient(clinicId, patientIds) {
   return result;
 }
 
+// The ids to filter the patient list by a standing (none, granted, outdated or withdrawn):
+// { ids, negate }. `none` is everyone WITHOUT an event, so it is the ids with one, negated. One
+// query: the latest event of each patient of the clinic, which is also what statusByPatient reads.
+async function standingFilter(clinicId, standing) {
+  const latest = await prisma.$queryRaw`
+    SELECT DISTINCT ON ("patientId") "patientId", granted, "documentVersion"
+    FROM "PatientConsent"
+    WHERE "clinicId" = ${clinicId}
+    ORDER BY "patientId", "createdAt" DESC, id DESC`;
+  if (standing === 'none') return { ids: latest.map((e) => e.patientId), negate: true };
+  const matches = {
+    granted: (e) => e.granted && e.documentVersion === CURRENT_CONSENT_VERSION,
+    outdated: (e) => e.granted && e.documentVersion !== CURRENT_CONSENT_VERSION,
+    withdrawn: (e) => !e.granted
+  }[standing];
+  return { ids: latest.filter(matches).map((e) => e.patientId), negate: false };
+}
+
 async function history(clinicId, patientId, db = prisma) {
   const events = await db.patientConsent.findMany({
     where: { clinicId, patientId },
@@ -81,4 +99,4 @@ async function recordConsent(req, patientId, { granted, method }) {
   });
 }
 
-module.exports = { summarize, statusByPatient, history, recordConsent, publicEvent };
+module.exports = { summarize, statusByPatient, standingFilter, history, recordConsent, publicEvent };
