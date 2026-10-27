@@ -720,6 +720,12 @@ Solo cambia cómo se ven; **sin backend ni migración** (las rutas, la validaci�
 
 **Recientes** (`utils/recentPatients.js`, `RecentPatients`): al abrir una ficha se guarda en el **navegador** `{ id, name }` (nada clínico ni de contacto), hasta 8, el último primero. La clave lleva el consultorio **y** el usuario (`medcita:recent-patients:<clínica>:<usuario>`): otra persona en el mismo equipo u otro consultorio no los ve, y una lista guardada bajo otra clave no se lee. Se borran **todas** al cerrar sesión y cuando la sesión expira (401), y un paciente borrado desde la lista sale de ellas.
 
+### Línea de tiempo y enlaces desde la agenda (S10.5-08)
+
+Solo frontend. `frontend/src/pages/PatientTimeline.jsx` (`/patients/:id/timeline`) carga al paciente y los eventos (`GET …/clinical/timeline`, filtros por `types`, «Show older» con `before`) y los pinta con `frontend/src/components/TimelineEvents.jsx`, que solo muestra: recibe `events` y `patientId`, agrupa por mes y no sabe nada de la red, así que cualquier otra pantalla puede reutilizarlo. Cada evento lleva una `Badge` con su tipo (`EVENT_KINDS`: icono, color y etiqueta por tipo) y, si procede, otra con su estado, con los componentes de `ui/StatusBadges` (`AppointmentStatusBadge`, `NoteStatusBadge`) para que el color de un estado sea el mismo que en el calendario y la lista. Mientras carga hay tres `Skeleton`; sin eventos, `EmptyState`. La ficha sigue enlazando a la línea de tiempo desde `RecordNav` (no es una sección de la ficha, ver S10.5-04).
+
+El modal de gestión de la cita del Dashboard (`Modal`, cierra con Escape y devuelve el foco) muestra bajo el nombre dos enlaces: `/patients/:id` (todos los roles) y `/patients/:id/appointments/:id/note` (solo `canViewClinical`, y no en citas canceladas). La secretaría tampoco pide el resumen clínico para el banner del modal. El cambio en `Dashboard.jsx` se limita a ese bloque.
+
 ## 8. Idioma del producto
 
 Decisión (S7-05): el producto es **bilingüe según quién lee el texto**, no monolingüe.
