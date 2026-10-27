@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import { EmptyState } from '../components/ui';
 import { ACTION_OPTIONS, ACTION_TONE, entryTitle, entryDetails, shortBrowser } from '../utils/auditText';
 import { History, ChevronLeft, ChevronRight, X, MapPin } from 'lucide-react';
 
@@ -64,7 +65,7 @@ const AuditLog = () => {
       <div className="page-shell">
         <header className="page-header mb-8">
           <div>
-            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">Activity Log</h2>
+            <h2 className="page-title">Activity Log</h2>
             <p className="text-slate-500 font-medium text-base sm:text-lg mt-1">
               {user?.clinic?.name ? <>Who did what at <span className="font-black text-secondary">{user.clinic.name}</span></> : 'Who did what in your clinic'}
             </p>
@@ -110,11 +111,9 @@ const AuditLog = () => {
         ) : loadError ? (
           <LoadError message="We couldn't load the activity log." onRetry={fetchEntries} />
         ) : data.entries.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
-            <History className="mx-auto text-slate-300" size={40} />
-            <p className="mt-3 font-black text-slate-400">No activity found</p>
-            <p className="text-slate-300 text-sm">{hasFilters ? 'Try other filters.' : 'Sign-ins and changes will show up here.'}</p>
-          </div>
+          <EmptyState icon={History} title="No activity found">
+            {hasFilters ? 'Try other filters.' : 'Sign-ins and changes will show up here.'}
+          </EmptyState>
         ) : (
           <>
             <ul className={`space-y-3 transition-opacity ${loading ? 'opacity-60' : ''}`}>

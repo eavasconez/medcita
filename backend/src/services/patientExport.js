@@ -33,7 +33,8 @@ async function buildPatientExport(db, req, patientId) {
   const vitalSigns = await db.patientVitals.findMany({ where: clinicalWhere, orderBy: [{ measuredAt: 'asc' }, { createdAt: 'asc' }] });
   const consultationNotes = await db.consultationNote.findMany({
     where: clinicalWhere,
-    orderBy: { createdAt: 'asc' },
+    // By the day of the visit, not by when the note was written (a note can be written later)
+    orderBy: [{ appointment: { date: 'asc' } }, { appointment: { time: 'asc' } }, { createdAt: 'asc' }],
     include: { addenda: { orderBy: { createdAt: 'asc' } }, diagnoses: { orderBy: { createdAt: 'asc' } } }
   });
 

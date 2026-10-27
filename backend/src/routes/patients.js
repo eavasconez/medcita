@@ -15,6 +15,7 @@ const { buildPatientExport } = require('../services/patientExport');
 const { renderPatientExportPdf } = require('../services/patientExportPdf');
 const { parseProfile, withDerived } = require('../services/patientRecord');
 const { clinicDateString } = require('../utils/clinicTime');
+const { parseListQuery, buildWhere, buildOrderBy, sortByName } = require('../services/patientList');
 
 const todayOf = (req) => clinicDateString(new Date(), req.clinicTimezone);
 
@@ -25,38 +26,40 @@ const MAX_PAGE_SIZE = 100;
 // All patient routes are protected
 router.use(auth);
 
-// Get the clinic's patients (optionally search by name/phone/cedula), paginated
-// so a growing patient list doesn't return every row on every load.
+// Get the clinic's patients, paginated so a growing patient list doesn't return every row on every
+// load. ?search looks in name, phone and cedula; ?consent (none, granted, outdated, withdrawn) and
+// ?minor (true, false) filter; ?sort (name, cedula, phone, age, createdAt) and ?order (asc, desc)
+// order it (newest first by default). A value outside those lists is a 400. The order always ends
+// in the id, so the pages of a list never repeat or skip a patient (services/patientList.js).
 router.get('/', async (req, res) => {
-  const { search } = req.query;
-
   const paging = parsePagination(req.query, { defaultPageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE });
   if (paging.error) return res.status(400).json({ error: paging.error });
   const { page, pageSize, skip } = paging;
 
-  const where = inClinic(req, search ? {
-    OR: [
-      { name: { contains: search, mode: 'insensitive' } },
-      { phone: { contains: search } },
-      { cedula: { contains: search } }
-    ]
-  } : {});
+  const params = parseListQuery(req.query);
+  if (params.error) return res.status(400).json({ error: params.error });
 
   try {
-    const [patients, total] = await Promise.all([
-      prisma.patient.findMany({
-        where,
-        include: {
-          _count: {
-            select: { appointments: { where: { status: { not: 'cancelled' } } } }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize
-      }),
-      prisma.patient.count({ where })
-    ]);
+    const consentIds = params.consent ? await consents.standingFilter(req.clinicId, params.consent) : null;
+    const where = inClinic(req, buildWhere(params, { today: todayOf(req), consentIds }));
+
+    const include = { _count: { select: { appointments: { where: { status: { not: 'cancelled' } } } } } };
+    let patients;
+    let total;
+    if (params.sort === 'name') {
+      // Ordered by sortByName: first the ids and names of everyone that matches, then the rows of the page
+      const matching = sortByName(await prisma.patient.findMany({ where, select: { id: true, name: true } }), params.order);
+      total = matching.length;
+      const pageIds = matching.slice(skip, skip + pageSize).map((r) => r.id);
+      const rows = await prisma.patient.findMany({ where: { id: { in: pageIds }, clinicId: req.clinicId }, include });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      patients = pageIds.map((id) => byId.get(id)).filter(Boolean);
+    } else {
+      [patients, total] = await Promise.all([
+        prisma.patient.findMany({ where, include, orderBy: buildOrderBy(params), skip, take: pageSize }),
+        prisma.patient.count({ where })
+      ]);
+    }
     const standing = await consents.statusByPatient(req.clinicId, patients.map((p) => p.id));
     res.json({
       patients: patients.map((p) => ({ ...withDerived(p, todayOf(req)), consent: standing[p.id] })),

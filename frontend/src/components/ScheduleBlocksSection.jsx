@@ -4,6 +4,7 @@ import format from 'date-fns/format';
 import parseISO from 'date-fns/parseISO';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
+import { useConfirm } from './ui';
 import { CalendarOff, Plus, Trash2, Flag, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const field = 'w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-primary font-bold text-secondary text-sm';
@@ -42,6 +43,7 @@ const AffectedAppointments = ({ total, appointments, onClose }) => (
 // book them; what is already booked there stays and is listed to be rescheduled.
 const ScheduleBlocksSection = ({ doctors, isStaff, selectedDoctorId, showToast }) => {
   const { token } = useContext(AuthContext);
+  const { confirm } = useConfirm();
   const headers = { Authorization: `Bearer ${token}` };
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ const ScheduleBlocksSection = ({ doctors, isStaff, selectedDoctorId, showToast }
   };
 
   const remove = async (block) => {
-    if (!window.confirm(`Open ${rangeLabel(block)} again for booking?`)) return;
+    if (!(await confirm({ title: `Open ${rangeLabel(block)} again for booking?`, message: 'Patients will be able to book those days again.', confirmLabel: 'Open days', tone: 'primary' }))) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/schedule-blocks/${block.id}`, { headers });
       showToast('Those days are open again');

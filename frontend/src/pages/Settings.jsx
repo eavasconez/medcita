@@ -1,10 +1,11 @@
-import React, { useContext, useState, useEffect, useCallback } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../AuthContext';
 import AppointmentTypesCard from '../components/AppointmentTypesCard';
 import ReminderSettingsCard from '../components/ReminderSettingsCard';
+import { useToast } from '../components/ui';
 import {
   User,
   Mail,
@@ -13,10 +14,7 @@ import {
   CalendarCheck,
   Lock,
   Building2,
-  Save,
-  CheckCircle2,
-  AlertCircle,
-  X
+  Save
 } from 'lucide-react';
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -48,12 +46,7 @@ const Settings = () => {
   const [clinicName, setClinicName] = useState('');
   const [clinicTimezone, setClinicTimezone] = useState(DEFAULT_TIMEZONE);
   const [savingClinic, setSavingClinic] = useState(false);
-  const [toast, setToast] = useState(null);
-
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  }, []);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -169,22 +162,9 @@ const Settings = () => {
 
   return (
     <Layout>
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
-          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
-        `}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} aria-label="Dismiss notification" className="ml-auto hover:opacity-75 transition-opacity">
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="page-shell max-w-5xl">
         <header className="mb-12">
-          <h1 className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">Account Settings</h1>
+          <h1 className="page-title">Account Settings</h1>
           <p className="text-slate-400 font-medium mt-2">Manage your profile and clinical preferences</p>
         </header>
 

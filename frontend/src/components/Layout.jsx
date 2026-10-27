@@ -3,7 +3,10 @@ import Sidebar from './Sidebar';
 import { AuthContext } from '../AuthContext';
 import { Menu, Stethoscope } from 'lucide-react';
 
-const Layout = ({ children }) => {
+// `fullHeight` (from `md` up) makes the screen exactly as tall as the window and lets the page
+// decide which of its parts scrolls (the record keeps its header in place and scrolls only the
+// content); on a phone the page scrolls as usual.
+const Layout = ({ children, fullHeight = false }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user } = useContext(AuthContext);
 
@@ -19,10 +22,10 @@ const Layout = ({ children }) => {
   }, []);
 
   return (
-    <div className="flex bg-slate-50 min-h-screen">
+    <div className={`flex bg-slate-50 min-h-screen ${fullHeight ? 'md:h-screen md:overflow-hidden' : ''}`}>
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={`flex-1 flex flex-col min-w-0 ${fullHeight ? 'md:min-h-0' : ''}`}>
         {/* Mobile top bar */}
         <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 bg-secondary text-white px-4 py-4 shadow-lg">
           <button
@@ -41,7 +44,7 @@ const Layout = ({ children }) => {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <main className={`flex-1 ${fullHeight ? 'overflow-x-clip md:min-h-0 md:overflow-hidden' : 'overflow-x-clip'}`}>
           {children}
         </main>
       </div>

@@ -1,16 +1,17 @@
 import React from 'react';
+import Badge from './ui/Badge';
 
 const CONSENT_BADGE = {
-  none: ['Consent pending', 'bg-amber-50 text-amber-700'],
-  granted: ['Consent given', 'bg-emerald-50 text-emerald-700'],
-  outdated: ['Consent: old text', 'bg-amber-50 text-amber-700'],
-  withdrawn: ['Consent withdrawn', 'bg-red-50 text-red-600']
+  none: ['Consent pending', 'warning'],
+  granted: ['Consent given', 'success'],
+  outdated: ['Consent: old text', 'warning'],
+  withdrawn: ['Consent withdrawn', 'danger']
 };
 
-const ConsentBadge = ({ consent }) => {
+const ConsentBadge = ({ consent, size }) => {
   const key = !consent ? 'none' : consent.status === 'granted' && !consent.upToDate ? 'outdated' : consent.status;
   const [label, tone] = CONSENT_BADGE[key];
-  return <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${tone}`}>{label}</span>;
+  return <Badge tone={tone} size={size} className="whitespace-nowrap">{label}</Badge>;
 };
 
 export default ConsentBadge;

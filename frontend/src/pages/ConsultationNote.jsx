@@ -5,15 +5,18 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
-import ClinicalAlert from '../components/ClinicalAlert';
+import PatientHeader from '../components/PatientHeader';
 import NoteDiagnoses from '../components/NoteDiagnoses';
 import VitalsForm from '../components/VitalsForm';
 import useVitals from '../utils/useVitals';
-import { describeReading } from '../utils/vitals';
+import VisitVitals from '../components/VisitVitals';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
-import { formatAge } from '../utils/patientRecord';
-import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, FileText } from 'lucide-react';
+import { canViewClinical } from '../utils/clinicalAccess';
+import { EmptyState, NoteStatusBadge, Skeleton, useConfirm, useToast } from '../components/ui';
+import NoteContextPanel from '../components/NoteContextPanel';
+import useMediaQuery from '../utils/useMediaQuery';
+import { Lock, FileText, PanelRight } from 'lucide-react';
 
 const AUTOSAVE_DELAY_MS = 1500;
 
@@ -30,12 +33,17 @@ const ConsultationNote = () => {
   const [templates, setTemplates] = useState([]);
   const [note, setNote] = useState(null); // null: not started; the full note once it exists
   const [values, setValues] = useState({ subjective: '', objective: '', assessment: '', plan: '' });
-  const [loadState, setLoadState] = useState('loading'); // loading | ready | error | denied | notfound
+  // The secretary never reads clinical data: the screen does not ask, it just says so
+  const allowed = canViewClinical(user);
+  const [loadState, setLoadState] = useState(allowed ? 'loading' : 'denied'); // loading | ready | error | denied | notfound
   const [saveState, setSaveState] = useState({ kind: 'idle' }); // idle | dirty | saving | saved | error | conflict
   const [template, setTemplate] = useState('general');
   const [addendumText, setAddendumText] = useState('');
-  const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState(null); // the notes of the patient (for the diagnoses of earlier visits)
+  // The context panel is open beside the note on a wide screen and closed (a drawer) on a phone
+  const wide = useMediaQuery('(min-width: 768px)');
+  const [contextOpen, setContextOpen] = useState(wide);
 
   // What the autosave needs to read at the moment it fires, not what it saw when it was scheduled
   const latest = useRef({ values, revision: 1, dirty: false, saving: false });
@@ -44,12 +52,11 @@ const ConsultationNote = () => {
   const vitals = useVitals(patientId, loadState === 'ready');
   const [recordingVitals, setRecordingVitals] = useState(false);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
+    if (!allowed) return;
     try {
       const [patientRes, list, tpl] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/patients/${patientId}`, { headers }),
@@ -59,6 +66,7 @@ const ConsultationNote = () => {
       setPatient(patientRes.data.patient);
       setAppointment(patientRes.data.appointments.find((a) => a.id === appointmentId) || null);
       setTemplates(tpl.data);
+      setNotes(list.data);
       const existing = list.data.find((n) => n.appointmentId === appointmentId);
       if (existing) {
         const full = (await axios.get(`${base}/${existing.id}`, { headers })).data;
@@ -75,12 +83,16 @@ const ConsultationNote = () => {
       setLoadState(status === 403 ? 'denied' : status === 404 ? 'notfound' : 'error');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, appointmentId, token]);
+  }, [patientId, appointmentId, token, allowed]);
 
   useEffect(() => {
     load();
     return () => clearTimeout(timer.current);
   }, [load]);
+
+  useEffect(() => {
+    setContextOpen(wide);
+  }, [wide]);
 
   const isAuthor = note && note.authorId === user?.id;
   const editable = note && note.status === 'draft' && isAuthor;
@@ -156,7 +168,10 @@ const ConsultationNote = () => {
   };
 
   const closeNote = async () => {
-    if (!window.confirm('Close this note? A closed note cannot be edited again: later corrections are added as addenda.')) return;
+    const diagnoses = note.diagnoses.length;
+    const visitVitals = (vitals.readings || []).filter((r) => r.appointmentId === appointmentId && !r.voidedAt).length;
+    const summaryLine = `This note has ${diagnoses === 0 ? 'no diagnoses' : `${diagnoses} ${diagnoses === 1 ? 'diagnosis' : 'diagnoses'}`} and ${visitVitals === 0 ? 'no vital signs of this visit' : `${visitVitals} ${visitVitals === 1 ? 'set' : 'sets'} of vital signs of this visit`}.`;
+    if (!(await confirm({ title: 'Close this note?', message: `${summaryLine} Once closed it cannot be edited again: later corrections are added as addenda.`, confirmLabel: 'Close note', tone: 'primary' }))) return;
     clearTimeout(timer.current);
     setBusy(true);
     try {
@@ -178,7 +193,9 @@ const ConsultationNote = () => {
   };
 
   const deleteDraft = async () => {
-    if (!window.confirm('Delete this draft? Use it only for a note started by mistake.')) return;
+    const diagnoses = note.diagnoses.length;
+    const lost = diagnoses === 0 ? 'its four parts' : `its four parts and its ${diagnoses} ${diagnoses === 1 ? 'diagnosis' : 'diagnoses'}`;
+    if (!(await confirm({ title: 'Delete this draft?', message: `This deletes ${lost}. The vital signs recorded at this visit are kept. Use it only for a note started by mistake.`, confirmLabel: 'Delete draft' }))) return;
     clearTimeout(timer.current);
     setBusy(true);
     try {
@@ -207,184 +224,187 @@ const ConsultationNote = () => {
     }
   };
 
-  const backTo = `/patients/${patientId}`;
+  const visitLine = appointment ? `${appointment.date} ${appointment.time} · ${appointment.doctor.name}` : null;
+  const statusText = (() => {
+    if (!note) return '';
+    if (note.status === 'closed') return `Closed ${formatDateTime(note.closedAt)} · ${note.authorName}`;
+    if (!isAuthor) return `Draft by ${note.authorName} — read only`;
+    return {
+      idle: 'Draft — saved automatically as you type',
+      dirty: 'Unsaved changes...',
+      saving: 'Saving...',
+      saved: saveState.at ? `Saved ${saveState.at.toLocaleTimeString([], { timeStyle: 'short' })}` : '',
+      error: 'We couldn\'t save. Your text is still here; it will retry when you keep typing.',
+      conflict: saveState.message || 'The note changed elsewhere.'
+    }[saveState.kind];
+  })();
+  const problem = saveState.kind === 'error' || saveState.kind === 'conflict';
 
   return (
-    <Layout>
-      {toast && (
-        <div className={`toast ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}`}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75"><X size={18} /></button>
-        </div>
-      )}
+    <Layout fullHeight>
+      <div className="page-shell max-w-6xl md:h-full md:flex md:flex-col md:pb-0 lg:pb-0">
+        <PatientHeader
+          patient={loadState === 'ready' ? patient : null}
+          loading={loadState === 'loading'}
+          summary={summary}
+          crumb="Consultation note"
+          actions={loadState === 'ready' && (
+            <div className="flex flex-wrap items-center gap-3">
+              {visitLine && <p className="text-sm font-semibold text-slate-500">{visitLine}</p>}
+              {note && <NoteStatusBadge status={note.status} size="lg" />}
+            </div>
+          )}
+        />
 
-      <div className="page-shell max-w-4xl">
-        <Link to={backTo} className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
-          <ArrowLeft size={16} /> {patient?.name || 'Patient'}
-        </Link>
-
-        {loadState === 'loading' && <div className="flex justify-center py-20 animate-pulse"><span className="text-slate-400 font-semibold text-lg">Loading note...</span></div>}
-        {loadState === 'denied' && (
-          <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-            <Lock className="mx-auto text-slate-300 w-12 h-12 mb-3" />
-            <p className="text-slate-500 font-bold text-xl">Clinical data is not available to your role</p>
-          </div>
-        )}
-        {loadState === 'notfound' && <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-slate-400 font-bold text-xl">Patient not found</p></div>}
+        {loadState === 'loading' && <Skeleton className="h-64 w-full rounded-3xl" />}
+        {loadState === 'denied' && <EmptyState icon={Lock} title="Clinical data is not available to your role" />}
+        {loadState === 'notfound' && <EmptyState title="Patient not found" />}
         {loadState === 'error' && <LoadError message="We couldn't load the note." onRetry={load} />}
 
-        {loadState === 'ready' && (
+        {loadState === 'ready' && (!appointment ? (
+          <EmptyState title="Appointment not found for this patient" />
+        ) : !note ? (
+          <section className="bg-white rounded-3xl border border-slate-100 p-8 md:overflow-y-auto">
+            <div className="flex items-center gap-3 mb-2"><FileText className="text-primary" size={22} /><h3 className="text-lg font-black text-secondary">Start the note of this visit</h3></div>
+            <p className="text-slate-500 font-medium mb-6">Pick a template. It only puts headings in the four parts; you can change anything.</p>
+            <label className="form-label" htmlFor="note-template">Template</label>
+            <select id="note-template" className="form-input text-sm max-w-xs" value={template} onChange={(e) => setTemplate(e.target.value)}>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+            <div className="mt-6">
+              <button onClick={startNote} disabled={busy} className="btn-primary px-8 py-3 disabled:opacity-60">Start note</button>
+            </div>
+          </section>
+        ) : (
           <>
-            <header className="page-header">
-              <div>
-                <h2 className="text-3xl font-black text-secondary tracking-tight">Consultation note</h2>
-                <p className="text-slate-500 font-medium mt-1">
-                  {patient.name}{patient.age ? ` · ${formatAge(patient.age)}` : ''}
-                  {appointment ? ` · ${appointment.date} ${appointment.time} · ${appointment.doctor.name}` : ''}
-                </p>
-              </div>
-              {note && (
-                <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${note.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
-                  {note.status === 'closed' ? 'Closed' : 'Draft'}
-                </span>
-              )}
-            </header>
-
-            {summary && <div className="mb-6"><ClinicalAlert summary={summary} /></div>}
-
-            {!appointment ? (
-              <div className="py-16 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-slate-400 font-bold">Appointment not found for this patient</p></div>
-            ) : !note ? (
-              <section className="bg-white rounded-3xl border border-slate-100 p-8">
-                <div className="flex items-center gap-3 mb-2"><FileText className="text-primary" size={22} /><h3 className="text-lg font-black text-secondary">Start the note of this visit</h3></div>
-                <p className="text-slate-500 font-medium mb-6">Pick a template. It only puts headings in the four parts; you can change anything.</p>
-                <label className="form-label" htmlFor="note-template">Template</label>
-                <select id="note-template" className="form-input text-sm max-w-xs" value={template} onChange={(e) => setTemplate(e.target.value)}>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
-                <div className="mt-6">
-                  <button onClick={startNote} disabled={busy} className="btn-primary px-8 py-3 disabled:opacity-60">Start note</button>
-                </div>
-              </section>
-            ) : (
-              <>
-                {note.status === 'draft' && !isAuthor && (
-                  <div role="status" className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
-                    <Lock size={18} className="mt-0.5 shrink-0" />
-                    <p className="text-sm font-semibold">This draft is being written by {note.authorName}. Only they can edit it.</p>
-                  </div>
-                )}
-                {note.status === 'closed' && (
-                  <p className="mb-6 text-sm font-semibold text-slate-500">
-                    Written by {note.authorName}, closed {formatDateTime(note.closedAt)}. It cannot be edited; add an addendum to correct or complete it.
-                  </p>
-                )}
-
-                <section className="mb-5 bg-white rounded-3xl border border-slate-100 p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-black text-secondary uppercase tracking-widest">Vital signs of this visit</h3>
-                    {!recordingVitals && (
-                      <button onClick={() => setRecordingVitals(true)} className="text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Record vitals</button>
-                    )}
-                  </div>
-                  {recordingVitals && (
-                    <VitalsForm patientId={patientId} appointmentId={appointmentId} onCancel={() => setRecordingVitals(false)} onSaved={async () => { await vitals.reload(); setRecordingVitals(false); }} />
-                  )}
-                  {(() => {
-                    const mine = (vitals.readings || []).filter((r) => r.appointmentId === appointmentId && !r.voidedAt);
-                    if (vitals.error) return <p className="text-sm font-semibold text-red-600">We couldn't load the vital signs.</p>;
-                    if (mine.length === 0) return <p className="text-sm font-medium text-slate-300">No measurements recorded at this visit</p>;
-                    return (
-                      <ul className="space-y-2">
-                        {mine.map((r) => (
-                          <li key={r.id} className="text-sm font-semibold text-secondary">
-                            {describeReading(r)} <span className="text-[11px] font-semibold text-slate-400">· {r.recordedByName}, {formatDateTime(r.measuredAt)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    );
-                  })()}
-                </section>
-
-                <div className="space-y-5">
-                  {SECTIONS.map((s) => (
-                    <section key={s.name} className="bg-white rounded-3xl border border-slate-100 p-6">
-                      <label htmlFor={`note-${s.name}`} className="flex items-center gap-3 mb-1">
-                        <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-black flex items-center justify-center">{s.letter}</span>
-                        <span className="text-sm font-black text-secondary uppercase tracking-widest">{s.title}</span>
-                      </label>
-                      <p className="text-xs text-slate-400 font-medium mb-3 ml-11">{s.hint}</p>
-                      {editable ? (
-                        <textarea
-                          id={`note-${s.name}`}
-                          rows={s.name === 'plan' || s.name === 'subjective' ? 7 : 5}
-                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/10 outline-none resize-y"
-                          value={values[s.name]}
-                          onChange={(e) => edit(s.name, e.target.value)}
-                        />
-                      ) : (
-                        <div id={`note-${s.name}`} className="whitespace-pre-wrap text-sm font-medium text-secondary bg-slate-50 rounded-2xl p-4 min-h-[3rem]">{note[s.name] || <span className="text-slate-300">—</span>}</div>
-                      )}
-                    </section>
-                  ))}
-                </div>
-
-                <div className="mt-5">
-                  <NoteDiagnoses
-                    patientId={patientId}
-                    noteId={note.id}
-                    diagnoses={note.diagnoses}
-                    editable={editable}
-                    onChange={(diagnoses) => setNote((current) => ({ ...current, diagnoses }))}
-                    onError={(message) => showToast(message, 'error')}
-                  />
-                </div>
-
-                {editable && (
-                  <div className="mt-6 flex flex-wrap items-center gap-4">
-                    <p role="status" className={`text-xs font-bold ${saveState.kind === 'error' || saveState.kind === 'conflict' ? 'text-red-600' : 'text-slate-400'}`}>
-                      {saveState.kind === 'idle' && 'Draft — saved automatically as you type'}
-                      {saveState.kind === 'dirty' && 'Unsaved changes...'}
-                      {saveState.kind === 'saving' && 'Saving...'}
-                      {saveState.kind === 'saved' && `Saved ${saveState.at.toLocaleTimeString([], { timeStyle: 'short' })}`}
-                      {saveState.kind === 'error' && 'We couldn\'t save. Your text is still here; it will retry when you keep typing.'}
-                      {saveState.kind === 'conflict' && (saveState.message || 'The note changed elsewhere.')}
-                    </p>
-                    {saveState.kind === 'conflict' && <button onClick={load} className="text-xs font-black text-primary underline">Reload</button>}
-                    <div className="ml-auto flex gap-3">
-                      <button onClick={deleteDraft} disabled={busy} className="px-5 py-3 text-red-500 font-black rounded-xl hover:bg-red-50 text-[10px] uppercase tracking-widest disabled:opacity-60">Delete draft</button>
-                      <button onClick={closeNote} disabled={busy} className="px-8 py-3 bg-primary text-white font-black rounded-xl shadow-xl shadow-primary/30 uppercase tracking-widest text-xs disabled:opacity-60">Close note</button>
+            <div className="md:flex md:flex-1 md:min-h-0 md:gap-6">
+              <div className="md:flex-1 md:min-w-0 md:overflow-y-auto md:pr-2 md:pb-8">
+                <div className="mx-auto max-w-3xl">
+                  {note.status === 'draft' && !isAuthor && (
+                    <div role="status" className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+                      <Lock size={18} className="mt-0.5 shrink-0" />
+                      <p className="text-sm font-semibold">This draft is being written by {note.authorName}. Only they can edit it.</p>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {note.status === 'closed' && (
+                    <p className="mb-6 text-sm font-semibold text-slate-500">
+                      Written by {note.authorName}, closed {formatDateTime(note.closedAt)}. It cannot be edited; add an addendum to correct or complete it.
+                    </p>
+                  )}
 
-                {note.status === 'closed' && (
-                  <section className="mt-10">
-                    <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Addenda ({note.addenda.length})</h3>
-                    {note.addenda.length > 0 && (
-                      <ul className="space-y-3 mb-6">
-                        {note.addenda.map((a) => (
-                          <li key={a.id} className="bg-white rounded-2xl border border-slate-100 p-4">
-                            <p className="whitespace-pre-wrap text-sm font-medium text-secondary">{a.text}</p>
-                            <p className="mt-2 text-[11px] font-bold text-slate-400">{a.authorName} · {formatDateTime(a.createdAt)}</p>
-                          </li>
-                        ))}
-                      </ul>
+                  <section className="mb-5 bg-white rounded-3xl border border-slate-100 p-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-black text-secondary uppercase tracking-widest">Vital signs of this visit</h3>
+                      {!recordingVitals && (
+                        <button onClick={() => setRecordingVitals(true)} className="text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">Record vitals</button>
+                      )}
+                    </div>
+                    {recordingVitals && (
+                      <VitalsForm patientId={patientId} appointmentId={appointmentId} onCancel={() => setRecordingVitals(false)} onSaved={async () => { await vitals.reload(); setRecordingVitals(false); }} />
                     )}
-                    <form onSubmit={addAddendum} className="bg-white rounded-3xl border border-slate-100 p-6">
-                      <label className="form-label" htmlFor="addendum-text">New addendum</label>
-                      <textarea id="addendum-text" required rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-primary/10" value={addendumText} onChange={(e) => setAddendumText(e.target.value)} placeholder="What is being corrected or added, and why" />
-                      <div className="mt-3 flex justify-end">
-                        <button type="submit" disabled={busy || !addendumText.trim()} className="px-6 py-3 bg-primary text-white font-black rounded-xl uppercase tracking-widest text-xs disabled:opacity-60">Add addendum</button>
-                      </div>
-                    </form>
+                    {vitals.error ? (
+                      <p className="text-sm font-semibold text-red-600">We couldn't load the vital signs.</p>
+                    ) : !vitals.readings ? (
+                      <Skeleton className="h-16 w-full rounded-2xl" />
+                    ) : (
+                      <VisitVitals
+                        readings={vitals.readings.filter((r) => r.appointmentId === appointmentId && !r.voidedAt)}
+                        onRecord={recordingVitals ? undefined : () => setRecordingVitals(true)}
+                      />
+                    )}
                   </section>
-                )}
-              </>
+
+                  <div className="space-y-5">
+                    {SECTIONS.map((s) => (
+                      <section key={s.name} className="bg-white rounded-3xl border border-slate-100 p-6">
+                        <label htmlFor={`note-${s.name}`} className="flex items-center gap-3 mb-1">
+                          <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-black flex items-center justify-center">{s.letter}</span>
+                          <span className="text-sm font-black text-secondary uppercase tracking-widest">{s.title}</span>
+                        </label>
+                        <p className="text-xs text-slate-400 font-medium mb-3 ml-11">{s.hint}</p>
+                        {editable ? (
+                          <textarea
+                            id={`note-${s.name}`}
+                            rows={s.name === 'plan' || s.name === 'subjective' ? 7 : 5}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/10 outline-none resize-y"
+                            value={values[s.name]}
+                            onChange={(e) => edit(s.name, e.target.value)}
+                          />
+                        ) : (
+                          <div id={`note-${s.name}`} className="whitespace-pre-wrap text-sm font-medium text-secondary bg-slate-50 rounded-2xl p-4 min-h-[3rem]">{note[s.name] || <span className="text-slate-300">—</span>}</div>
+                        )}
+                      </section>
+                    ))}
+                  </div>
+
+                  <div className="mt-5">
+                    <NoteDiagnoses
+                      patientId={patientId}
+                      noteId={note.id}
+                      diagnoses={note.diagnoses}
+                      editable={editable}
+                      onChange={(diagnoses) => setNote((current) => ({ ...current, diagnoses }))}
+                      onError={(message) => showToast(message, 'error')}
+                    />
+                  </div>
+
+                  {note.status === 'closed' && (
+                    <section className="mt-10">
+                      <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Addenda ({note.addenda.length})</h3>
+                      {note.addenda.length > 0 && (
+                        <ul className="space-y-3 mb-6">
+                          {note.addenda.map((a) => (
+                            <li key={a.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+                              <p className="whitespace-pre-wrap text-sm font-medium text-secondary">{a.text}</p>
+                              <p className="mt-2 text-[11px] font-bold text-slate-400">{a.authorName} · {formatDateTime(a.createdAt)}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <form onSubmit={addAddendum} className="bg-white rounded-3xl border border-slate-100 p-6">
+                        <label className="form-label" htmlFor="addendum-text">New addendum</label>
+                        <textarea id="addendum-text" required rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-primary/10" value={addendumText} onChange={(e) => setAddendumText(e.target.value)} placeholder="What is being corrected or added, and why" />
+                        <div className="mt-3 flex justify-end">
+                          <button type="submit" disabled={busy || !addendumText.trim()} className="px-6 py-3 bg-primary text-white font-black rounded-xl uppercase tracking-widest text-xs disabled:opacity-60">Add addendum</button>
+                        </div>
+                      </form>
+                    </section>
+                  )}
+                </div>
+              </div>
+
+              {contextOpen && wide && (
+                <aside className="hidden md:block w-80 shrink-0 md:overflow-y-auto pb-8">
+                  <NoteContextPanel id="note-context" patientId={patientId} appointmentId={appointmentId} summary={summary} readings={vitals.error ? [] : vitals.readings} notes={notes} onClose={() => setContextOpen(false)} />
+                </aside>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 z-20 -mx-4 -mb-4 flex items-center gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6 md:static md:mb-0 md:shrink-0 lg:-mx-8 lg:px-8">
+              <p role="status" className={`min-w-0 flex-1 truncate text-xs font-bold ${problem ? 'text-red-600' : 'text-slate-400'}`} title={statusText}>{statusText}</p>
+              {saveState.kind === 'conflict' && editable && <button onClick={load} className="shrink-0 text-xs font-black text-primary underline">Reload</button>}
+              <button
+                onClick={() => setContextOpen((open) => !open)}
+                aria-expanded={contextOpen}
+                aria-controls="note-context"
+                aria-label="Show or hide the patient context"
+                className="shrink-0 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-secondary hover:border-primary hover:text-primary"
+              >
+                <PanelRight size={16} /> <span className="hidden sm:inline">Context</span>
+              </button>
+              {editable && (
+                <>
+                  <button onClick={deleteDraft} disabled={busy} className="shrink-0 px-3 py-2.5 text-red-500 font-black rounded-xl hover:bg-red-50 text-[10px] uppercase tracking-widest disabled:opacity-60 sm:px-5">Delete<span className="hidden sm:inline"> draft</span></button>
+                  <button onClick={closeNote} disabled={busy} className="shrink-0 px-5 py-2.5 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/30 uppercase tracking-widest text-xs disabled:opacity-60 sm:px-8">Close note</button>
+                </>
+              )}
+            </div>
+
+            {contextOpen && !wide && (
+              <NoteContextPanel drawer id="note-context" patientId={patientId} appointmentId={appointmentId} summary={summary} readings={vitals.error ? [] : vitals.readings} notes={notes} onClose={() => setContextOpen(false)} />
             )}
           </>
-        )}
+        ))}
       </div>
     </Layout>
   );

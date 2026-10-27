@@ -520,6 +520,27 @@ S9-05 agrega la migración `20261024100000_add_schedule_blocks`, que solo **crea
 - [ ] En *Availability*, la sección «Time off» carga («No time off coming up»).
 - [ ] Bloquear un día lejano de prueba para un médico: ese día no ofrece horarios en la nueva cita y el calendario lo marca; quitar el bloqueo lo abre otra vez.
 
+## Despliegue del Sprint 10.5 completo (v0.11.0): rediseño de la interfaz
+
+Esta sección junta todo lo del release (S10.5-01 a S10.5-08). Es un release de **interfaz**: no cambia el esquema ni las variables de entorno.
+
+**Qué se aplica.** **Ninguna migración** y **ninguna variable de entorno nueva**, así que no hace falta una rama de respaldo en Neon ni staging para probar una migración. En el backend hay dos cambios: las correcciones de S10.5-01 (títulos del PDF que no quedan solos al pie de página, notas ordenadas por la fecha de la visita, y **cerrar una nota completa la cita**, que pasa a `completed`) y los parámetros nuevos y opcionales de `GET /api/patients` de S10.5-07 (`consent`, `minor`, `sort`, `order`; un valor inválido responde `400`, y quien no los manda recibe lo de siempre). En el frontend entra `tailwindcss-animate` como dependencia de desarrollo: el build del frontend ya instala las de desarrollo, no hay nada que configurar. La guía pública (`frontend/public/medcita-demo-guide.pdf`) viaja regenerada.
+
+**Antes de fusionar a `main`:**
+
+- [ ] Los PR de los ocho tickets están fusionados en `develop` y la CI de `develop` está en verde (Jest en banda: 59 suites y 1495 pruebas en la última corrida local).
+- [ ] Volver atrás es seguro: como no hay migraciones, revertir el código deja la base intacta.
+
+**Después de desplegar:**
+
+- [ ] `GET /api/health` responde `200`.
+- [ ] *Patients*: la lista sale como tabla (en el teléfono, tarjetas); buscar, filtrar por consentimiento y menores, y ordenar por un encabezado funcionan, y al abrir un paciente aparece en «Recent patients».
+- [ ] Con un **médico** y un paciente con datos: la ficha mantiene fija la cabecera con las alergias al bajar, la navegación lateral salta entre secciones, *Vital signs* muestra las tarjetas y la gráfica, la nota abre con su panel *Context* y la barra de abajo, y *Close note* pide confirmación en una ventana (no en el diálogo del navegador).
+- [ ] Cerrar una nota de una cita aún abierta la deja en «Completed» (queda en el Activity Log).
+- [ ] La línea de tiempo muestra las insignias y los filtros funcionan; en *My Schedule*, la cita abre con los enlaces *Patient record* y *Consultation note*, y Escape la cierra.
+- [ ] Con una **secretaría**: la lista, la ficha administrativa y las citas se ven; **nada clínico** (ni banner, ni notas, ni signos vitales, ni línea de tiempo) y el enlace a la nota no aparece en la cita.
+- [ ] El PDF de un paciente baja con las notas en orden de visita y sin títulos huérfanos; el PDF de la guía de la pantalla de login abre con la interfaz nueva.
+
 ## Despliegue del Sprint 10 completo (v0.10.0): ficha del paciente y primera historia clínica
 
 Esta sección junta todo lo del release; el detalle de cada ticket está en las secciones «Despliegue de…» de abajo. Es el primer release con **datos clínicos**.

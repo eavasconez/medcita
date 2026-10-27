@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import { SEVERITY_LABEL } from '../utils/patientRecord';
+import { Badge, EmptyState, SectionHeader, useConfirm } from './ui';
 import { Plus, Edit, Trash2, Check } from 'lucide-react';
 
 const CATEGORY_LABEL = { personal: 'Personal', family: 'Family', surgical: 'Surgical', habit: 'Habits' };
@@ -12,6 +13,7 @@ const KINDS = {
   allergies: {
     title: 'Allergies',
     empty: 'No allergies recorded',
+    first: 'Add the first allergy',
     stopLabel: ['Resolved', 'Reactivate'],
     fields: [
       { name: 'substance', label: 'Substance', required: true, placeholder: 'Ex: Penicillin' },
@@ -24,6 +26,7 @@ const KINDS = {
   medications: {
     title: 'Regular medication',
     empty: 'No regular medication recorded',
+    first: 'Add the first medicine',
     stopLabel: ['Stopped', 'Resume'],
     fields: [
       { name: 'name', label: 'Medicine', required: true, placeholder: 'Ex: Metformin' },
@@ -36,6 +39,7 @@ const KINDS = {
   backgrounds: {
     title: 'History',
     empty: 'No history recorded',
+    first: 'Add the first entry',
     fields: [
       { name: 'category', label: 'Type', required: true, options: CATEGORY_LABEL },
       { name: 'description', label: 'Description', required: true, placeholder: 'Ex: Appendectomy' },
@@ -53,6 +57,7 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
   const headers = { Authorization: `Bearer ${token}` };
   const [form, setForm] = useState(null); // { kind, id?, values }
   const [saving, setSaving] = useState(false);
+  const { confirm } = useConfirm();
 
   const base = `${API_BASE_URL}/api/patients/${patientId}/clinical`;
 
@@ -79,8 +84,8 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
     if (ok) setForm(null);
   };
 
-  const remove = (kind, row) => {
-    if (!window.confirm('Delete this entry? Use it only for something written by mistake.')) return;
+  const remove = async (kind, row) => {
+    if (!(await confirm({ title: 'Delete this entry?', message: 'Use it only for something written by mistake.', confirmLabel: 'Delete' }))) return;
     run(() => axios.delete(`${base}/${kind}/${row.id}`, { headers }), 'We couldn\'t delete the entry');
   };
 
@@ -96,9 +101,12 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
         const editing = form?.kind === kind;
         return (
           <section key={kind} className={`bg-white rounded-3xl border border-slate-100 p-6 ${kind === 'backgrounds' ? 'lg:col-span-2' : ''}`}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-black text-secondary uppercase tracking-widest">{config.title}</h3>
-              {!editing && (
+            <SectionHeader
+              as="h3"
+              variant="label"
+              title={config.title}
+              className="mb-4"
+              actions={!editing && (
                 <button
                   onClick={() => setForm({ kind, values: { ...config.blank } })}
                   aria-label={`Add to ${config.title}`}
@@ -107,7 +115,7 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
                   <Plus size={14} /> Add
                 </button>
               )}
-            </div>
+            />
 
             {editing && (
               <form onSubmit={save} className="mb-4 p-4 bg-slate-50 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -147,7 +155,17 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
             )}
 
             {rows.length === 0 ? (
-              <p className="text-sm font-medium text-slate-300">{config.empty}</p>
+              !editing && (
+                <EmptyState
+                  className="py-8 px-4"
+                  title={config.empty}
+                  action={(
+                    <button onClick={() => setForm({ kind, values: { ...config.blank } })} className="inline-flex items-center gap-1 text-xs font-black text-primary hover:bg-primary/5 px-3 py-1.5 rounded-xl">
+                      <Plus size={14} /> {config.first}
+                    </button>
+                  )}
+                />
+              )
             ) : (
               <ul className="divide-y divide-slate-50">
                 {rows.map((row) => {
@@ -156,7 +174,7 @@ const ClinicalBackground = ({ patientId, summary, onChange, onError }) => {
                   return (
                     <li key={row.id} className="py-3 flex items-start gap-3">
                       <div className={`flex-1 min-w-0 ${inactive ? 'opacity-50' : ''}`}>
-                        {kind === 'backgrounds' && <span className="inline-block mr-2 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest">{CATEGORY_LABEL[row.category]}</span>}
+                        {kind === 'backgrounds' && <Badge size="sm" className="mr-2">{CATEGORY_LABEL[row.category]}</Badge>}
                         <span className={`font-bold text-secondary break-words ${inactive ? 'line-through' : ''}`}>{main}</span>
                         {detail && <p className="text-sm text-slate-500 font-medium break-words">{detail}</p>}
                         {inactive && <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">{config.stopLabel[0]}</p>}

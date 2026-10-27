@@ -4,6 +4,47 @@
 
 :root {
   background-color: #f8fafc;
+
+  /*
+   * Design tokens. Colors are HSL triplets ("hue saturation lightness") read by
+   * tailwind.config.js as hsl(var(--name) / alpha). A status has four values: the strong color,
+   * a soft background (-soft), its border (-line) and the text color for the soft background (-ink).
+   */
+  --primary: 198.63 88.66% 48.43%;
+  --primary-ink: 201.27 96.34% 32.16%;
+  --secondary: 222.22 47.37% 11.18%;
+
+  --success: 160.12 84.08% 39.41%;
+  --success-soft: 151.76 80.95% 95.88%;
+  --success-line: 152.37 76% 80.39%;
+  --success-ink: 162.93 93.55% 24.31%;
+
+  --warning: 37.69 92.13% 50.2%;
+  --warning-soft: 48 100% 96.08%;
+  --warning-line: 48 96.64% 76.67%;
+  --warning-ink: 25.96 90.48% 37.06%;
+
+  --danger: 0 84.24% 60.2%;
+  --danger-soft: 0 85.71% 97.25%;
+  --danger-line: 0 96.3% 89.41%;
+  --danger-ink: 0 73.71% 41.76%;
+
+  --info: 217.22 91.22% 59.8%;
+  --info-soft: 213.75 100% 96.86%;
+  --info-line: 213.33 96.92% 87.25%;
+  --info-ink: 224.28 76.33% 48.04%;
+
+  --neutral: 215.38 16.32% 46.86%;
+  --neutral-soft: 210 40% 96.08%;
+  --neutral-line: 214.29 31.82% 91.37%;
+  --neutral-ink: 215.29 25% 26.67%;
+
+  /* Corners: big surfaces (cards, panels) and controls (inputs, buttons) */
+  --radius-card: 2.5rem;
+  --radius-control: 1rem;
+
+  /* The system sans stack Tailwind uses by default; change it here to change the typeface everywhere */
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 /*
@@ -24,7 +65,7 @@
   }
 
   .card {
-    @apply bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 p-6 sm:p-8;
+    @apply bg-white rounded-card shadow-xl shadow-slate-200/50 border border-slate-50 p-6 sm:p-8;
   }
 
   .stat-grid {
@@ -36,7 +77,7 @@
   }
 
   .filter-bar {
-    @apply bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 flex flex-wrap items-center gap-4 p-6;
+    @apply bg-white rounded-card shadow-xl shadow-slate-200/50 border border-slate-50 flex flex-wrap items-center gap-4 p-6;
   }
 
   .form-label {
@@ -44,11 +85,11 @@
   }
 
   .form-input {
-    @apply w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all;
+    @apply w-full p-4 bg-slate-50 border border-slate-100 rounded-control font-bold text-secondary outline-none focus:ring-4 focus:ring-primary/10 transition-all;
   }
 
   .btn-primary {
-    @apply bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all;
+    @apply bg-primary text-white font-black rounded-control shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all;
   }
 
   .modal-overlay {
@@ -56,11 +97,25 @@
   }
 
   .modal-panel {
-    @apply bg-white w-full max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-2xl;
+    @apply bg-white w-full max-h-[90vh] overflow-y-auto rounded-card shadow-2xl;
   }
 
   .toast {
-    @apply fixed bottom-4 left-4 right-4 sm:left-auto sm:right-8 sm:bottom-8 z-[200] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 text-white font-bold sm:max-w-sm;
+    @apply fixed bottom-4 left-4 right-4 sm:left-auto sm:right-8 sm:bottom-8 z-[200] px-6 py-4 rounded-control shadow-2xl flex items-center gap-4 text-white font-bold sm:max-w-sm;
+  }
+
+  /* Page and section headings, so every screen titles itself the same way */
+  .page-title {
+    @apply text-3xl sm:text-4xl font-black text-secondary tracking-tight;
+  }
+
+  .section-title {
+    @apply text-xl font-black text-secondary tracking-tight;
+  }
+
+  /* Small uppercase label above a value or a group */
+  .eyebrow {
+    @apply text-[10px] font-black uppercase tracking-widest text-slate-400;
   }
 }
 

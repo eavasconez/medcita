@@ -375,6 +375,60 @@ describe('closing the note', () => {
     expect((await prisma.consultationNote.findUnique({ where: { id: note.id } })).status).toBe('draft');
   });
 
+  it('completes the visit it belongs to, and says so in the audit', async () => {
+    const ctx = await setup(); // the appointment is "in_progress"
+    const note = await written(ctx);
+
+    await close(ctx.doctor.token, ctx.patient.id, note.id, { revision: 2 });
+
+    expect((await prisma.appointment.findUnique({ where: { id: ctx.appointment.id } })).status).toBe('completed');
+    const entry = (await audit()).find((e) => e.entity === 'appointment');
+    expect(entry).toMatchObject({ action: 'update', entityId: ctx.appointment.id, actorId: ctx.doctor.user.id, changes: { status: { from: 'in_progress', to: 'completed' } } });
+  });
+
+  it.each(['scheduled', 'confirmed', 'arrived'])('completes a visit that was still "%s"', async (status) => {
+    const ctx = await setup();
+    await prisma.appointment.update({ where: { id: ctx.appointment.id }, data: { status } });
+    const note = await written(ctx);
+
+    await close(ctx.doctor.token, ctx.patient.id, note.id, { revision: 2 });
+
+    expect((await prisma.appointment.findUnique({ where: { id: ctx.appointment.id } })).status).toBe('completed');
+  });
+
+  it.each(['no_show', 'cancelled', 'completed'])('leaves a visit that is already "%s" as it is, with no audit entry for it', async (status) => {
+    const ctx = await setup();
+    const note = await written(ctx);
+    await prisma.appointment.update({ where: { id: ctx.appointment.id }, data: { status } });
+
+    const res = await close(ctx.doctor.token, ctx.patient.id, note.id, { revision: 2 });
+
+    expect(res.status).toBe(200);
+    expect((await prisma.appointment.findUnique({ where: { id: ctx.appointment.id } })).status).toBe(status);
+    expect((await audit()).filter((e) => e.entity === 'appointment')).toHaveLength(0);
+  });
+
+  it('a refused close does not touch the visit', async () => {
+    const ctx = await setup();
+    const note = await written(ctx);
+
+    expect((await close(ctx.doctor.token, ctx.patient.id, note.id, { revision: 1 })).status).toBe(409);
+
+    expect((await prisma.appointment.findUnique({ where: { id: ctx.appointment.id } })).status).toBe('in_progress');
+  });
+
+  it('the visit leaves the list of unclosed visits', async () => {
+    const ctx = await setup();
+    await prisma.appointment.update({ where: { id: ctx.appointment.id }, data: { date: '2020-01-06' } });
+    const unclosed = () => request(app).get('/api/appointments/unclosed').set(bearer(ctx.doctor.token));
+    expect((await unclosed()).body.appointments.map((a) => a.id)).toContain(ctx.appointment.id);
+    const note = await written(ctx);
+
+    await close(ctx.doctor.token, ctx.patient.id, note.id, { revision: 2 });
+
+    expect((await unclosed()).body.appointments.map((a) => a.id)).not.toContain(ctx.appointment.id);
+  });
+
   it('is audited as a change of status, without the text', async () => {
     const ctx = await setup();
     const note = await written(ctx);

@@ -178,7 +178,42 @@ function renderPatientExportPdf(data, meta, stream) {
     doc.x = left();
   };
 
-  for (const block of blocks) {
+  // How tall a block is once drawn, spacing included (an estimate: it only decides page breaks)
+  const heightOf = (block) => {
+    const textHeight = (font, size, text) => {
+      doc.font(font).fontSize(size);
+      return doc.heightOfString(text, { width: width() });
+    };
+    const spacing = (font, size, lines) => {
+      doc.font(font).fontSize(size);
+      return doc.currentLineHeight(true) * lines;
+    };
+    switch (block.kind) {
+      case 'h2': return spacing(BOLD, 12, 1.4) + textHeight(BOLD, 12, block.text.toUpperCase()) + 4;
+      case 'h3': return spacing(BOLD, 10.5, 0.4) + textHeight(BOLD, 10.5, block.text);
+      case 'label': return spacing(BOLD, 9, 0.3) + textHeight(BOLD, 9, block.text);
+      case 'title': return textHeight(BOLD, 18, block.text) + spacing(BOLD, 18, 0.2);
+      default: return textHeight(REGULAR, 9.5, block.text);
+    }
+  };
+  // A heading never ends a page: it travels with the block after it. A section's title keeps
+  // its first sub-title, the line under a consultation's title and the label above a text; the
+  // line that explains a section goes with its first item (unless the section is empty).
+  const keepsWithNext = (block, previous, next) => ['h2', 'h3', 'label'].includes(block.kind)
+    || (block.kind === 'muted' && (previous?.kind === 'h3' || (previous?.kind === 'h2' && next && next.kind !== 'h2')));
+  const firstLines = (block) => {
+    doc.font(REGULAR).fontSize(9.5);
+    // at least what a plain block asks for before it stays on the page (see `ensure(14)` below)
+    return Math.max(14, Math.min(heightOf(block), doc.currentLineHeight(true) * 2));
+  };
+  const spaceFor = (index) => {
+    const block = blocks[index];
+    const next = blocks[index + 1];
+    if (!next || !keepsWithNext(block, blocks[index - 1], next)) return heightOf(block);
+    return heightOf(block) + (keepsWithNext(next, block, blocks[index + 2]) ? spaceFor(index + 1) : firstLines(next));
+  };
+
+  blocks.forEach((block, index) => {
     switch (block.kind) {
       case 'title':
         ensure(30);
@@ -193,7 +228,7 @@ function renderPatientExportPdf(data, meta, stream) {
         doc.moveDown(0.3).font(BOLD).fontSize(9).fillColor(COLORS.warn).text(block.text);
         break;
       case 'h2': {
-        ensure(60);
+        ensure(spaceFor(index));
         doc.moveDown(0.9).font(BOLD).fontSize(12).fillColor(COLORS.accent).text(block.text.toUpperCase(), { characterSpacing: 0.6 });
         const y = doc.y + 2;
         doc.moveTo(left(), y).lineTo(left() + width(), y).strokeColor(COLORS.line).lineWidth(0.7).stroke();
@@ -201,7 +236,7 @@ function renderPatientExportPdf(data, meta, stream) {
         break;
       }
       case 'h3':
-        ensure(40);
+        ensure(spaceFor(index));
         doc.moveDown(0.4).font(BOLD).fontSize(10.5).fillColor(COLORS.text).text(block.text);
         break;
       case 'row': {
@@ -213,11 +248,11 @@ function renderPatientExportPdf(data, meta, stream) {
         break;
       }
       case 'label':
-        ensure(30);
+        ensure(spaceFor(index));
         doc.moveDown(0.3).font(BOLD).fontSize(9).fillColor(COLORS.muted).text(block.text, { characterSpacing: 0.5 });
         break;
       case 'muted':
-        ensure(14);
+        ensure(keepsWithNext(block, blocks[index - 1], blocks[index + 1]) ? spaceFor(index) : 14);
         doc.font(REGULAR).fontSize(9.5).fillColor(COLORS.muted).text(block.text);
         break;
       default: // body
@@ -225,7 +260,7 @@ function renderPatientExportPdf(data, meta, stream) {
         doc.font(REGULAR).fontSize(9.5).fillColor(block.dim ? COLORS.muted : COLORS.text).text(block.text);
         if (block.gap) doc.moveDown(0.25);
     }
-  }
+  });
 
   // The footer on every page, in the bottom margin
   const range = doc.bufferedPageRange();
