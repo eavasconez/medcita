@@ -92,6 +92,23 @@ async function signedUploadUrl(clinicId, key, { contentType, ttl } = {}) {
   return getSignedUrl(client(), command, { expiresIn: ttlSeconds(ttl), signableHeaders: new Set(['content-type']) });
 }
 
+// The server itself writes a file it has already checked (the images of the letterhead): the
+// browser sends it to the API, which validates it and puts it in the bucket.
+async function putFile(clinicId, key, body, contentType) {
+  assertOwnKey(clinicId, key);
+  if (!contentType) throw new Error('contentType is required');
+  return client().send(new PutObjectCommand({ Bucket: settings().bucket, Key: key, Body: body, ContentType: contentType }));
+}
+
+// The bytes of one file, for what the server draws itself (the PDFs)
+async function getFile(clinicId, key) {
+  assertOwnKey(clinicId, key);
+  const { Body } = await client().send(new GetObjectCommand({ Bucket: settings().bucket, Key: key }));
+  const chunks = [];
+  for await (const chunk of Body) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 async function deleteFile(clinicId, key) {
   assertOwnKey(clinicId, key);
   return client().send(new DeleteObjectCommand({ Bucket: settings().bucket, Key: key }));
@@ -135,4 +152,4 @@ async function checkStorage({ fetchImpl = fetch } = {}) {
   return checks;
 }
 
-module.exports = { isConfigured, clinicKey, assertOwnKey, signedDownloadUrl, signedUploadUrl, deleteFile, checkStorage, ttlSeconds, MAX_TTL_SECONDS, DEFAULT_TTL_SECONDS };
+module.exports = { isConfigured, clinicKey, assertOwnKey, signedDownloadUrl, signedUploadUrl, putFile, getFile, deleteFile, checkStorage, ttlSeconds, MAX_TTL_SECONDS, DEFAULT_TTL_SECONDS };

@@ -575,7 +575,7 @@ Volver a correr `npx prisma db seed` **borra y recrea** consultorios, médicos, 
 
 **Backend** (Jest + supertest, contra una base PostgreSQL real): cubre auth/JWT, citas (crear, listar con paginación y rangos, conflictos de horario, reservas simultáneas, actualizar, cancelar), pacientes, administración, disponibilidad/slots el cron de recordatorios y la comprobación del esquema de la base (`backend/tests/`). El frontend se valida con `npm run lint`. Al cerrar el Sprint 7 la suite tenía 433 pruebas, con S8-01 llegó a 470 con S8-02 a 525 y con S8-04 a 567 y con S8-05 a 593 y con S8-06 a 624 y con S8-07 a 651 (30 de aislamiento entre consultorios, que fallan si se quita cualquiera de los filtros, y 6 que ejecutan las migraciones de consultorios sobre datos heredados), todas en verde con `npm test` (que usa `--runInBand`: las suites comparten una sola base y, en paralelo, se pisan). Además de las pruebas, el 21-oct-2026 se recorrió el sitio desplegado con un navegador (ver `docs/qa/S7-12-production-evidence.md`).
 
-**Postman** (`backend/postman/MedCita.postman_collection.json`, 592 peticiones y 974 aserciones al cierre de S10.5-07). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
+**Postman** (`backend/postman/MedCita.postman_collection.json`, 617 peticiones y 1007 aserciones al cierre de S11-01). Se corre contra un backend local con la base ya sembrada **y arrancado con `EXPOSE_ACCOUNT_LINKS=true`**, porque el alta y las invitaciones entregan su enlace por correo y ese modo lo devuelve en la respuesta (`devLink`): `EXPOSE_ACCOUNT_LINKS=true npm run dev` y, en otra terminal, `npx newman run backend/postman/MedCita.postman_collection.json --env-var baseUrl=http://localhost:5000`. Los límites de intentos de login viven en la base de datos y las pruebas de S1-02 y S9-08 gastan los de la IP: **corre `npm run limits:reset` (o vuelve a sembrar) entre una corrida y otra**, porque reiniciar el backend ya no los borra, o la segunda seguida responde `429`.
 
 Las pruebas **borran todas las tablas** de la base que usan, por eso necesitan una base propia y nunca tocan `DATABASE_URL`:
 
@@ -726,7 +726,35 @@ Solo frontend. `frontend/src/pages/PatientTimeline.jsx` (`/patients/:id/timeline
 
 El modal de gestión de la cita del Dashboard (`Modal`, cierra con Escape y devuelve el foco) muestra bajo el nombre dos enlaces: `/patients/:id` (todos los roles) y `/patients/:id/appointments/:id/note` (solo `canViewClinical`, y no en citas canceladas). La secretaría tampoco pide el resumen clínico para el banner del modal. El cambio en `Dashboard.jsx` se limita a ese bloque.
 
-## 8. Idioma del producto
+## 10. Documentos para el paciente (Sprint 11)
+
+### Membrete, firma, sello y datos profesionales (S11-01)
+
+**Datos.** `Doctor`: `title`, `licenseNumber`, `phone`, `contactEmail`, `signatureKey`, `sealKey`. `Clinic`: `phone`, `email`, `logoKey` (la dirección ya existía). Todo es opcional y la migración `20261101100000_add_letterhead_fields` solo agrega columnas nulas. Las imágenes **no** están en la base: las columnas `*Key` guardan la llave del archivo en el bucket privado (`clinics/<id>/letterhead/<tipo>-<dueño>-<marca de tiempo>.<png|jpg>`); cada subida usa una llave nueva y borra la anterior, así nunca se lee una copia vieja.
+
+**API** (`backend/src/routes/letterhead.js`, montada en `/api/letterhead`; solo médico y admin, con el rol releído en cada petición como el resto de lo clínico; la secretaría recibe `403`):
+
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/` | Médico, admin | Los datos del consultorio y del médico que pregunta, `storageConfigured`, `canEditClinic` y qué imágenes existen (`hasLogo`, `hasSignature`, `hasSeal`); nunca las llaves |
+| PUT | `/doctor` | Médico, admin | Sus datos: `title`, `licenseNumber`, `phone`, `contactEmail` (`''` borra; correo y teléfono se validan; límites de largo) |
+| PUT | `/clinic` | Admin | `address`, `phone`, `email` del consultorio (el nombre sigue en `PUT /api/admin/clinic`) |
+| PUT | `/images/:kind` | Logo: admin. Firma y sello: el propio médico | `{ data }` en base64 o data URL. Máximo 500 KB; se comprueba que sea PNG o JPG **por sus primeros bytes**. `409` si no hay almacenamiento configurado |
+| GET | `/images/:kind` | Según el tipo | `{ url }`: dirección firmada de unos minutos; `404` si no hay imagen |
+| DELETE | `/images/:kind` | Según el tipo | Quita la imagen y su archivo (`204`) |
+| DELETE | `/doctors/:id/images/:kind` | Admin | Quita la firma o el sello de un médico **de su consultorio** (otro consultorio: `404`) |
+| GET | `/preview` | Médico, admin | PDF de ejemplo con el membrete de quien pregunta |
+
+Esta ruta lee su propio cuerpo JSON con límite de 1 MB (`server.js`, antes del `express.json()` general de 100 KB) y solo después de saber quién pregunta.
+
+**Servicios.** `services/letterhead.js` valida (`parseImage`, `cleanFields`, `sniffImage`) y arma los datos de un documento (`loadLetterhead`: el consultorio, el médico y las imágenes como `Buffer`; una imagen que no se pueda leer se deja fuera y se anota, nunca rompe el documento). `services/pdfLetterhead.js` dibuja con `pdfkit` y las fuentes DejaVu: `drawHeader` (logo y consultorio a la izquierda, el médico a la derecha), `drawSignature` (sello y firma sobre una línea, con el nombre y el registro), `drawFooters` (fecha y «Página N de M») y `renderPreview`. **S11-02, S11-03 y S11-04 usan estas mismas funciones**; no dibujan su propio encabezado. `services/fileStorage.js` ganó `putFile` y `getFile` (el servidor escribe y lee lo que ya validó).
+
+**Auditoría.** Entidades `professional_profile` (solo dice qué campos cambiaron) y `letterhead` (qué imagen se subió o quitó: `kind`, o los campos de contacto del consultorio que cambiaron). Se escribe para **todos** los roles (también el médico que edita lo suyo) y nunca copia valores ni imágenes.
+
+**Sin bucket.** `GET /` trae `storageConfigured: false` y la pantalla desactiva la subida de imágenes. Con el bucket sin configurar, los PDF salen sin logo, firma ni sello. Mientras MedCita esté en versión de prueba se puede trabajar así; el bucket privado y `npm run storage:check` (`docs/DEPLOY.md`, «Archivos privados») son obligatorios antes de usarlo con pacientes reales.
+
+**Pruebas.** `backend/tests/letterhead.test.js` (27: permisos por rol, validación, imágenes con un bucket simulado en memoria, aislamiento entre consultorios, auditoría sin valores, PDF con y sin imágenes) y la carpeta «S11-01» de Postman.
+
 
 Decisión (S7-05): el producto es **bilingüe según quién lee el texto**, no monolingüe.
 

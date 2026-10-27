@@ -14,7 +14,7 @@ export const ACTION_OPTIONS = [
   { value: 'read', label: 'Viewed' }
 ];
 
-const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data', appointment_type: 'an appointment type', schedule_block: 'days off', reminder_settings: 'the reminder settings', clinical_record: 'a patient\'s clinical record', patient_allergy: 'an allergy', patient_medication: 'a regular medication', patient_background: 'a history entry', consultation_note: 'a consultation note', consultation_addendum: 'an addendum to a consultation note' };
+const ENTITY_NOUN = { appointment: 'an appointment', patient: 'a patient', user: 'an account', invitation: 'an invitation', consent: 'a patient\'s consent', patient_export: 'a patient\'s data', appointment_type: 'an appointment type', schedule_block: 'days off', reminder_settings: 'the reminder settings', clinical_record: 'a patient\'s clinical record', patient_allergy: 'an allergy', patient_medication: 'a regular medication', patient_background: 'a history entry', consultation_note: 'a consultation note', consultation_addendum: 'an addendum to a consultation note', professional_profile: 'their professional data', letterhead: 'the documents letterhead' };
 const VERB = { create: 'Created', update: 'Updated', cancel: 'Cancelled', delete: 'Deleted', read: 'Viewed' };
 
 const SESSION_TITLES = {
@@ -47,6 +47,10 @@ export function entryTitle(entry) {
   }
   if (entry.entity === 'schedule_block') return entry.action === 'delete' ? 'Opened blocked days again' : 'Blocked days in the agenda';
   if (entry.entity === 'reminder_settings') return 'Changed the reminder settings';
+  if (entry.entity === 'letterhead' && entry.changes?.kind) {
+    const kind = (entry.changes.kind.to || entry.changes.kind.from || 'image');
+    return `${entry.action === 'delete' ? 'Removed' : entry.action === 'create' ? 'Uploaded' : 'Replaced'} the ${kind === 'logo' ? 'clinic logo' : `${kind} image`}`;
+  }
   if (entry.entity === 'patient_export') return 'Exported a patient\'s data';
   if (entry.entity === 'consent') return entry.changes?.granted?.to === false ? 'Recorded a patient\'s consent withdrawal' : 'Recorded a patient\'s consent';
   return `${VERB[entry.action] || entry.action} ${noun}`;

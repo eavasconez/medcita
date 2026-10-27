@@ -656,7 +656,20 @@ S10-07 **no cambia el esquema**: no hay migración ni hace falta una rama de res
 - [ ] Con una secretaria: la dirección `/patients/<id>/timeline` responde «Clinical data is not available to your role».
 - [ ] Un paciente con mucha historia: «Show older» trae la página siguiente sin repetir eventos.
 
-## Alta de consultorios e invitaciones: necesitan correo (S8-02)
+## Despliegue del membrete y los datos profesionales (S11-01)
+
+S11-01 **cambia el esquema**, pero solo agrega: una migración (`20261101100000_add_letterhead_fields`) con seis columnas nulas en `Doctor` y tres en `Clinic`. Ninguna toca filas existentes. Como todo ticket que cambia el esquema, pasa por staging y lleva una **rama de respaldo en Neon** antes de `main`. No hay variables de entorno nuevas ni dependencias nuevas.
+
+**El bucket.** Logo, firma y sello son imágenes en el **bucket privado** (`docs/DEPLOY.md`, «Archivos privados»). Mientras MedCita esté en versión de prueba y no haya bucket, Settings avisa «File storage not set up» y todo lo demás funciona. **Antes de usarlo con pacientes reales** hay que crearlo y que `npm run storage:check` pase con los cuatro «OK», en producción y en staging.
+
+- [ ] `GET /api/health` responde `200` tras aplicar la migración.
+- [ ] Con un médico: *Settings → Documents letterhead* carga; guarda título, registro, teléfono y correo y vuelven al recargar.
+- [ ] Con el bucket configurado: subir una firma y un sello (PNG o JPG) y verlos en la tarjeta; *Preview letterhead* abre un PDF con ambos.
+- [ ] Con un admin: guarda los datos del consultorio y sube el logo; la vista previa lo lleva en la esquina superior izquierda.
+- [ ] Con una secretaría: la tarjeta no aparece y `GET /api/letterhead` responde `403`.
+- [ ] En *Activity Log*: aparecen «Uploaded the … image» y «Updated their professional data», sin valores.
+
+
 
 Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma con un enlace y las personas que invita un admin eligen su contraseña desde otro. Para producción:
 
