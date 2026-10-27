@@ -6,6 +6,7 @@ import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
 import PatientConsentModal from '../components/PatientConsentModal';
 import ConsentBadge from '../components/ConsentBadge';
+import { EmptyState, Modal, Skeleton, useConfirm, useToast } from '../components/ui';
 import { formatAge } from '../utils/patientRecord';
 import { downloadPatientExport } from '../utils/patientExport';
 import { Link } from 'react-router-dom';
@@ -20,8 +21,6 @@ import {
   User,
   CreditCard,
   X,
-  CheckCircle2,
-  AlertCircle,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
@@ -40,15 +39,12 @@ const Patients = () => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPatientId, setCurrentPatientId] = useState(null);
-  const [toast, setToast] = useState(null);
   const { token, user } = useContext(AuthContext);
   const [consentPatient, setConsentPatient] = useState(null);
   const fetchAbortRef = useRef(null);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -136,7 +132,7 @@ const Patients = () => {
   };
 
   const handleDelete = async (patient) => {
-    if (!window.confirm(`Delete ${patient.name}? This cannot be undone.`)) return;
+    if (!(await confirm({ title: `Delete ${patient.name}?`, message: 'This cannot be undone.', confirmLabel: 'Delete' }))) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/patients/${patient.id}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -170,23 +166,10 @@ const Patients = () => {
 
   return (
     <Layout>
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
-          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
-        `}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75 transition-opacity">
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="page-shell">
         <header className="page-header">
           <div>
-            <h2 className="text-3xl font-black text-secondary tracking-tight">My Patients</h2>
+            <h2 className="page-title">My Patients</h2>
             <p className="text-slate-500 font-medium mt-1">Complete directory of registered patients</p>
           </div>
           <button
@@ -210,19 +193,18 @@ const Patients = () => {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center py-20 animate-pulse">
-            <span className="text-slate-400 font-semibold text-lg">Loading directory...</span>
+          <div className="entity-grid" aria-busy="true">
+            <span className="sr-only">Loading directory...</span>
+            {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-52 rounded-3xl" />)}
           </div>
         ) : loadError ? (
           <LoadError message="We couldn't load the patients." onRetry={() => fetchPatients(search, page)} />
         ) : (
           <div className="entity-grid">
             {patients.length === 0 ? (
-              <div className="col-span-full py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-                <Users className="mx-auto text-slate-200 w-16 h-16 mb-4" />
-                <p className="text-slate-400 font-bold text-xl">No patients found</p>
-                <p className="text-slate-300 mt-1">Try another term or register a new one</p>
-              </div>
+              <EmptyState className="col-span-full" icon={Users} title="No patients found">
+                Try another term or register a new one
+              </EmptyState>
             ) : (
               patients.map((p) => (
                 <div key={p.id} className="bg-white p-6 rounded-3xl border border-slate-100 hover:border-primary hover:shadow-xl hover:shadow-primary/5 transition-all group cursor-pointer">
@@ -363,84 +345,84 @@ const Patients = () => {
 
       {/* Modal Nuevo Paciente */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-panel max-w-md animate-in zoom-in-95 duration-200">
-            <div className="bg-primary p-6 sm:p-8 text-white relative">
-              <button
-                onClick={() => setShowModal(false)}
-                className="absolute right-6 top-6 hover:rotate-90 transition-transform"
-              >
-                <X size={24} />
-              </button>
-              <h3 className="text-2xl font-black tracking-tighter">
-                {isEditing ? 'Edit Patient' : 'Register Patient'}
-              </h3>
-              <p className="text-white/60 font-medium mt-1 text-sm">
-                {isEditing ? 'Update patient details' : 'Enter details for the new patient'}
-              </p>
+        <Modal onClose={() => setShowModal(false)} labelledBy="patient-modal-title" size="sm">
+          <div className="bg-primary p-6 sm:p-8 text-white relative">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowModal(false)}
+              className="absolute right-6 top-6 hover:rotate-90 transition-transform"
+            >
+              <X size={24} />
+            </button>
+            <h3 id="patient-modal-title" className="text-2xl font-black tracking-tighter">
+              {isEditing ? 'Edit Patient' : 'Register Patient'}
+            </h3>
+            <p className="text-white/60 font-medium mt-1 text-sm">
+              {isEditing ? 'Update patient details' : 'Enter details for the new patient'}
+            </p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-4">
+            <div>
+              <label className="form-label">Full Name</label>
+              <input
+                required
+                className="form-input text-sm"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                placeholder="Ex: John Doe"
+              />
+            </div>
+
+            <div>
+              <label className="form-label">ID Card (Optional)</label>
+              <input
+                className="form-input text-sm"
+                value={formData.cedula}
+                onChange={(e) => setFormData({...formData, cedula: e.target.value})}
+                placeholder="Ex: 1723456789"
+              />
+            </div>
+
+            <div>
+              <label className="form-label">WhatsApp</label>
+              <input
+                required
+                className="form-input text-sm"
+                value={formData.phone}
+                onChange={(e) => setFormData({...formData, phone: e.target.value})}
+              />
+            </div>
+
+            <div>
+              <label className="form-label">Email (Optional)</label>
+              <input
+                type="email"
+                className="form-input text-sm"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                placeholder="patient@example.com"
+              />
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-4">
-              <div>
-                <label className="form-label">Full Name</label>
-                <input
-                  required
-                  className="form-input text-sm"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="Ex: John Doe"
-                />
-              </div>
-
-              <div>
-                <label className="form-label">ID Card (Optional)</label>
-                <input
-                  className="form-input text-sm"
-                  value={formData.cedula}
-                  onChange={(e) => setFormData({...formData, cedula: e.target.value})}
-                  placeholder="Ex: 1723456789"
-                />
-              </div>
-
-              <div>
-                <label className="form-label">WhatsApp</label>
-                <input
-                  required
-                  className="form-input text-sm"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Email (Optional)</label>
-                <input
-                  type="email"
-                  className="form-input text-sm"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  placeholder="patient@example.com"
-                />
-              </div>
-              
-              <div className="flex gap-3 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 py-3 text-slate-400 font-black hover:bg-slate-50 rounded-xl transition-colors uppercase tracking-widest text-[10px]"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-[2] py-3 bg-primary text-white font-black rounded-xl shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest text-xs"
-                >
-                  {isEditing ? 'Update Patient' : 'Save Patient'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div className="flex gap-3 pt-4">
+              <button 
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="flex-1 py-3 text-slate-400 font-black hover:bg-slate-50 rounded-xl transition-colors uppercase tracking-widest text-[10px]"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                className="flex-[2] py-3 bg-primary text-white font-black rounded-xl shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest text-xs"
+              >
+                {isEditing ? 'Update Patient' : 'Save Patient'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     {consentPatient && (
         <PatientConsentModal

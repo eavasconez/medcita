@@ -54,7 +54,7 @@ const Reports = () => {
     <Layout>
       <div className="page-shell">
         <header className="mb-10">
-          <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">Clinical Analytics</h2>
+          <h2 className="page-title">Clinical Analytics</h2>
           <p className="text-slate-500 font-medium text-base sm:text-lg">Performance reports and appointment distribution</p>
         </header>
 

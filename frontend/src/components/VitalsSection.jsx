@@ -6,6 +6,7 @@ import LoadError from './LoadError';
 import VitalsForm from './VitalsForm';
 import { METRICS, latestValues, describeReading } from '../utils/vitals';
 import { formatDateTime } from '../utils/consultationNote';
+import { Skeleton, useConfirm } from './ui';
 import { Plus, Ban } from 'lucide-react';
 
 // The charts bring a heavy library: only downloaded when a patient has something to chart
@@ -24,17 +25,30 @@ const VitalsSection = ({ patientId, vitals, onError }) => {
   const [adding, setAdding] = useState(false);
   const [metricKey, setMetricKey] = useState('weight');
   const [showAll, setShowAll] = useState(false);
+  const { askReason } = useConfirm();
 
   const { readings, truncated, error, reload } = vitals;
   if (error) return <LoadError message="We couldn't load the vital signs." onRetry={reload} />;
-  if (!readings) return <p className="text-slate-300 font-semibold animate-pulse">Loading...</p>;
+  if (!readings) {
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">Loading...</span>
+        <Skeleton className="h-40 w-full rounded-3xl" />
+      </div>
+    );
+  }
 
   const latest = latestValues(readings);
   const metric = METRICS.find((m) => m.key === metricKey);
   const shown = showAll ? readings : readings.slice(0, 8);
 
   const voidReading = async (reading) => {
-    const reason = window.prompt('Void this reading? It stays in the history, marked. Reason (optional):');
+    const reason = await askReason({
+      title: 'Void this reading?',
+      message: 'It stays in the history, marked as voided, and leaves the charts.',
+      confirmLabel: 'Void reading',
+      reason: { label: 'Reason (optional)', placeholder: 'Ex: Entered for the wrong patient' }
+    });
     if (reason === null) return;
     try {
       await axios.post(`${API_BASE_URL}/api/patients/${patientId}/clinical/vitals/${reading.id}/void`, { reason }, { headers: { Authorization: `Bearer ${token}` } });
@@ -83,7 +97,7 @@ const VitalsSection = ({ patientId, vitals, onError }) => {
               </button>
             ))}
           </div>
-          <Suspense fallback={<div className="h-64 animate-pulse bg-slate-50 rounded-2xl" />}>
+          <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
             <VitalsChart readings={readings} metric={metric} />
           </Suspense>
 

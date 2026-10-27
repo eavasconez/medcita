@@ -5,7 +5,7 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
-import { statusLabel, statusColor } from '../utils/appointmentStatus';
+import { AppointmentStatusBadge, EmptyState } from '../components/ui';
 import { describeReading } from '../utils/vitals';
 import { diagnosisLabel, formatDateTime } from '../utils/consultationNote';
 import { METHOD_LABEL } from '../utils/consent';
@@ -41,7 +41,7 @@ const Event = ({ event, patientId }) => {
         <>
           <p className="font-black text-secondary">
             Visit · {event.date} {event.time}
-            <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest text-white align-middle" style={{ background: statusColor(event.status) }}>{statusLabel(event.status)}</span>
+            <span className="ml-2 align-middle"><AppointmentStatusBadge status={event.status} size="sm" /></span>
           </p>
           <p className="text-sm font-medium text-slate-500">{event.doctor}{event.appointmentType ? ` · ${event.appointmentType}` : ''}</p>
           {event.status !== 'cancelled' && noteLink(event.id, event.noteId ? 'Open the note' : 'Write the note')}
@@ -157,18 +157,13 @@ const PatientTimeline = () => {
 
         <header className="page-header">
           <div>
-            <h2 className="text-3xl font-black text-secondary tracking-tight">Timeline</h2>
+            <h2 className="page-title">Timeline</h2>
             <p className="text-slate-500 font-medium mt-1">{patient ? `${patient.name} — everything in order, newest first` : ' '}</p>
           </div>
         </header>
 
-        {state === 'denied' && (
-          <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-            <Lock className="mx-auto text-slate-300 w-12 h-12 mb-3" />
-            <p className="text-slate-500 font-bold text-xl">Clinical data is not available to your role</p>
-          </div>
-        )}
-        {state === 'notfound' && <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-slate-400 font-bold text-xl">Patient not found</p></div>}
+        {state === 'denied' && <EmptyState icon={Lock} title="Clinical data is not available to your role" />}
+        {state === 'notfound' && <EmptyState title="Patient not found" />}
         {state === 'error' && <LoadError message="We couldn't load the timeline." onRetry={load} />}
 
         {(state === 'ready' || (state === 'loading' && patient)) && (
@@ -183,7 +178,7 @@ const PatientTimeline = () => {
             </div>
 
             {events.length === 0 ? (
-              <p className="py-16 text-center text-slate-300 font-bold bg-white rounded-3xl border-2 border-dashed border-slate-200">Nothing recorded yet</p>
+              <EmptyState title="Nothing recorded yet" />
             ) : (
               <ol className="relative border-l-2 border-slate-100 ml-4 space-y-5">
                 {events.map((event) => {

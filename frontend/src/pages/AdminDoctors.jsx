@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config/api';
 import { AuthContext } from '../AuthContext';
 import Layout from '../components/Layout';
 import LoadError from '../components/LoadError';
+import { Modal, useConfirm, useToast } from '../components/ui';
 import { 
   Stethoscope, 
   Plus, 
@@ -14,8 +15,6 @@ import {
   X,
   User,
   Save,
-  CheckCircle2,
-  AlertCircle,
   Send,
   RefreshCw,
   Clock
@@ -28,13 +27,10 @@ const AdminDoctors = () => {
   const [loadError, setLoadError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [toast, setToast] = useState(null);
   const { token, user } = useContext(AuthContext);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -100,7 +96,7 @@ const AdminDoctors = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this user? All associated data will be lost.')) return;
+    if (!(await confirm({ title: 'Delete this user?', message: 'All associated data will be lost.', confirmLabel: 'Delete user' }))) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/admin/doctors/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -126,7 +122,7 @@ const AdminDoctors = () => {
   };
 
   const handleCancelInvitation = async (invitation) => {
-    if (!window.confirm(`Cancel the invitation for ${invitation.email}? Their link will stop working.`)) return;
+    if (!(await confirm({ title: `Cancel the invitation for ${invitation.email}?`, message: 'Their link will stop working.', confirmLabel: 'Cancel invitation', cancelLabel: 'Keep it' }))) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/admin/invitations/${invitation.id}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -142,23 +138,10 @@ const AdminDoctors = () => {
 
   return (
     <Layout>
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast animate-in slide-in-from-bottom-5 fade-in duration-300
-          ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}
-        `}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75 transition-opacity">
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="page-shell">
         <header className="page-header mb-10">
           <div>
-            <h2 className="text-3xl sm:text-4xl font-black text-secondary tracking-tighter">User Management</h2>
+            <h2 className="page-title">User Management</h2>
             <p className="text-slate-500 font-medium text-base sm:text-lg mt-1">
               {user?.clinic?.name ? <>People who work at <span className="font-black text-secondary">{user.clinic.name}</span></> : 'Clinic administrative panel'}
             </p>
@@ -267,70 +250,70 @@ const AdminDoctors = () => {
 
       {/* Modal: invite a person, or edit an account */}
       {showModal && (
-        <div className="modal-overlay bg-secondary/60">
-          <div className="modal-panel max-w-md rounded-[3rem] animate-in zoom-in-95 duration-200">
-            <div className="bg-secondary p-6 sm:p-10 text-white relative">
-              <button
-                onClick={() => setShowModal(false)}
-                className="absolute right-6 top-6 sm:right-8 sm:top-8 hover:rotate-90 transition-transform"
-              >
-                <X size={24} />
-              </button>
-              <h3 className="text-3xl font-black tracking-tighter">{editingId ? 'Edit User' : 'Invite User'}</h3>
-              <p className="text-white/40 font-medium mt-1">
-                {editingId ? 'Configure system access' : `They will get an email to join ${user?.clinic?.name || 'your clinic'} and choose their own password`}
-              </p>
+        <Modal onClose={() => setShowModal(false)} labelledBy="user-modal-title" size="sm" overlayClassName="bg-secondary/60" panelClassName="rounded-[3rem]">
+          <div className="bg-secondary p-6 sm:p-10 text-white relative">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowModal(false)}
+              className="absolute right-6 top-6 sm:right-8 sm:top-8 hover:rotate-90 transition-transform"
+            >
+              <X size={24} />
+            </button>
+            <h3 id="user-modal-title" className="text-3xl font-black tracking-tighter">{editingId ? 'Edit User' : 'Invite User'}</h3>
+            <p className="text-white/40 font-medium mt-1">
+              {editingId ? 'Configure system access' : `They will get an email to join ${user?.clinic?.name || 'your clinic'} and choose their own password`}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-5">
+            <div>
+              <label className="form-label">Full Name</label>
+              <input
+                required
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                placeholder="Dr. John Doe"
+              />
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-5">
-              <div>
-                <label className="form-label">Full Name</label>
-                <input
-                  required
-                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="Dr. John Doe"
-                />
-              </div>
+            <div>
+              <label className="form-label">Email (Usuario)</label>
+              <input
+                required
+                type="email"
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                placeholder="doctor@medcita.ec"
+              />
+            </div>
 
-              <div>
-                <label className="form-label">Email (Usuario)</label>
-                <input
-                  required
-                  type="email"
-                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  placeholder="doctor@medcita.ec"
-                />
-              </div>
-
-              <div>
-                <label className="form-label">User Role</label>
-                <select
-                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
-                  value={formData.role}
-                  onChange={(e) => setFormData({...formData, role: e.target.value})}
-                >
-                  <option value="doctor">Medical Doctor</option>
-                  <option value="admin">Clinic Administrator</option>
-                  <option value="secretary">Secretary / Assistant</option>
-                </select>
-              </div>
-              
-              <div className="flex gap-4 pt-4">
-                <button 
-                  type="submit"
-                  className="w-full py-5 bg-secondary text-white font-black rounded-2xl shadow-xl hover:shadow-secondary/20 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-2"
-                >
-                  {editingId ? <Save size={20} /> : <Send size={20} />}
-                  {editingId ? 'Save Changes' : 'Send Invitation'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div>
+              <label className="form-label">User Role</label>
+              <select
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-secondary/10 focus:border-secondary transition-all font-bold text-secondary"
+                value={formData.role}
+                onChange={(e) => setFormData({...formData, role: e.target.value})}
+              >
+                <option value="doctor">Medical Doctor</option>
+                <option value="admin">Clinic Administrator</option>
+                <option value="secretary">Secretary / Assistant</option>
+              </select>
+            </div>
+            
+            <div className="flex gap-4 pt-4">
+              <button 
+                type="submit"
+                className="w-full py-5 bg-secondary text-white font-black rounded-2xl shadow-xl hover:shadow-secondary/20 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-2"
+              >
+                {editingId ? <Save size={20} /> : <Send size={20} />}
+                {editingId ? 'Save Changes' : 'Send Invitation'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </Layout>
   );

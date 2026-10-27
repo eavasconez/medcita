@@ -12,9 +12,9 @@ import ClinicalBackground from '../components/ClinicalBackground';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import VitalsSection from '../components/VitalsSection';
 import useVitals from '../utils/useVitals';
-import { statusLabel, statusColor } from '../utils/appointmentStatus';
+import { AppointmentStatusBadge, EmptyState, MinorBadge, NoteStatusBadge, SectionHeader, Skeleton, useToast } from '../components/ui';
 import { SEX_LABEL, formatAge, recordForm } from '../utils/patientRecord';
-import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, CheckCircle2, AlertCircle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
+import { ArrowLeft, Edit, ShieldCheck, AlertTriangle, X, CalendarDays, FileText, History, Download } from 'lucide-react';
 import { downloadPatientExport } from '../utils/patientExport';
 import { formatDateTime, diagnosisLabel } from '../utils/consultationNote';
 
@@ -56,14 +56,10 @@ const PatientRecord = () => {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
   const [showConsent, setShowConsent] = useState(false);
   const [notes, setNotes] = useState([]);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const { showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -129,27 +125,22 @@ const PatientRecord = () => {
 
   return (
     <Layout>
-      {toast && (
-        <div className={`toast ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}`}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75"><X size={18} /></button>
-        </div>
-      )}
-
       <div className="page-shell">
         <Link to="/patients" className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
           <ArrowLeft size={16} /> Patients
         </Link>
 
         {notFound ? (
-          <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-            <p className="text-slate-400 font-bold text-xl">Patient not found</p>
-          </div>
+          <EmptyState title="Patient not found" />
         ) : loadError ? (
           <LoadError message="We couldn't load the patient." onRetry={load} />
         ) : !patient ? (
-          <div className="flex justify-center py-20 animate-pulse"><span className="text-slate-400 font-semibold text-lg">Loading record...</span></div>
+          <div aria-busy="true" className="space-y-4">
+            <span className="sr-only">Loading record...</span>
+            <Skeleton className="h-10 w-72" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-64 w-full rounded-3xl" />
+          </div>
         ) : (
           <>
             <header className="page-header">
@@ -160,7 +151,7 @@ const PatientRecord = () => {
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <ConsentBadge consent={patient.consent} />
-                  {patient.isMinor && <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-sky-50 text-sky-700">Minor</span>}
+                  {patient.isMinor && <MinorBadge />}
                 </div>
               </div>
               <div className="flex gap-3 w-full sm:w-auto">
@@ -272,29 +263,30 @@ const PatientRecord = () => {
 
             {data.canViewClinical && (
               <section className="mt-8">
-                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Clinical background</h3>
+                <SectionHeader as="h3" variant="label" title="Clinical background" className="mb-4" />
                 {clinical.summary ? (
                   <ClinicalBackground patientId={id} summary={clinical.summary} onChange={clinical.reload} onError={(message) => showToast(message, 'error')} />
                 ) : clinical.error ? (
                   <LoadError message="We couldn't load the clinical background." onRetry={clinical.reload} />
                 ) : (
-                  <p className="text-slate-300 font-semibold animate-pulse">Loading...</p>
+                  <div aria-busy="true">
+                    <span className="sr-only">Loading...</span>
+                    <Skeleton className="h-24 w-full rounded-3xl" />
+                  </div>
                 )}
               </section>
             )}
 
             {canViewClinical && (
               <section className="mt-8">
-                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4">Vital signs</h3>
+                <SectionHeader as="h3" variant="label" title="Vital signs" className="mb-4" />
                 <VitalsSection patientId={id} vitals={vitals} onError={(message) => showToast(message, 'error')} />
               </section>
             )}
 
             {canViewClinical && notes.length > 0 && (
               <section className="mt-8">
-                <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <FileText size={16} className="text-primary" /> Consultation notes ({notes.length})
-                </h3>
+                <SectionHeader as="h3" variant="label" icon={FileText} title={`Consultation notes (${notes.length})`} className="mb-4" />
                 <ul className="space-y-3">
                   {notes.map((n) => (
                     <li key={n.id}>
@@ -305,9 +297,7 @@ const PatientRecord = () => {
                           {n.principalDiagnosis ? ` · ${n.principalDiagnosis.code ? `${n.principalDiagnosis.code} ` : ''}${diagnosisLabel(n.principalDiagnosis.name)}` : ''}
                           {n.addendaCount > 0 ? ` · ${n.addendaCount} ${n.addendaCount === 1 ? 'addendum' : 'addenda'}` : ''}
                         </span>
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${n.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
-                          {n.status === 'closed' ? 'Closed' : 'Draft'}
-                        </span>
+                        <NoteStatusBadge status={n.status} />
                       </Link>
                     </li>
                   ))}
@@ -316,11 +306,9 @@ const PatientRecord = () => {
             )}
 
             <section className="mt-8">
-              <h3 className="text-sm font-black text-secondary uppercase tracking-widest mb-4 flex items-center gap-2">
-                <CalendarDays size={16} className="text-primary" /> Appointments ({data.appointments.length})
-              </h3>
+              <SectionHeader as="h3" variant="label" icon={CalendarDays} title={`Appointments (${data.appointments.length})`} className="mb-4" />
               {data.appointments.length === 0 ? (
-                <p className="text-slate-400 font-medium bg-white rounded-3xl border border-dashed border-slate-200 p-8 text-center">No appointments yet</p>
+                <EmptyState className="py-8">No appointments yet</EmptyState>
               ) : (
                 <ul className="space-y-3">
                   {data.appointments.map((a) => (
@@ -329,9 +317,7 @@ const PatientRecord = () => {
                       <span className="text-sm text-slate-500 font-medium flex-1 min-w-40">
                         {a.doctor.name}{a.type ? ` · ${a.type.name}` : ''}
                       </span>
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white" style={{ background: statusColor(a.status) }}>
-                        {statusLabel(a.status)}
-                      </span>
+                      <AppointmentStatusBadge status={a.status} />
                       {canViewClinical && a.status !== 'cancelled' && (
                         <Link
                           to={`/patients/${id}/appointments/${a.id}/note`}

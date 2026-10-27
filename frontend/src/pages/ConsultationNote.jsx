@@ -13,7 +13,8 @@ import { describeReading } from '../utils/vitals';
 import useClinicalSummary from '../utils/useClinicalSummary';
 import { SECTIONS, formatDateTime } from '../utils/consultationNote';
 import { formatAge } from '../utils/patientRecord';
-import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, FileText } from 'lucide-react';
+import { EmptyState, NoteStatusBadge, Skeleton, useConfirm, useToast } from '../components/ui';
+import { ArrowLeft, Lock, FileText } from 'lucide-react';
 
 const AUTOSAVE_DELAY_MS = 1500;
 
@@ -34,7 +35,6 @@ const ConsultationNote = () => {
   const [saveState, setSaveState] = useState({ kind: 'idle' }); // idle | dirty | saving | saved | error | conflict
   const [template, setTemplate] = useState('general');
   const [addendumText, setAddendumText] = useState('');
-  const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
 
   // What the autosave needs to read at the moment it fires, not what it saw when it was scheduled
@@ -44,10 +44,8 @@ const ConsultationNote = () => {
   const vitals = useVitals(patientId, loadState === 'ready');
   const [recordingVitals, setRecordingVitals] = useState(false);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -156,7 +154,7 @@ const ConsultationNote = () => {
   };
 
   const closeNote = async () => {
-    if (!window.confirm('Close this note? A closed note cannot be edited again: later corrections are added as addenda.')) return;
+    if (!(await confirm({ title: 'Close this note?', message: 'A closed note cannot be edited again: later corrections are added as addenda.', confirmLabel: 'Close note', tone: 'primary' }))) return;
     clearTimeout(timer.current);
     setBusy(true);
     try {
@@ -178,7 +176,7 @@ const ConsultationNote = () => {
   };
 
   const deleteDraft = async () => {
-    if (!window.confirm('Delete this draft? Use it only for a note started by mistake.')) return;
+    if (!(await confirm({ title: 'Delete this draft?', message: 'Use it only for a note started by mistake.', confirmLabel: 'Delete draft' }))) return;
     clearTimeout(timer.current);
     setBusy(true);
     try {
@@ -211,50 +209,40 @@ const ConsultationNote = () => {
 
   return (
     <Layout>
-      {toast && (
-        <div className={`toast ${toast.type === 'success' ? 'bg-[#10b981] shadow-[#10b981]/30' : 'bg-red-500 shadow-red-500/30'}`}>
-          {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-          <span className="text-sm shadow-sm">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-auto hover:opacity-75"><X size={18} /></button>
-        </div>
-      )}
-
       <div className="page-shell max-w-4xl">
         <Link to={backTo} className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-primary mb-6">
           <ArrowLeft size={16} /> {patient?.name || 'Patient'}
         </Link>
 
-        {loadState === 'loading' && <div className="flex justify-center py-20 animate-pulse"><span className="text-slate-400 font-semibold text-lg">Loading note...</span></div>}
-        {loadState === 'denied' && (
-          <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-            <Lock className="mx-auto text-slate-300 w-12 h-12 mb-3" />
-            <p className="text-slate-500 font-bold text-xl">Clinical data is not available to your role</p>
+        {loadState === 'loading' && (
+          <div aria-busy="true" className="space-y-4">
+            <span className="sr-only">Loading note...</span>
+            <Skeleton className="h-10 w-72" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-64 w-full rounded-3xl" />
           </div>
         )}
-        {loadState === 'notfound' && <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-slate-400 font-bold text-xl">Patient not found</p></div>}
+        {loadState === 'denied' && <EmptyState icon={Lock} title="Clinical data is not available to your role" />}
+        {loadState === 'notfound' && <EmptyState title="Patient not found" />}
         {loadState === 'error' && <LoadError message="We couldn't load the note." onRetry={load} />}
 
         {loadState === 'ready' && (
           <>
             <header className="page-header">
               <div>
-                <h2 className="text-3xl font-black text-secondary tracking-tight">Consultation note</h2>
+                <h2 className="page-title">Consultation note</h2>
                 <p className="text-slate-500 font-medium mt-1">
                   {patient.name}{patient.age ? ` · ${formatAge(patient.age)}` : ''}
                   {appointment ? ` · ${appointment.date} ${appointment.time} · ${appointment.doctor.name}` : ''}
                 </p>
               </div>
-              {note && (
-                <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${note.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
-                  {note.status === 'closed' ? 'Closed' : 'Draft'}
-                </span>
-              )}
+              {note && <NoteStatusBadge status={note.status} size="lg" />}
             </header>
 
             {summary && <div className="mb-6"><ClinicalAlert summary={summary} /></div>}
 
             {!appointment ? (
-              <div className="py-16 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-slate-400 font-bold">Appointment not found for this patient</p></div>
+              <EmptyState title="Appointment not found for this patient" />
             ) : !note ? (
               <section className="bg-white rounded-3xl border border-slate-100 p-8">
                 <div className="flex items-center gap-3 mb-2"><FileText className="text-primary" size={22} /><h3 className="text-lg font-black text-secondary">Start the note of this visit</h3></div>
