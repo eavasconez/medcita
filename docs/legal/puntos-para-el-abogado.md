@@ -7,6 +7,7 @@
 - Pacientes de cada consultorio: nombre, cédula (opcional), teléfono, correo (opcional), citas con notas de reserva administrativas, el registro del consentimiento y, desde el Sprint 10, su **ficha** (fecha de nacimiento, sexo, dirección, ocupación, contacto de emergencia, seguro y, para menores, representante legal).
 - Envía confirmaciones y recordatorios por WhatsApp (Meta) y correo (Brevo, con SendGrid y Twilio de respaldo). No guarda el texto de los mensajes ni la dirección completa.
 - Servidor en Render y base en Neon (Estados Unidos `[verificar la región exacta]`). Archivos clínicos: aún no se suben; el almacenamiento (bucket S3) está listo pero vacío.
+- Desde el Sprint 10.5 la lista de pacientes guarda **en el navegador de cada usuario** (no en el servidor) los últimos pacientes abiertos: solo su identificador y su nombre, por consultorio y usuario; se borran al cerrar sesión. Conviene confirmar si basta con mencionarlo en la política de privacidad.
 - Desde el Sprint 10 **hay una primera historia clínica**: antecedentes y alergias, medicación habitual, notas de consulta (formato SOAP) con sus adendas, diagnósticos codificados (CIE-10) y signos vitales. La ven y escriben **solo los médicos y administradores del consultorio** (la secretaría no) y cada lectura y cada cambio quedan en el registro de actividad, sin el contenido. Una nota cerrada no se edita (se corrige con una adenda) ni se borra, y un signo vital solo se anula. **Todavía no hay recetas, certificados ni archivos adjuntos.**
 
 ## 1. Preguntas que el abogado debe responder

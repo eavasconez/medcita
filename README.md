@@ -105,9 +105,17 @@ Debes tener dos terminales abiertas:
 
 - **Ficha ampliada** (`/patients/:id`): fecha de nacimiento con edad, sexo, dirección, ocupación, contacto de emergencia, seguro y, para menores, representante legal.
 - **Clínico = solo médicos y administradores.** La secretaría agenda y ve la ficha administrativa, pero **no** ve nada clínico; un paciente de otro consultorio no existe para quien pregunta. Cada lectura y cada cambio clínico queda en el Activity Log **sin el texto**.
-- **Antecedentes y alergias** (con aviso en rojo antes de recetar), **nota de consulta SOAP** (borrador con autoguardado, cierre definitivo y adendas), **diagnósticos CIE-10** (la lista se carga aparte: `npm run diagnoses:import`), **signos vitales** con IMC y gráficas, **línea de tiempo** y exportación de los datos del paciente en **JSON o PDF**.
+- **Antecedentes y alergias** (con aviso en rojo, fijo arriba de la ficha y de la nota, antes de recetar), **nota de consulta SOAP** (borrador con autoguardado, cierre definitivo y adendas), **diagnósticos CIE-10** (la lista se carga aparte: `npm run diagnoses:import`), **signos vitales** con IMC y gráficas, **línea de tiempo** y exportación de los datos del paciente en **JSON o PDF**.
 - Lo clínico **no se borra**: una nota cerrada y una toma de signos vitales (que solo se anula) se conservan, y el paciente o la cita que las tengan tampoco se pueden borrar.
 - Detalle y reglas: `docs/TECHNICAL.md` (secciones del Sprint 10); despliegue: `docs/DEPLOY.md`, «Despliegue del Sprint 10 completo».
+
+## 🎨 Interfaz rediseñada (Sprint 10.5, v0.11.0)
+
+- **Componentes comunes** (`frontend/src/components/ui/`): diálogo (`Modal`, con Escape y foco), confirmaciones (`useConfirm`), avisos (`Toast`), insignias de estado, estados vacíos y esqueletos de carga; ya no quedan `confirm`/`prompt` del navegador.
+- **Ficha en secciones** con cabecera fija (nombre, edad, consentimiento y aviso de alergias), navegación lateral con scroll-spy (botones sobre el contenido en el teléfono) y un **Summary**.
+- **Signos vitales** como tarjetas con tendencia, gráfica de la medida elegida e historial en tabla. **Nota de consulta** con cabecera fija, panel de contexto (`Context`) y barra de acciones fija.
+- **Lista de pacientes** en tabla (tarjetas en el móvil) con búsqueda, filtros de consentimiento y de menores, orden por columna **en el servidor** y los últimos pacientes abiertos (solo id y nombre, en el navegador de cada usuario; se borran al cerrar sesión).
+- **Línea de tiempo** con insignias de tipo y estado, y enlaces «Patient record» / «Consultation note» desde la cita en la agenda. Detalle: `docs/TECHNICAL.md`, sección 9; despliegue: `docs/DEPLOY.md`, «Despliegue del Sprint 10.5 completo».
 
 ## 🔐 Seguridad y trazabilidad
 - **Login:** límite de intentos fallidos por correo (5 en 15 min) y por IP, y recuperación de contraseña por correo con enlace de un solo uso (60 min).

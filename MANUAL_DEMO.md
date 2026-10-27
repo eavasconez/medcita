@@ -1,6 +1,6 @@
 # 🩺 Guía Maestra para la Demo de MedCita
 
-Este manual contiene los pasos exactos para realizar una demostración de la plataforma MedCita. Está actualizado al cierre del Sprint 7 (21-oct-2026): el menú y los botones de la app están en inglés, y los mensajes que reciben los pacientes (WhatsApp y correo) están en español.
+Este manual contiene los pasos exactos para realizar una demostración de la plataforma MedCita. Está actualizado al cierre del Sprint 10.5 (27-oct-2026, v0.11.0): el menú y los botones de la app están en inglés, y los mensajes que reciben los pacientes (WhatsApp y correo) están en español.
 
 ## 🔐 Credenciales de Acceso
 
@@ -42,7 +42,10 @@ Este manual contiene los pasos exactos para realizar una demostración de la pla
 ### 3. Registro de Pacientes
 1. Ve a **Patients**.
 2. Pulsa **New Patient** y completa nombre y WhatsApp. La cédula y el correo son **opcionales**.
-3. Guarda: el paciente aparece en el directorio con su contador de citas en cero. Con el lápiz se edita; el basurero solo funciona para pacientes **sin ninguna cita**.
+3. Guarda: el paciente aparece en la tabla con su contador de citas en cero. Con el lápiz se edita; el basurero solo funciona para pacientes **sin ninguna cita**.
+4. Muestra la **lista**: busca por nombre, cédula o teléfono, combina los filtros *Any consent* y *All ages* (menores), ordena haciendo clic en los encabezados (un tercer clic vuelve al orden normal) y señala la franja de **recientes** con los últimos pacientes abiertos.
+5. Entra a un paciente con datos (en el seed, *María Elena Lasso*): la cabecera con su aviso de alergias **queda fija** al bajar; la lista de la izquierda salta entre *Summary, Background, Vital signs, Consultations, Appointments* y *Patient data*; *Vital signs* muestra una tarjeta por medida con su tendencia. Desde *Consultations* se abre la nota (con el botón *Context*) y desde *Timeline* la historia en orden, con insignias de tipo y estado. Entra como **secretaria** para mostrar que no ve nada de esto.
+6. En *My Schedule*, abre una cita: la ventana trae **Patient record** y, para médicos, **Consultation note**.
 
 ### 4. Agendamiento y Notificaciones (WhatsApp + Correo)
 1. Vuelve a **My Schedule** y pulsa **New Appointment**.

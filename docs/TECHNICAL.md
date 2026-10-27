@@ -604,7 +604,7 @@ Detalles útiles:
 
 ### Guía en PDF (`frontend/public/medcita-demo-guide.pdf`)
 
-Es la guía que se descarga desde la pantalla de login (credenciales de prueba, qué probar por rol, flujo de una cita, y la configuración de WhatsApp con Meta). Es **pública**: no debe contener tokens, IDs de la cuenta de Meta ni capturas con datos personales. Su fuente es `docs/guide/medcita-demo-guide.html` (con las capturas en `docs/guide/img/`, copias JPEG de `docs/qa/screenshots/s7-12/`). Cuando cambie la app o la configuración de WhatsApp, edita el HTML y regenera el PDF desde `docs/guide/` con Chrome o Chromium:
+Es la guía que se descarga desde la pantalla de login (credenciales de prueba, qué probar por rol, flujo de una cita, y la configuración de WhatsApp con Meta). Es **pública**: no debe contener tokens, IDs de la cuenta de Meta ni capturas con datos personales. Su fuente es `docs/guide/medcita-demo-guide.html` (con las capturas en `docs/guide/img/`: las de la historia clínica y la lista de pacientes se sacaron de la app con los datos del seed, a 1280 × 800, tras el Sprint 10.5; el resto, copias JPEG de `docs/qa/screenshots/s7-12/`). Cuando cambie la app o la configuración de WhatsApp, edita el HTML y regenera el PDF desde `docs/guide/` con Chrome o Chromium:
 
 ```bash
 google-chrome --headless=new --disable-gpu --no-pdf-header-footer \

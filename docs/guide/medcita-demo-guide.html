@@ -156,7 +156,7 @@
     <li>Agendar una cita nueva (ver el paso a paso en la sección 1.4).</li>
     <li>Confirmar o cancelar una cita pendiente desde el detalle (clic sobre el evento en el calendario).</li>
     <li>Ajustar tu disponibilidad semanal en «Availability».</li>
-    <li>Buscar un paciente en «Patients», crearlo y editar sus datos. El basurero solo funciona con pacientes que no tienen citas ni datos clínicos.</li>
+    <li>Buscar un paciente en «Patients» (la búsqueda, los filtros de consentimiento y de menores y el orden por columna se combinan), crearlo y editar sus datos. El basurero solo funciona con pacientes que no tienen citas ni datos clínicos.</li>
     <li>Abrir la <strong>ficha</strong> de un paciente y trabajar con su <strong>historia clínica</strong>: alergias, antecedentes, nota de consulta, diagnósticos y signos vitales (secciones 1.9 y 1.10).</li>
     <li>Actualizar tu perfil (especialidad, bio, dirección) y cambiar tu contraseña en «Settings».</li>
   </ul>
@@ -219,7 +219,7 @@
   <h1>1.6 Otras pantallas</h1>
   <div class="grid2">
     <figure><img src="img/dashboard.jpg"><figcaption><em>My Schedule</em>: indicadores y calendario (semana, mes, día, agenda).</figcaption></figure>
-    <figure><img src="img/patients.jpg"><figcaption><em>Patients</em>: directorio con búsqueda, edición y contador de citas.</figcaption></figure>
+    <figure><img src="img/patients.jpg"><figcaption><em>Patients</em>: tabla con búsqueda, filtros (consentimiento, menores), orden por columna y los últimos pacientes abiertos.</figcaption></figure>
     <figure><img src="img/availability.jpg"><figcaption><em>Availability</em>: la jornada semanal de cada médico.</figcaption></figure>
     <figure><img src="img/settings.jpg"><figcaption><em>Settings</em>: perfil y cambio de contraseña.</figcaption></figure>
     <figure><img src="img/admin-users.jpg"><figcaption><em>Manage Doctors</em> (solo admin): crear, editar y eliminar usuarios.</figcaption></figure>
@@ -267,20 +267,21 @@
 <section class="page">
   <p class="part">Parte 1 · Probar MedCita</p>
   <h1>1.9 La ficha del paciente y la historia clínica</h1>
-  <p>Lo que se agregó en el Sprint 10. Abre <em>Patients</em> y entra a un paciente (su nombre o el icono de la ficha).</p>
+  <p>Lo que se agregó en el Sprint 10, con la interfaz rediseñada del Sprint 10.5. Abre <em>Patients</em> y entra a un paciente (haz clic en su fila).</p>
+  <div class="note"><strong>Cómo está organizada la ficha.</strong> Arriba queda <strong>fijo</strong> el nombre, la edad, el consentimiento y el aviso de alergias y medicación, aunque bajes por la página. A la izquierda, una lista de secciones (<em>Summary, Background, Vital signs, Consultations, Appointments, Patient data</em>) lleva a cada parte y marca la que estás leyendo; en el teléfono son botones sobre el contenido. <em>Summary</em> junta de un vistazo lo importante. <em>Timeline</em> es otra pantalla.</div>
   <div class="note"><strong>Quién ve qué.</strong> Los <strong>médicos y el administrador</strong> del consultorio ven y escriben todo lo clínico. La <strong>secretaría no</strong>: ve los datos administrativos y las citas. Un paciente de otro consultorio no existe para quien pregunta. Cada vez que alguien lee o cambia algo clínico queda en <em>Activity Log</em>, sin copiar el contenido.</div>
   <table>
     <tr><th>Qué</th><th>Cómo funciona</th></tr>
     <tr><td><strong>Ficha</strong></td><td>Fecha de nacimiento (con la edad calculada), sexo, dirección, ocupación, contacto de emergencia, seguro y, para menores de 18, el <strong>representante legal</strong>. Si un menor no tiene representante registrado, la ficha lo avisa (no impide guardar). <em>Edit record</em> edita todo en la misma página.</td></tr>
     <tr><td><strong>Alergias y medicación</strong></td><td>Un aviso en rojo arriba de la ficha, y también en la ventana de la cita en la agenda, muestra las alergias activas (con su gravedad) y la medicación habitual: el médico las ve <strong>antes de recetar</strong>. Lo que ya no aplica se marca como resuelto o suspendido y se conserva.</td></tr>
     <tr><td><strong>Antecedentes</strong></td><td>Personales, familiares, quirúrgicos y hábitos, cada uno con una descripción y, si se quiere, cuándo.</td></tr>
-    <tr><td><strong>Nota de consulta</strong></td><td>Desde la cita (<em>Consultation note</em>) o desde la ficha (<em>Write note</em>). Una nota por cita, en el formato SOAP: <strong>S</strong>ubjetivo (lo que cuenta el paciente), <strong>O</strong>bjetivo (lo que se observa y mide), <strong>A</strong>nálisis (la impresión diagnóstica) y <strong>P</strong>lan. Se elige una plantilla (medicina general o pediatría) que solo pone encabezados. Es un <strong>borrador</strong> que <strong>se guarda solo</strong> mientras se escribe; solo su autor lo edita.</td></tr>
-    <tr><td><strong>Cerrar la nota</strong></td><td><em>Close note</em> la deja <strong>definitiva</strong>: ya no se edita ni se borra. Para corregir o completar, cualquier médico o administrador agrega una <strong>adenda</strong>, que queda con su fecha y su autor.</td></tr>
+    <tr><td><strong>Nota de consulta</strong></td><td>Desde la cita (<em>Consultation note</em>) o desde la ficha (<em>Write note</em>). Una nota por cita, en el formato SOAP: <strong>S</strong>ubjetivo (lo que cuenta el paciente), <strong>O</strong>bjetivo (lo que se observa y mide), <strong>A</strong>nálisis (la impresión diagnóstica) y <strong>P</strong>lan. Se elige una plantilla (medicina general o pediatría) que solo pone encabezados. Es un <strong>borrador</strong> que <strong>se guarda solo</strong> mientras se escribe (la barra de abajo dice «Saved…»); solo su autor lo edita. El botón <em>Context</em> abre un panel con los antecedentes y los últimos signos vitales del paciente sin salir de la nota.</td></tr>
+    <tr><td><strong>Cerrar la nota</strong></td><td><em>Close note</em> (en la barra de abajo, con una ventana de confirmación) la deja <strong>definitiva</strong>: ya no se edita ni se borra. Para corregir o completar, cualquier médico o administrador agrega una <strong>adenda</strong>, que queda con su fecha y su autor.</td></tr>
     <tr><td><strong>Diagnósticos</strong></td><td>En la misma nota: se busca por código («E11») o por nombre («diabetes mellitus») en la lista CIE-10, se marca el <strong>principal</strong> y si es presuntivo o definitivo. Si no está en la lista (o la lista aún no está cargada), se escribe como <strong>texto libre</strong>.</td></tr>
   </table>
   <div class="grid2">
-    <figure><img src="img/hc-ficha.jpg"><figcaption>La ficha: el aviso de alergias y medicación arriba, los datos y el botón <em>Timeline</em>.</figcaption></figure>
-    <figure><img src="img/hc-nota.jpg"><figcaption>Una nota de consulta cerrada, con los signos vitales de la visita.</figcaption></figure>
+    <figure><img src="img/hc-ficha.jpg" style="max-height:52mm;width:auto;margin:0 auto"><figcaption>La ficha: cabecera fija con el aviso de alergias y medicación, la lista de secciones a la izquierda y el <em>Summary</em>.</figcaption></figure>
+    <figure><img src="img/hc-nota.jpg" style="max-height:52mm;width:auto;margin:0 auto"><figcaption>Una nota de consulta cerrada: cabecera fija, signos vitales de la visita, el panel de contexto a la derecha y la barra de estado abajo.</figcaption></figure>
   </div>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
@@ -290,16 +291,17 @@
   <h1>1.10 Signos vitales, línea de tiempo y exportación</h1>
   <table>
     <tr><th>Qué</th><th>Cómo funciona</th></tr>
-    <tr><td><strong>Signos vitales</strong></td><td>En la ficha, <em>Vital signs</em> → <em>Record vitals</em> (o <em>Vital signs of this visit</em> dentro de la nota). Se registra cualquier combinación de peso, talla, presión arterial, frecuencia cardíaca y respiratoria, temperatura y saturación de oxígeno, con la fecha en que se midieron. El <strong>IMC</strong> se calcula solo con el peso y la talla de la misma toma. La pantalla muestra el último valor de cada medida con su fecha, <strong>una gráfica por medida</strong> y el historial completo.</td></tr>
+    <tr><td><strong>Signos vitales</strong></td><td>En la ficha, <em>Vital signs</em> → <em>Record vitals</em> (o <em>Vital signs of this visit</em> dentro de la nota). Se registra cualquier combinación de peso, talla, presión arterial, frecuencia cardíaca y respiratoria, temperatura y saturación de oxígeno, con la fecha en que se midieron. El <strong>IMC</strong> se calcula solo con el peso y la talla de la misma toma. La pantalla muestra una <strong>tarjeta por medida</strong> con su último valor, su fecha y <strong>cómo cambió</strong> respecto a la toma anterior; al elegir una tarjeta se ve su <strong>gráfica</strong>, y abajo el historial completo en tabla.</td></tr>
     <tr><td><strong>Qué rechaza</strong></td><td>Solo lo imposible: un peso de 700 kg, una presión con un solo número, una sistólica menor que la diastólica, una fecha futura. No juzga qué es normal.</td></tr>
-    <tr><td><strong>Anular una toma</strong></td><td>Una toma <strong>no se edita ni se borra</strong>. Si fue un error, <em>Void</em> la anula: queda en el historial, tachada y con quién la anuló y por qué, pero sale de las gráficas y de los últimos valores.</td></tr>
-    <tr><td><strong>Línea de tiempo</strong></td><td>El botón <em>Timeline</em> de la ficha reúne, con lo más reciente arriba, las visitas, las notas con sus diagnósticos, las adendas, los signos vitales y los consentimientos del paciente, con filtros y enlaces a la nota de cada visita. No muestra el texto de las notas.</td></tr>
+    <tr><td><strong>Anular una toma</strong></td><td>Una toma <strong>no se edita ni se borra</strong>. Si fue un error, <em>Void</em> la anula (pide un motivo opcional en una ventana): queda en el historial, tachada y con quién la anuló y por qué, pero sale de las gráficas y de los últimos valores.</td></tr>
+    <tr><td><strong>Línea de tiempo</strong></td><td>El botón <em>Timeline</em> de la ficha reúne, con lo más reciente arriba y agrupado por mes, las visitas, las notas con sus diagnósticos, las adendas, los signos vitales y los consentimientos del paciente. Cada evento lleva una insignia con su tipo y su estado (Draft, Closed, Voided…), hay filtros y enlaces a la nota de cada visita. No muestra el texto de las notas.</td></tr>
     <tr><td><strong>Exportar los datos</strong></td><td>Solo el <strong>administrador</strong>: <em>Export PDF</em> (en la ficha o en la lista de pacientes) baja un documento en español, con sus datos, consentimiento, alergias, medicación, antecedentes, signos vitales, notas de consulta completas con diagnósticos y adendas, citas y mensajes enviados, para entregar al paciente que pide su historia. El icono de descarga de JSON sirve para portabilidad. Cada exportación queda en <em>Activity Log</em>.</td></tr>
   </table>
   <div class="grid2">
-    <figure><img src="img/hc-vitales.jpg"><figcaption>Signos vitales: últimos valores, gráfica de presión arterial e historial.</figcaption></figure>
-    <figure><img src="img/hc-timeline.jpg"><figcaption>La línea de tiempo del paciente, por mes.</figcaption></figure>
+    <figure><img src="img/hc-vitales.jpg" style="max-height:60mm;width:auto;margin:0 auto"><figcaption>Signos vitales: una tarjeta por medida con su tendencia, y debajo la gráfica y el historial.</figcaption></figure>
+    <figure><img src="img/hc-timeline.jpg" style="max-height:60mm;width:auto;margin:0 auto"><figcaption>La línea de tiempo: por mes, con la insignia de tipo y estado de cada evento.</figcaption></figure>
   </div>
+  <div class="note"><strong>Desde la agenda.</strong> Al abrir una cita en <em>My Schedule</em>, la ventana trae los enlaces <em>Patient record</em> (todos los roles) y <em>Consultation note</em> (médicos y administrador). Se cierra con Escape.</div>
   <div class="note"><strong>Lo clínico no se borra.</strong> Una nota cerrada y una toma de signos vitales se conservan, y el paciente o la cita que las tengan tampoco se pueden borrar. Por eso, al probar, usa un paciente de prueba.</div>
   <div class="foot">MedCita — Guía completa · Parte 1</div>
 </section>
