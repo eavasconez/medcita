@@ -19,7 +19,17 @@ afterEach(() => {
 });
 afterAll(() => prisma.$disconnect());
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+// The alert goes out after the response, and first looks up the clinic's name in the database, so how
+// long it takes depends on the machine (a CI runner is much slower than a laptop). A fixed pause made
+// this file fail there: wait for the emails the test expects, then a short grace period so an
+// unexpected extra one still shows up.
+const settle = async (expected = 0) => {
+  const deadline = Date.now() + 5000;
+  while (emailService.deliverEmail.mock.calls.length < expected && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 50));
+};
 
 // The real app, with a database that fails halfway: a 500 that a route answered by itself
 describe('the real server', () => {
@@ -28,7 +38,7 @@ describe('the real server', () => {
     jest.spyOn(prisma.patient, 'findMany').mockRejectedValue(Object.assign(new Error('Invalid prisma.patient.findMany() invocation: name = "María Pérez"'), { code: 'P2022' }));
 
     const res = await request(app).get('/api/patients?search=Mar%C3%ADa%20P%C3%A9rez').set(bearer(admin.token));
-    await settle();
+    await settle(1);
 
     expect(res.status).toBe(500);
     expect(emailService.deliverEmail).toHaveBeenCalledTimes(1);
@@ -46,7 +56,7 @@ describe('the real server', () => {
     await hit('a1b2c3');
     await hit('d4e5f6');
     await hit('a1b2c3');
-    await settle();
+    await settle(1);
 
     expect(emailService.deliverEmail).toHaveBeenCalledTimes(1);
     expect(emailService.deliverEmail.mock.calls[0][1]).toBe('[MedCita · Consultorio de pruebas] Error 500 en GET /api/appointments/:id/notifications');
@@ -79,7 +89,7 @@ describe('the real server', () => {
     jest.spyOn(prisma.patient, 'findMany').mockRejectedValue(new Error('boom'));
 
     await request(app).get('/api/patients?search=Mar%C3%ADa').set(bearer(admin.token)).set('Origin', 'https://torres.example.test/pacientes?x=1');
-    await settle();
+    await settle(1);
 
     const [, subject, text] = emailService.deliverEmail.mock.calls[0];
     expect(subject).toBe('[MedCita · Consultorio Torres] Error 500 en GET /api/patients');
@@ -97,7 +107,7 @@ describe('the real server', () => {
     await request(app).get('/api/patients').set(bearer(torres.token));
     await request(app).get('/api/patients').set(bearer(vida.token));
     await request(app).get('/api/patients').set(bearer(torres.token));
-    await settle();
+    await settle(2);
 
     expect(emailService.deliverEmail.mock.calls.map((call) => call[1])).toEqual([
       '[MedCita · Consultorio Torres] Error 500 en GET /api/patients',
@@ -109,7 +119,7 @@ describe('the real server', () => {
     jest.spyOn(prisma.doctor, 'findUnique').mockRejectedValue(new Error('boom'));
 
     const res = await request(app).post('/api/auth/login').send({ email: 'ana@example.test', password: 'x' });
-    await settle();
+    await settle(1);
 
     expect(res.status).toBe(500);
     expect(emailService.deliverEmail.mock.calls[0][2]).toContain('Consultorio: no identificado (la petición no tenía sesión iniciada)');
@@ -126,7 +136,7 @@ describe('the real server', () => {
 
       await request(app).get('/api/patients').set(bearer(owner.token));
       await request(app).get('/api/patients').set(bearer(doctor.token));
-      await settle();
+      await settle(2);
 
       const recipients = emailService.deliverEmail.mock.calls.map((call) => call[0]);
       // one alert (the second request is the same route and clinic within 15 minutes), to each address
