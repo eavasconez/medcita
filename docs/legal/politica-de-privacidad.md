@@ -1,6 +1,6 @@
 # Política de privacidad
 
-**Última actualización: octubre de 2026 · Versión 2026-10-v1**
+**Última actualización: noviembre de 2026 · Versión 2026-11-v1**
 
 MedCita es una plataforma de agenda médica para consultorios y clínicas de Ecuador. Este documento explica qué datos personales trata, para qué, con quién los comparte y qué puedes hacer con ellos.
 
@@ -9,7 +9,7 @@ MedCita es una plataforma de agenda médica para consultorios y clínicas de Ecu
 - **El consultorio** que te atiende es el **responsable del tratamiento** de los datos de sus pacientes: decide qué datos pide y para qué. Para ejercer tus derechos como paciente, dirígete a él.
 - **MedCita** es el **encargado del tratamiento**: guarda y procesa esos datos por cuenta del consultorio, siguiendo sus instrucciones, y no los usa para fines propios.
 - Respecto de **las cuentas del personal** (médicos, secretarias y administradores), el responsable es MedCita.
-- Datos del responsable de MedCita: [PENDIENTE: razón social, RUC, domicilio y correo de contacto].
+- Datos del responsable de MedCita: **{{empresa.razon_social}}**, RUC {{empresa.ruc}}, domicilio {{empresa.domicilio}}, correo {{empresa.correo_privacidad}}, teléfono {{empresa.telefono}}.
 
 ## 2. Qué datos tratamos
 
@@ -25,7 +25,12 @@ MedCita es una plataforma de agenda médica para consultorios y clínicas de Ecu
 - Mantener la seguridad del servicio y detectar accesos indebidos.
 - Atender las solicitudes de los titulares de los datos.
 
-No usamos los datos para publicidad ni los vendemos.
+No usamos los datos para publicidad ni los vendemos. **No tomamos decisiones automatizadas** ni elaboramos perfiles de las personas con ellos.
+
+## 3.1. De dónde vienen los datos y qué pasa si no se entregan
+
+- Los datos de los pacientes **los registra el consultorio** (o el propio paciente al reservar una cita): MedCita no los pide directamente al paciente por otros medios. Los datos del personal los da cada persona al crear su cuenta.
+- Dar los datos es voluntario, pero **sin los datos mínimos** (nombre y un teléfono o correo) el consultorio no puede agendar la cita ni avisarte de ella, y sin el consentimiento para los datos de salud no puede registrar tu historia clínica en MedCita.
 
 ## 4. Base de la que partimos
 
@@ -38,7 +43,7 @@ No usamos los datos para publicidad ni los vendemos.
 
 MedCita usa proveedores tecnológicos para operar. Procesan datos por cuenta nuestra y no pueden usarlos para fines propios:
 
-- **Render**: alojamiento del servidor de la aplicación (Estados Unidos).
+- **Railway y Render**: alojamiento del servidor de la aplicación (Estados Unidos). Mientras dura la migración de uno a otro, el servicio puede estar en cualquiera de los dos.
 - **Neon**: base de datos donde se guarda la información (Estados Unidos).
 - **Meta (WhatsApp Business)**: envío de confirmaciones y recordatorios por WhatsApp.
 - **Brevo**: envío de correos (invitaciones, recuperación de contraseña, avisos). [PENDIENTE: confirmar ubicación.]
@@ -74,21 +79,34 @@ Como titular de tus datos puedes pedir, al consultorio que te atiende:
 
 - **Acceso**: saber qué datos tiene sobre ti y recibir una copia.
 - **Rectificación y actualización**: corregir datos inexactos o desactualizados.
-- **Eliminación**: que se borren, cuando proceda; los datos que la ley obliga a conservar (como la historia clínica) no pueden borrarse antes de su plazo.
+- **Eliminación** (cómo pedirla: {{empresa.sitio}}/data-deletion): que se borren, cuando proceda; los datos que la ley obliga a conservar (como la historia clínica) no pueden borrarse antes de su plazo.
 - **Oposición** a un tratamiento y **suspensión** del tratamiento, cuando proceda.
 - **Portabilidad**: recibir tus datos en un formato que se pueda reutilizar.
 - **Retirar tu consentimiento** en cualquier momento, sin que afecte tu atención de salud.
 
 Si sientes que no se respetaron tus derechos, puedes reclamar ante la **Superintendencia de Protección de Datos Personales**.
 
-## 10. Menores de edad
+## 10. WhatsApp y correo
+
+- **Solo mensajes de la cita.** Enviamos por WhatsApp y por correo la confirmación y el recordatorio de una cita: nombre del paciente, fecha, hora, médico y, si el consultorio lo configura, la dirección. **Nunca enviamos diagnósticos, resultados, recetas ni datos clínicos**, y no pedimos datos sensibles por esos canales.
+- **Permiso previo.** El consultorio solo debe escribir a quien le dio su número y su consentimiento. El paciente puede responder al recordatorio con los botones «Confirmo», «Cancelar» o «Cambiar hora»; un mensaje de texto libre no se interpreta ni se guarda.
+- **Dejar de recibir mensajes.** Pídelo al consultorio o escribe a {{empresa.correo_privacidad}}: dejarán de agendarte mensajes. Hoy no hay un comando automático para darse de baja desde el chat.
+- WhatsApp es un servicio de Meta, que trata los mensajes según sus propias condiciones. MedCita no recibe datos de tu perfil de WhatsApp: solo el número que el consultorio registró.
+
+## 11. Almacenamiento en tu navegador
+
+MedCita **no usa cookies de seguimiento, ni publicidad, ni herramientas de analítica**. Para el personal que inicia sesión, la aplicación guarda en el almacenamiento local del navegador lo necesario para funcionar: la sesión (que caduca), los datos básicos del usuario y, por cuenta y consultorio, los últimos pacientes abiertos (solo identificador y nombre). Todo se borra al cerrar sesión. Las páginas públicas, como esta, no guardan nada.
+
+## 12. Menores de edad
 
 [PENDIENTE de revisión legal: tratamiento de datos de niños y adolescentes y quién da el consentimiento por ellos.]
 
-## 11. Cambios en esta política
+## 13. Cambios en esta política
 
 Si cambia, publicaremos aquí la versión nueva con su fecha. Si el cambio afecta al consentimiento de los pacientes, el consultorio volverá a pedirlo.
 
-## 12. Contacto
+## 14. Contacto
 
-[PENDIENTE: correo y dirección de contacto para asuntos de privacidad y, si corresponde, del delegado de protección de datos.]
+Para asuntos de privacidad: **{{empresa.correo_privacidad}}** ({{empresa.razon_social}}, {{empresa.domicilio}}). Más datos en {{empresa.sitio}}/contact. Para pedir que se eliminen tus datos, mira las instrucciones en {{empresa.sitio}}/data-deletion.
+
+[PENDIENTE de revisión legal: si corresponde designar un delegado de protección de datos.]

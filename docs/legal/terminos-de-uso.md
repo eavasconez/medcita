@@ -1,6 +1,6 @@
 # Términos de uso
 
-**Última actualización: octubre de 2026 · Versión 2026-10-v1**
+**Última actualización: noviembre de 2026 · Versión 2026-11-v1**
 
 Estos términos regulan el uso de MedCita por parte de los consultorios y su personal. Al crear una cuenta o aceptar una invitación, la persona declara haberlos leído.
 
@@ -54,4 +54,4 @@ Podemos actualizar estos términos y publicaremos la versión nueva con su fecha
 
 ## 12. Contacto
 
-[PENDIENTE: razón social, RUC, domicilio y correo de contacto.]
+**{{empresa.razon_social}}**, RUC {{empresa.ruc}}, domicilio {{empresa.domicilio}}, correo {{empresa.correo_privacidad}}, teléfono {{empresa.telefono}}.

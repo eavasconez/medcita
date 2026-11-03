@@ -10,6 +10,9 @@ Marco de referencia: la **Ley Orgánica de Protección de Datos Personales (LOPD
 |---|---|---|
 | [`politica-de-privacidad.md`](politica-de-privacidad.md) | Quien use MedCita y los pacientes | Pública en la app: `/privacy` |
 | [`terminos-de-uso.md`](terminos-de-uso.md) | Los consultorios que usan MedCita | Pública en la app: `/terms` |
+| [`eliminacion-de-datos.md`](eliminacion-de-datos.md) | Pacientes y personal que piden borrar sus datos | Pública en la app: `/data-deletion` (la *Data Deletion Instructions URL* que pide Meta) |
+| [`contacto.md`](contacto.md) | Cualquier persona | Pública en la app: `/contact` |
+| [`empresa.json`](empresa.json) | Los datos de la empresa (razón social, RUC, domicilio, correo, teléfono, sitio) | Los textos los escriben como `{{empresa.campo}}` y la app los rellena. **Hoy son de referencia**: se cambian aquí y cambian en todas las páginas |
 | [`consentimiento-datos-salud.md`](consentimiento-datos-salud.md) | El paciente (se imprime o se muestra en pantalla) | Su texto sale de `backend/src/legal/healthDataConsent.js`; en Pacientes → «Consent» |
 | [`procedimiento-derechos-de-titulares.md`](procedimiento-derechos-de-titulares.md) | El consultorio, cuando un paciente pide sus datos | Interno; la exportación es `GET /api/patients/:id/export` |
 | [`procedimiento-brechas.md`](procedimiento-brechas.md) | El equipo, ante un incidente de seguridad | Interno |
@@ -17,6 +20,7 @@ Marco de referencia: la **Ley Orgánica de Protección de Datos Personales (LOPD
 
 ## Cómo se conectan con la aplicación
 
+- **Páginas públicas.** Además de `/privacy` y `/terms`, la app publica `/` (inicio), `/data-deletion` y `/contact`, todas sin iniciar sesión y con el mismo pie de enlaces. Meta pide que la política sea pública, sin login ni bloqueo por país y que explique cómo pedir la eliminación de los datos; esa explicación está en `/data-deletion`.
 - **Texto único.** La política y los términos se muestran en la app desde estos mismos archivos: editar el `.md` cambia lo que se ve en `/privacy` y `/terms` en el siguiente despliegue. Mientras la bandera `LEGAL_REVIEWED` de `frontend/src/config/legal.js` sea `false`, ambas pantallas muestran un aviso de «borrador pendiente de revisión legal». **Cuando el abogado apruebe, se cambia a `true`.**
 - **Ojo al desplegar.** El frontend lee estos archivos al *compilarse*. Render, con *Root Directory* `frontend`, puede no volver a desplegar el sitio si solo cambió `docs/legal/`: en el Static Site, *Settings → Build Filters*, agrega `docs/legal/**` a las rutas que disparan un despliegue (o lanza un *Manual Deploy*).
 - **Consentimiento con versión.** Cada consentimiento guarda la versión del texto que el paciente leyó (`2026-10-v1`). Si el texto cambia, se cambia la versión en `healthDataConsent.js` y, en `consentimiento-datos-salud.md`, la misma línea: los pacientes que aceptaron la versión anterior aparecen como «desactualizados» en la app, sin perder su registro. Una prueba (`backend/tests/legalDocs.test.js`) falla si el `.md` y el código dicen cosas distintas.

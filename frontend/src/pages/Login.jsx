@@ -159,6 +159,10 @@ const Login = () => {
               <Link to="/privacy" className="hover:text-primary hover:underline underline-offset-4">Privacy policy</Link>
               {' · '}
               <Link to="/terms" className="hover:text-primary hover:underline underline-offset-4">Terms of use</Link>
+              {' · '}
+              <Link to="/data-deletion" className="hover:text-primary hover:underline underline-offset-4">Data deletion</Link>
+              {' · '}
+              <Link to="/contact" className="hover:text-primary hover:underline underline-offset-4">Contact</Link>
             </p>
             <div className="pt-6 border-t border-slate-50">
               <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest mb-2">Demo Quick Access</p>

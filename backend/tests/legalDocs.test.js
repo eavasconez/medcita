@@ -23,10 +23,43 @@ describe('docs/legal/consentimiento-datos-salud.md', () => {
   });
 });
 
+const PUBLIC_DOCS = ['politica-de-privacidad.md', 'terminos-de-uso.md', 'eliminacion-de-datos.md', 'contacto.md'];
+const company = JSON.parse(read('empresa.json'));
+
 describe('the public documents', () => {
-  it.each(['politica-de-privacidad.md', 'terminos-de-uso.md'])('%s carries its version and a title', (file) => {
+  it.each(['politica-de-privacidad.md', 'terminos-de-uso.md', 'eliminacion-de-datos.md'])('%s carries its version and a title', (file) => {
     const text = read(file);
     expect(text).toMatch(/^# .+/);
-    expect(text).toMatch(/Versión 2026-10-v1/);
+    expect(text).toMatch(/Versión 2026-11-v1/);
+  });
+
+  it('contacto.md carries a title', () => {
+    expect(read('contacto.md')).toMatch(/^# .+/);
+  });
+
+  // The pages write the company's details as {{empresa.campo}} and the app fills them from
+  // empresa.json: a token without a field would reach the public page as raw text.
+  it.each(PUBLIC_DOCS)('%s only uses company fields that exist in empresa.json', (file) => {
+    const tokens = [...read(file).matchAll(/\{\{empresa\.([a-z_]+)\}\}/g)].map((m) => m[1]);
+    expect(tokens.length).toBeGreaterThan(0);
+    for (const key of tokens) expect(company).toHaveProperty(key);
+  });
+
+  it('empresa.json has every field the pages need, all filled in', () => {
+    for (const key of ['razon_social', 'ruc', 'domicilio', 'correo_privacidad', 'telefono', 'sitio']) {
+      expect(typeof company[key]).toBe('string');
+      expect(company[key].trim()).not.toBe('');
+    }
+    expect(company.sitio).toMatch(/^https:\/\/[^/]+$/);
+  });
+
+  it('the privacy policy tells people how to ask for their data to be deleted and where', () => {
+    const text = read('politica-de-privacidad.md');
+    expect(text).toContain('{{empresa.sitio}}/data-deletion');
+    expect(text).toContain('{{empresa.correo_privacidad}}');
+  });
+
+  it('the privacy policy does not name a hosting provider the project stopped using', () => {
+    expect(read('politica-de-privacidad.md')).toMatch(/Railway/);
   });
 });

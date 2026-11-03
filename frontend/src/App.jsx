@@ -27,6 +27,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Reports = lazy(() => import('./pages/Reports'));
 const AuditLog = lazy(() => import('./pages/AuditLog'));
 const LegalDocument = lazy(() => import('./pages/LegalDocument'));
+const Home = lazy(() => import('./pages/Home'));
 
 
 // React.lazy() rejects (e.g. a chunk fails to load after a new deploy ships
@@ -175,6 +176,7 @@ function App() {
             <RouteErrorBoundary>
               <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
                 <Routes>
+                  <Route path="/" element={!token ? <Home /> : <Navigate to="/dashboard" />} />
                   <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
                   <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
                   <Route path="/forgot-password" element={!token ? <ForgotPassword /> : <Navigate to="/dashboard" />} />
@@ -182,6 +184,8 @@ function App() {
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/privacy" element={<LegalDocument document="privacy" />} />
                   <Route path="/terms" element={<LegalDocument document="terms" />} />
+                  <Route path="/data-deletion" element={<LegalDocument document="deletion" />} />
+                  <Route path="/contact" element={<LegalDocument document="contact" />} />
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/accept-invitation" element={<AcceptInvitation />} />
                   <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />

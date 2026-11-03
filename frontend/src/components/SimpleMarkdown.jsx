@@ -2,14 +2,21 @@ import React from 'react';
 import { parseBlocks } from '../utils/markdown';
 
 // Just enough Markdown for the legal documents in docs/legal/: headings (#, ##, ###),
-// paragraphs, "- " lists and **bold**. No HTML is ever injected: the text is rendered as
+// paragraphs, "- " lists, **bold** and plain links (https://… and e-mail addresses). No HTML is ever injected: the text is rendered as
 // React nodes. Anything it does not know is shown as plain text.
+const LINK_CLASS = 'text-primary font-bold hover:underline break-words';
+const TOKEN = /(\*\*[^*]+\*\*|https?:\/\/[^\s)]+[^\s).,;:]|[\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g;
+
 function inline(text, keyPrefix) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') && part.length > 4
-      ? <strong key={`${keyPrefix}-${i}`} className="font-bold text-secondary">{part.slice(2, -2)}</strong>
-      : <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>
-  );
+  return text.split(TOKEN).map((part, i) => {
+    const key = `${keyPrefix}-${i}`;
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={key} className="font-bold text-secondary">{part.slice(2, -2)}</strong>;
+    }
+    if (/^https?:\/\//.test(part)) return <a key={key} href={part} className={LINK_CLASS}>{part}</a>;
+    if (/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(part)) return <a key={key} href={`mailto:${part}`} className={LINK_CLASS}>{part}</a>;
+    return <React.Fragment key={key}>{part}</React.Fragment>;
+  });
 }
 
 const SimpleMarkdown = ({ source }) => (
