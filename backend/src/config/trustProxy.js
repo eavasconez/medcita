@@ -1,3 +1,5 @@
+const { onRender, onRailway } = require('./hosting');
+
 // How many reverse proxies sit between the internet and this app. Express only
 // reads the real client IP out of X-Forwarded-For correctly when it knows this
 // number; the per-IP rate limits depend on it.
@@ -7,17 +9,21 @@
 // the client is the 3rd address from the right (with 2 the app saw Cloudflare's
 // address, which put it in the activity log and made every user behind that
 // address share the per-IP limits). Render sets RENDER=true, which is used as the
-// default there. Override with TRUST_PROXY and
+// default there. Railway has a single proxy in front of the service (checked on
+// Hamacaland, another Kodffe project, which runs with TRUST_PROXY=1), so that is the default
+// there. Override with TRUST_PROXY and
 // verify with GET /api/admin/client-ip (admin only): `ip` must be your own
 // public IP. Too low and every user looks like a proxy address; too high and
 // clients can spoof their IP through the header.
 const RENDER_PROXY_HOPS = 3;
+const RAILWAY_PROXY_HOPS = 1;
 
 function resolveTrustProxy(env = process.env) {
   const raw = env.TRUST_PROXY;
 
   if (raw === undefined || raw === '') {
-    return env.RENDER ? RENDER_PROXY_HOPS : false;
+    if (onRender(env)) return RENDER_PROXY_HOPS;
+    return onRailway(env) ? RAILWAY_PROXY_HOPS : false;
   }
   if (raw === 'false' || raw === '0') return false;
   if (/^[1-9]\d?$/.test(raw)) return Number(raw);
@@ -28,4 +34,4 @@ function resolveTrustProxy(env = process.env) {
   );
 }
 
-module.exports = { resolveTrustProxy, RENDER_PROXY_HOPS };
+module.exports = { resolveTrustProxy, RENDER_PROXY_HOPS, RAILWAY_PROXY_HOPS };

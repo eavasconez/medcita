@@ -318,7 +318,8 @@ describe('QA mode (EXPOSE_ACCOUNT_LINKS)', () => {
 
   it.each([
     ['NODE_ENV=production', { NODE_ENV: 'production' }],
-    ['running on Render', { RENDER: 'true' }]
+    ['running on Render', { RENDER: 'true' }],
+    ['running on Railway', { RAILWAY_PROJECT_ID: 'abc' }]
   ])('makes the server refuse to start when %s', (_label, env) => {
     const run = () =>
       execFileSync(process.execPath, ['-e', "require('./src/server')"], {

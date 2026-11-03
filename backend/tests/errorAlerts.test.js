@@ -54,6 +54,25 @@ describe('routePattern', () => {
   });
 });
 
+describe('which service an alert names', () => {
+  it('names the Railway service and the short commit of a deploy from GitHub', async () => {
+    const { alerts, sent } = setup({ emails: 'ops@example.test', env: { RAILWAY_SERVICE_NAME: 'medcita-demo', RAILWAY_GIT_COMMIT_SHA: '0123456789abcdef' } });
+
+    await alerts.report({ ...failure, error: null });
+
+    expect(sent[0].text).toContain('Servicio: medcita-demo · versión 0123456');
+  });
+
+  it('says "local" with no version when no platform names it', async () => {
+    const { alerts, sent } = setup({ emails: 'ops@example.test' });
+
+    await alerts.report({ ...failure, error: null });
+
+    expect(sent[0].text).toContain('Servicio: local\n');
+    expect(sent[0].text).not.toContain('versión');
+  });
+});
+
 describe('report', () => {
   it('emails every recipient: which route failed, the kind of error and where to look', async () => {
     const { alerts, sent } = setup({ emails: 'ops@example.test,dev@example.test', env: { RENDER_SERVICE_NAME: 'medcita-backend', RENDER_GIT_COMMIT: 'abcdef1234567890' } });

@@ -20,6 +20,8 @@ const webhookRoutes = require('./routes/webhooks');
 const { webhookIpLimiter } = require('./middleware/rateLimiters');
 const authMiddleware = require('./middleware/auth');
 const { resolveTrustProxy } = require('./config/trustProxy');
+const { isHosted } = require('./config/hosting');
+const { webApp } = require('./middleware/webApp');
 const cron = require('node-cron');
 const { sendReminders } = require('./tasks/reminderTask');
 const { getSchemaStatus, logSchemaStatus } = require('./services/schemaCheck');
@@ -49,7 +51,7 @@ if (
 // QA mode that returns emailed links in the response (see utils/tokens.js): it
 // would let anyone confirm an email that is not theirs, so a hosted service refuses
 // to start with it on, even if somebody sets the variable by mistake.
-if (process.env.EXPOSE_ACCOUNT_LINKS === 'true' && (process.env.NODE_ENV === 'production' || process.env.RENDER)) {
+if (process.env.EXPOSE_ACCOUNT_LINKS === 'true' && (process.env.NODE_ENV === 'production' || isHosted())) {
   console.error('FATAL: EXPOSE_ACCOUNT_LINKS=true is only for local QA and cannot be used in production.');
   process.exit(1);
 }
@@ -72,7 +74,21 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim());
 app.use(cors({ origin: allowedOrigins }));
-app.use(helmet());
+// The web app is served from here too (middleware/webApp.js), so the policy that goes with its pages has to
+// let it show what it uses: the letterhead's logo, signature and seal come from the private bucket as a
+// short-lived signed https URL, and the PDFs the app opens come as blob: addresses.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+        'object-src': ["'self'", 'blob:'],
+        'frame-src': ["'self'", 'blob:']
+      }
+    }
+  })
+);
 // Request logging is noise in the test output
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.use(errorAlerts.middleware);
@@ -122,6 +138,9 @@ app.post('/api/tasks/reminders', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Reminders task failed' });
   }
 });
+
+// The web app itself: its files, and its index.html for every page address (see middleware/webApp.js)
+app.use(webApp());
 
 // Last of all: an error no route dealt with ends here (and is alerted) instead of in Express's own page
 app.use(errorAlerts.errorHandler);

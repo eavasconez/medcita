@@ -1,4 +1,4 @@
-// A server error (500) is only visible in Render's logs, so one can go on unnoticed until a user
+// A server error (500) is only visible in the hosting platform's logs, so one can go on unnoticed until a user
 // complains. This emails whoever runs the platform when a request ends in a 5xx (S9-08): which
 // route, WHERE IN THE CODE it happened (file and line), what kind of error, and an id to find the
 // full message in the logs.
@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const prisma = require('../config/prisma');
 const emailService = require('./emailService');
+const { serviceName, serviceVersion } = require('../config/hosting');
 
 const MIN_MINUTES_PER_ROUTE = 15;
 const MAX_ALERTS_PER_HOUR = 10;
@@ -196,7 +197,7 @@ function buildAlert({ method, route, status, error, requestId, clinic, origin, a
     ...(error?.details || []).map((detail) => `Detalle del esquema: ${detail}`),
     error?.frames?.length > 1 ? `Pila (solo código de MedCita):\n${error.frames.map((frame) => `  ${frame.where}${frame.fn ? ` (${frame.fn})` : ''}`).join('\n')}` : null,
     held > 0 ? `Desde el último aviso de esta ruta hubo ${held} error${held === 1 ? '' : 'es'} más.` : null,
-    `Servicio: ${env.RENDER_SERVICE_NAME || 'local'}${env.RENDER_GIT_COMMIT ? ` · versión ${String(env.RENDER_GIT_COMMIT).slice(0, 7)}` : ''}`,
+    `Servicio: ${serviceName(env)}${serviceVersion(env) ? ` · versión ${String(serviceVersion(env)).slice(0, 7)}` : ''}`,
     `Hora (UTC): ${new Date().toISOString()}`,
     requestId ? `Id de la petición: ${requestId} — búscalo en los logs de Render para ver el mensaje completo del error.` : 'Revisa los logs del servicio en Render para ver el mensaje completo del error.',
     'Este aviso no incluye datos de pacientes ni de la petición, ni el mensaje del error.'
