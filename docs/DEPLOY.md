@@ -679,6 +679,34 @@ Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma 
 - **Prueba de humo tras desplegar:** registrar un correo propio en `/register`, abrir el enlace del correo y comprobar que entra al consultorio nuevo; invitar a otro correo propio y aceptar la invitación.
 - Las cuentas ya existentes no cambian. Una migración nueva crea las tablas `SignupRequest` e `Invitation` (no toca datos).
 
+## Nombre y dominios (S12-01)
+
+> **Estado: decidido el 3-nov-2026 (acuerdo con Kodffe por chat).** El nombre es MedCita y el dominio `medcita.kodffe.com`. Ningún entorno de producción los usa todavía: el DNS lo configura Kodffe cuando se migre el despliegue.
+
+**Nombre de la aplicación: MedCita** (se descarta MedCity).
+
+- Es el nombre que ya usan el código, la app de Meta «MedCita», las plantillas de WhatsApp (`cita_confirmada`, `recordatorio_cita`), los correos y los documentos legales. Cambiarlo obliga a pedir otra vez la aprobación de las plantillas y del nombre visible del número de WhatsApp.
+- «Cita» es la palabra del mercado ecuatoriano. «MedCity» es poco distintivo y choca con marcas existentes del sector salud, como *MedCity News*.
+
+| Entorno | Sitio | API |
+|---|---|---|
+| Demo en Railway (cuenta personal, S12-04) | `medcita-demo.up.railway.app` | `medcita-demo-api.up.railway.app` |
+| Producción actual (Render) | URL `onrender.com` del paso 4 | URL `onrender.com` del paso 3 |
+| Producción en Kodffe (futuro) | `medcita.kodffe.com` | `api.medcita.kodffe.com` |
+
+**Qué hay que tocar cuando se confirme el dominio final**
+
+- DNS de `kodffe.com`: un `CNAME` para `medcita` y otro para `api.medcita` hacia los destinos que indique el hosting, más los registros `TXT` de verificación (Google Search Console y Meta). Los administra quien lleve el DNS de Kodffe.
+- Backend: `FRONTEND_URL=https://medcita.kodffe.com` (CORS y enlaces de los correos).
+- Frontend: `VITE_API_URL=https://api.medcita.kodffe.com`, que se lee al compilar.
+- Meta (app «MedCita»): las URL de privacidad, términos y eliminación de datos pasan a `https://medcita.kodffe.com/privacy`, `/terms` y `/data-deletion` (S12-02 y S12-03).
+- Un solo dominio para indexar: el demo y el staging no se indexan (S12-03).
+
+**Datos de la empresa: genéricos por ahora.** Kodffe indicó que no cuenta con razón social, RUC, domicilio, correo de privacidad ni teléfono propios del proyecto, y pidió usar datos genéricos. Se usan en las páginas legales (S12-02) como valores de relleno identificables, concentrados en un solo lugar para cambiarlos de una vez.
+
+- Sirven para el demo y para publicar las páginas. **No bastan para la verificación del negocio en Meta**, que pide que el nombre legal, el domicilio y el contacto del sitio coincidan con los documentos de una empresa real. Cuando exista esa entidad, se reemplazan los valores y se pide la verificación.
+- Mientras tanto no se inventan datos que parezcan reales (un RUC, una dirección o un teléfono que puedan pertenecer a otra persona).
+
 ## Ramas: `main` es producción, `develop` es donde se integra
 
 - **`main`** es lo que corre en producción (Render despliega de ahí). Solo recibe lo que ya se probó.
