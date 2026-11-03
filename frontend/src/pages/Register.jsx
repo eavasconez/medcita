@@ -166,6 +166,10 @@ const Register = () => {
             <Link to="/terms" className="text-primary font-bold hover:underline">Terms of use</Link>
             {' '}and the{' '}
             <Link to="/privacy" className="text-primary font-bold hover:underline">Privacy policy</Link>.
+            {' '}
+            <Link to="/data-deletion" className="hover:text-primary hover:underline">Data deletion</Link>
+            {' · '}
+            <Link to="/contact" className="hover:text-primary hover:underline">Contact</Link>
           </p>
         </form>
 
