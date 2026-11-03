@@ -15,6 +15,7 @@ const platformRoutes = require('./routes/platform');
 const appointmentTypeRoutes = require('./routes/appointmentTypes');
 const diagnosisRoutes = require('./routes/diagnoses');
 const scheduleBlockRoutes = require('./routes/scheduleBlocks');
+const letterheadRoutes = require('./routes/letterhead');
 const webhookRoutes = require('./routes/webhooks');
 const { webhookIpLimiter } = require('./middleware/rateLimiters');
 const authMiddleware = require('./middleware/auth');
@@ -77,6 +78,9 @@ if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.use(errorAlerts.middleware);
 // The webhooks read their own body (the signature covers its exact bytes), so they come before express.json()
 app.use('/api/webhooks', webhookIpLimiter, webhookRoutes);
+// The images of the letterhead come as base64 in the body, past the default 100 KB limit: this one
+// route reads its own, and only after the person is known (S11-01)
+app.use('/api/letterhead', authMiddleware, express.json({ limit: '1mb' }), letterheadRoutes);
 app.use(express.json());
 
 // Unauthenticated health check - gives uptime monitors (and any future

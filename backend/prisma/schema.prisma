@@ -21,6 +21,11 @@ model Clinic {
 
   // Where the clinic is, for the reminders ("Dirección")
   address   String?
+  // The letterhead of the documents (S11-01): contact data and the logo, an image in the private
+  // bucket of which only the key is kept
+  phone     String?
+  email     String?
+  logoKey   String?
   // Appointment reminders (S9-03). The defaults are what every clinic did before they were
   // configurable: one WhatsApp and one email, 24 hours before.
   reminderEnabled     Boolean @default(true)
@@ -59,6 +64,15 @@ model Doctor {
   specialty           String?
   bio                 String?
   address             String?
+  // What goes on the documents this doctor issues (S11-01): the title printed before the name
+  // ("Dr.", "Dra."), the professional registration number and the contact for the letterhead.
+  // The signature and the seal are images in the private bucket: only their key is kept here.
+  title               String?
+  licenseNumber       String?
+  phone               String?
+  contactEmail        String?
+  signatureKey        String?
+  sealKey             String?
   // When the password last changed; tokens issued before it stop working
   passwordChangedAt   DateTime?
   clinicId            String

@@ -5,6 +5,8 @@ import Layout from '../components/Layout';
 import { AuthContext } from '../AuthContext';
 import AppointmentTypesCard from '../components/AppointmentTypesCard';
 import ReminderSettingsCard from '../components/ReminderSettingsCard';
+import LetterheadCard from '../components/LetterheadCard';
+import { canViewClinical } from '../utils/clinicalAccess';
 import { useToast } from '../components/ui';
 import {
   User,
@@ -284,6 +286,8 @@ const Settings = () => {
             {displayRole === 'admin' && <AppointmentTypesCard onMessage={showToast} />}
 
             {displayRole === 'admin' && <ReminderSettingsCard onMessage={showToast} />}
+
+            {canViewClinical(user) && <LetterheadCard onMessage={showToast} />}
 
             <div className="card sm:p-10">
               <div className="flex items-center gap-4 mb-8">

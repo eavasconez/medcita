@@ -17,7 +17,7 @@ const AUDIT_ACTIONS = [
   'login', 'login_failed', 'password_change', 'password_reset',
   'read'
 ];
-const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum', 'patient_vitals'];
+const AUDIT_ENTITIES = ['appointment', 'patient', 'user', 'invitation', 'consent', 'patient_export', 'appointment_type', 'schedule_block', 'reminder_settings', 'clinical_record', 'patient_allergy', 'patient_medication', 'patient_background', 'consultation_note', 'consultation_addendum', 'patient_vitals', 'professional_profile', 'letterhead'];
 
 // The fields worth watching per entity. A `shown` field keeps its before/after
 // values; a `hidden` one only says that it changed. Contact data of patients,
@@ -54,6 +54,10 @@ const FIELDS = {
   consultation_addendum: { shown: ['noteId'], hidden: ['text'] },
   // A set of vital signs (S10-06): which patient and visit; the measurements themselves never go in
   patient_vitals: { shown: ['patientId', 'appointmentId'], hidden: ['weightKg', 'heightCm', 'systolic', 'diastolic', 'heartRate', 'respiratoryRate', 'temperatureC', 'oxygenSaturation', 'voidReason'] },
+  // What a doctor prints on their documents (S11-01) and the letterhead of the clinic: only that it
+  // changed, and which image (logo, signature, seal) was uploaded or removed; never the image
+  professional_profile: { shown: [], hidden: ['title', 'licenseNumber', 'phone', 'contactEmail'] },
+  letterhead: { shown: ['kind'], hidden: ['phone', 'email', 'address'] },
   reminder_settings: { shown: ['reminderEnabled', 'reminderHours', 'secondReminderHours', 'reminderWhatsapp', 'reminderEmail'], hidden: ['address', 'reminderIndications'] }
 };
 
