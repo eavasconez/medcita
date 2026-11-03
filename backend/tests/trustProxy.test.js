@@ -1,6 +1,6 @@
 const request = require('supertest');
 const app = require('../src/server');
-const { resolveTrustProxy, RENDER_PROXY_HOPS } = require('../src/config/trustProxy');
+const { resolveTrustProxy, RENDER_PROXY_HOPS, RAILWAY_PROXY_HOPS } = require('../src/config/trustProxy');
 const { prisma, resetDb } = require('./helpers/db');
 const { createUser, bearer } = require('./helpers/factories');
 
@@ -13,6 +13,19 @@ describe('resolveTrustProxy', () => {
   it('assumes the Cloudflare + Render load balancers chain on Render (3 hops since Oct 2026)', () => {
     expect(RENDER_PROXY_HOPS).toBe(3);
     expect(resolveTrustProxy({ RENDER: 'true' })).toBe(3);
+  });
+
+  it.each([
+    ['RAILWAY_PROJECT_ID', { RAILWAY_PROJECT_ID: 'abc' }],
+    ['RAILWAY_ENVIRONMENT_NAME', { RAILWAY_ENVIRONMENT_NAME: 'production' }]
+  ])('assumes the single Railway proxy on Railway (%s is set)', (_name, env) => {
+    expect(RAILWAY_PROXY_HOPS).toBe(1);
+    expect(resolveTrustProxy(env)).toBe(1);
+  });
+
+  it('lets TRUST_PROXY override the Railway default', () => {
+    expect(resolveTrustProxy({ RAILWAY_PROJECT_ID: 'abc', TRUST_PROXY: '2' })).toBe(2);
+    expect(resolveTrustProxy({ RAILWAY_PROJECT_ID: 'abc', TRUST_PROXY: 'false' })).toBe(false);
   });
 
   it.each([

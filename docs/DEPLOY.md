@@ -690,22 +690,104 @@ Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma 
 
 | Entorno | Sitio | API |
 |---|---|---|
-| Demo en Railway (cuenta personal, S12-04) | `medcita-demo.up.railway.app` | `medcita-demo-api.up.railway.app` |
+| Demo en Railway (cuenta personal, S12-04) | `medcita-demo.up.railway.app` | La misma dirección, en `/api` |
 | Producción actual (Render) | URL `onrender.com` del paso 4 | URL `onrender.com` del paso 3 |
-| Producción en Kodffe (futuro) | `medcita.kodffe.com` | `api.medcita.kodffe.com` |
+| Producción en Kodffe (futuro) | `medcita.kodffe.com` | La misma dirección, en `/api` |
+
+Desde S12-04 el sitio y la API van en **un solo servicio y una sola dirección** (sección «Railway»): no hay un `api.medcita.kodffe.com` aparte.
 
 **Qué hay que tocar cuando se confirme el dominio final**
 
-- DNS de `kodffe.com`: un `CNAME` para `medcita` y otro para `api.medcita` hacia los destinos que indique el hosting, más los registros `TXT` de verificación (Google Search Console y Meta). Los administra quien lleve el DNS de Kodffe.
-- Backend: `FRONTEND_URL=https://medcita.kodffe.com` (CORS y enlaces de los correos).
-- Frontend: `VITE_API_URL=https://api.medcita.kodffe.com`, que se lee al compilar.
-- Meta (app «MedCita»): las URL de privacidad, términos y eliminación de datos pasan a `https://medcita.kodffe.com/privacy`, `/terms` y `/data-deletion` (S12-02 y S12-03).
+- DNS de `kodffe.com`: un `CNAME` para `medcita` hacia el destino que indique el hosting, más los registros `TXT` de verificación (Google Search Console y Meta). Los administra quien lleve el DNS de Kodffe.
+- Servicio: `FRONTEND_URL=https://medcita.kodffe.com` (enlaces de los correos). `VITE_API_URL` no se define: el sitio llama a la dirección desde la que se cargó.
+- Meta (app «MedCita»): las URL de privacidad, términos y eliminación de datos pasan a `https://medcita.kodffe.com/privacy`, `/terms` y `/data-deletion` (S12-02 y S12-03), y la del webhook de WhatsApp a `https://medcita.kodffe.com/api/webhooks/whatsapp`.
 - Un solo dominio para indexar: el demo y el staging no se indexan (S12-03).
 
 **Datos de la empresa: genéricos por ahora.** Kodffe indicó que no cuenta con razón social, RUC, domicilio, correo de privacidad ni teléfono propios del proyecto, y pidió usar datos genéricos. Se usan en las páginas legales (S12-02) como valores de relleno identificables, concentrados en un solo lugar para cambiarlos de una vez.
 
 - Sirven para el demo y para publicar las páginas. **No bastan para la verificación del negocio en Meta**, que pide que el nombre legal, el domicilio y el contacto del sitio coincidan con los documentos de una empresa real. Cuando exista esa entidad, se reemplazan los valores y se pide la verificación.
 - Mientras tanto no se inventan datos que parezcan reales (un RUC, una dirección o un teléfono que puedan pertenecer a otra persona).
+
+## Railway (S12-04): demo `medcita-demo`
+
+MedCita también se despliega en **Railway**, con **un solo servicio** que corre la API y sirve el sitio compilado (`frontend/dist`), de modo que el sitio y `/api` comparten una dirección: sin CORS entre ellos, sin `VITE_API_URL` y un servicio menos que pagar. Es la misma forma que ya usa otro proyecto de Kodffe en Railway: plan Hobby, región US East (Virginia) y la configuración en el repositorio, en `.railway/railway.ts`. Render sigue sirviendo producción (secciones 1 a 6) mientras no se migre.
+
+> **Por qué `railway.ts` y no `railway.json`.** Railway marcó `railway.json` como obsoleto: los archivos existentes [dejan de leerse el 1-dic-2026](https://docs.railway.com/infrastructure-as-code). Su reemplazo es `.railway/railway.ts` (paquete `railway`, `railway/iac`).
+
+### Qué hay en el repositorio
+
+| Archivo | Para qué |
+|---|---|
+| `.railway/railway.ts` | El servicio `medcita-demo` (fuente `develop`, compilación con Railpack, arranque, healthcheck `/api/health`, `preDeploy` de las migraciones, una réplica en US East, dominio `medcita-demo.up.railway.app`) y su Postgres. Los valores de las variables **no** están aquí: cada una va con `preserve()` y su valor vive en Railway |
+| `package.json` (raíz) | Solo scripts: `build` (instala el backend y el frontend y compila el sitio), `start` (arranca el backend con `NODE_ENV=production`) y `migrate`. MedCita no tenía uno y Railpack lo necesita para detectar el proyecto |
+| `backend/src/middleware/webApp.js` | El backend sirve `frontend/dist`: los archivos de `/assets` con caché de un año, lo demás sin caché, y `index.html` para cualquier dirección de página (`/privacy`, `/patients/42`…). La API y los archivos que no existen siguen dando 404. Si no hay `dist` (desarrollo local) no hace nada |
+| `backend/src/config/hosting.js` | Reconoce Render y Railway por sus variables: proxies de confianza (`TRUST_PROXY`, 1 en Railway y 3 en Render si no se define), nombre y versión del servicio en las alertas, y el freno de `EXPOSE_ACCOUNT_LINKS` |
+
+El frontend, en una compilación de producción sin `VITE_API_URL`, llama a la dirección desde la que se cargó. En desarrollo sigue usando `http://localhost:5000`, y en Render (sitio estático aparte) `VITE_API_URL` sigue funcionando igual.
+
+### Variables (valores en Railway → servicio `medcita-demo` → *Variables*)
+
+| Variable | Valor |
+|---|---|
+| `DATABASE_URL` | Referencia al Postgres del proyecto. Ya la define `railway.ts` (`db.env.DATABASE_URL`), no se escribe a mano |
+| `JWT_SECRET` | Uno nuevo, distinto al de producción: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Sin él el servidor se niega a arrancar |
+| `FRONTEND_URL` | La dirección del sitio (`https://medcita-demo.up.railway.app`). Ya no hace falta para CORS (todo es la misma dirección), pero arma los enlaces de los correos |
+| `TRUST_PROXY` | `1`: el único proxy de Railway, para que los límites por IP vean la dirección real de cada persona |
+| `RAILPACK_NODE_VERSION` | `22` (la misma que usa la integración continua) |
+| `META_*`, `TWILIO_*`, `BREVO_*`, `ERROR_ALERT_EMAILS`, `S3_*` | **Vacías o sin definir** en el demo: WhatsApp y correo salen en modo simulado y no se le escribe a nadie |
+| `EXPOSE_ACCOUNT_LINKS` | **No definir**: el servidor se niega a arrancar con ella en Railway |
+| `NODE_ENV` | **No definir.** Puesta durante la compilación, Railpack deja fuera `vite` y `tailwind` y la compilación falla. El script `start` ya la pone |
+| `PORT` | La pone Railway (8080); `railway.ts` apunta el dominio a ese puerto |
+
+Si agregas una variable nueva, créala en Railway **y** agrégala a `railway.ts` con `preserve()`: aplicar el archivo borra las que no nombra.
+
+### Pasos (una sola vez)
+
+1. **Cuenta.** railway.com → entrar con GitHub. La prueba gratis da 5 USD de crédito por 30 días, 1 GB de RAM y 5 servicios por proyecto; si Railway no verifica tu GitHub queda en «Limited Trial», con la red de salida restringida. Para algo estable, plan Hobby (5 USD al mes). Anótalo para el presupuesto de Kodffe.
+2. **Proyecto.** En el panel, crea un proyecto vacío llamado `medcita-demo` y dale acceso al repositorio de GitHub.
+3. **CLI.** Instala la CLI de Railway (`npm i -g @railway/cli` o `brew install railway`), entra con `railway login`, y desde la raíz del repositorio: `npm install` (instala el paquete `railway` que da los tipos de `railway.ts`) y `railway link --project medcita-demo`.
+4. **Plan y aplicar.** `railway config plan` muestra qué se crearía (el servicio `medcita-demo`, su Postgres, el dominio y la región) sin cambiar nada; si lo que dice es lo esperado, `railway config apply`. Los valores de las variables se escriben en el panel, no en el archivo.
+5. **Variables.** Crea en el panel las de la tabla de arriba (`JWT_SECRET`, `FRONTEND_URL`, `TRUST_PROXY`, `RAILPACK_NODE_VERSION`). **El primer despliegue falla hasta que existan**: sin `JWT_SECRET` el servidor no arranca. Es lo esperado; después de crearlas, *Redeploy*.
+6. **Despliegue automático.** En el panel, activa el de la rama `develop` (el archivo no puede fijarlo).
+7. **Datos de demostración.** Desde tu máquina, con la dirección **pública** del Postgres de Railway (panel → Postgres → *Variables* → `DATABASE_PUBLIC_URL`), sin dejarla en el historial del shell:
+
+   ```bash
+   cd backend
+   read -rs "DATABASE_URL?Pega la DATABASE_PUBLIC_URL: " && export DATABASE_URL
+   SEED_REMOTE_HOST=<el host de esa dirección> npx prisma db seed
+   unset DATABASE_URL
+   ```
+
+   El seed **borra todo** y carga los consultorios y las cuentas de demostración; por seguridad se niega a correr contra una base que no sea local salvo que escribas el host. Es una base de demostración: **nunca pacientes reales** (las contraseñas del seed están en el repositorio público).
+
+### Verificar
+
+```bash
+curl https://medcita-demo.up.railway.app/api/health            # {"status":"ok"}
+curl -I https://medcita-demo.up.railway.app/privacy            # 200 text/html
+curl -I https://medcita-demo.up.railway.app/data-deletion      # 200 text/html
+```
+
+- Iniciar sesión con `demo@medcita.ec` / `demo1234` en el sitio, **guardar un horario** y **agendar una cita con un paciente nuevo** (lo que falló en producción el 21-oct).
+- `/`, `/privacy`, `/terms`, `/data-deletion` y `/contact` abren sin sesión.
+- Con un administrador (`admin@medcita.ec`): `GET /api/admin/client-ip` devuelve **tu IP pública**, no la de Railway. Si devuelve otra, ajusta `TRUST_PROXY`.
+- En los logs del servicio, «Database schema matches the code» al arrancar y, a la hora en punto, el cron de recordatorios.
+- El puerto: en *Settings → Networking* el dominio debe apuntar al mismo puerto en el que dice «Server running on …» el log (8080). Si no coinciden, es lo primero que hay que corregir.
+
+### Cosas que hay que saber
+
+- **Una sola réplica y siempre encendido.** El cron de recordatorios (`node-cron`) corre dentro del proceso: dormido no dispara a su hora y con dos réplicas dispara dos veces. No activar el modo de reposo del servicio.
+- **Railway Hobby no tiene IP fija de salida.** La lista de IPs autorizadas de Brevo (S9-08), que hoy tiene las de Render, no se puede mantener igual: al migrar hay que desactivarla o cambiar de enfoque.
+- **Las páginas públicas** se cargan en el navegador, igual que en Render: quien no ejecuta JavaScript (como el rastreador de Meta) todavía ve la página vacía hasta que se pre-renderice el HTML (S12-03).
+- **Costo.** El plan Hobby cuesta 5 USD al mes e incluye 5 USD de uso; un servicio y un Postgres con poco tráfico deberían caber, pero es una estimación: se confirma con el consumo real del primer mes.
+
+### Al migrar a la cuenta de Kodffe
+
+1. Transferir el repositorio a la organización (S12-05) y cambiar en `railway.ts` la fuente a `kodffe/medcita` y la rama a `main`.
+2. Repetir los pasos 2 a 7 en la cuenta de Kodffe (proyecto nuevo, variables, seed o restauración de la base).
+3. Agregar el dominio propio `medcita.kodffe.com` en `railway.ts` (`domains`) junto al de servicio; Railway muestra el `CNAME` y el `TXT` que hay que crear en el DNS de `kodffe.com`.
+4. Cambiar `FRONTEND_URL` a `https://medcita.kodffe.com`, y en Meta la URL del webhook a `https://medcita.kodffe.com/api/webhooks/whatsapp`.
+5. Mover la base de datos de producción (hoy en Neon) o dejarla donde está y apuntar `DATABASE_URL` a ella; una migración nueva se prueba antes en un ambiente de pruebas (sección «Ambiente de pruebas»).
 
 ## Ramas: `main` es producción, `develop` es donde se integra
 

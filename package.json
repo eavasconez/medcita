@@ -1,0 +1,17 @@
+{
+  "name": "medcita",
+  "private": true,
+  "version": "0.0.0",
+  "description": "MedCita: agenda médica para consultorios y clínicas de Ecuador",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run build --prefix frontend",
+    "start": "NODE_ENV=production npm start --prefix backend",
+    "migrate": "npm run migrate:deploy --prefix backend"
+  },
+  "devDependencies": {
+    "railway": "^3.16.0"
+  }
+}
