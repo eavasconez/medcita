@@ -9,8 +9,9 @@
  * service with another name is planned for deletion, so read every line of `railway config plan` before applying.
  * Preview with `railway config plan`, apply with `railway config apply`, from a machine where the Railway CLI is
  * signed in and this folder is linked (`railway link`).
- * When the project moves to Kodffe's Railway account, change the source to `kodffe/medcita`, its branch to `main`,
- * and add the custom domain (medcita.kodffe.com).
+ * When the project moves to Kodffe's Railway account, change the source to `kodffe/medcita` and add the custom domain
+ * (`domains: ['medcita.kodffe.com']`: the package accepts it, check it with `railway config plan` before applying).
+ * medcita.kodffe.com is the same demo, so DEMO_SEED stays; only the account that owns it changes.
  */
 import { defineRailway, github, postgres, preserve, project, service } from 'railway/iac';
 
@@ -40,7 +41,7 @@ export default defineRailway((ctx) => {
       PORT: '8080',
       RAILPACK_NODE_VERSION: '22',
       TRUST_PROXY: '2',
-      // This is a demo: an empty database gets the demo accounts on the first deploy. Never set it on a real clinic's server
+      // This is a demo (here and on Kodffe's account): an empty database gets the demo accounts on the first deploy. Never set it on a real clinic's server
       DEMO_SEED: 'true',
     },
   });

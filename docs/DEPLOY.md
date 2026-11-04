@@ -692,9 +692,11 @@ Desde S8-02 nadie obtiene una cuenta sin recibir un correo: el alta se confirma 
 |---|---|---|
 | Demo en Railway (cuenta personal, S12-04) | La que genere Railway (`…up.railway.app`) | La misma dirección, en `/api` |
 | Producción actual (Render) | URL `onrender.com` del paso 4 | URL `onrender.com` del paso 3 |
-| Producción en Kodffe (futuro) | `medcita.kodffe.com` | La misma dirección, en `/api` |
+| Demo en la cuenta de Kodffe (futuro, S12-05) | `medcita.kodffe.com` | La misma dirección, en `/api` |
 
 Desde S12-04 el sitio y la API van en **un solo servicio y una sola dirección** (sección «Railway»): no hay un `api.medcita.kodffe.com` aparte.
+
+**`medcita.kodffe.com` sigue siendo la misma demo** (decisión del 4-nov-2026): lo único que cambia al migrar es que Kodffe tendrá el acceso completo (la cuenta de Railway, el repositorio y el DNS). Por eso `DEMO_SEED=true` se queda, la base se siembra sola con los datos de ejemplo y no hay pacientes reales.
 
 **Qué hay que tocar cuando se confirme el dominio final**
 
@@ -820,11 +822,35 @@ curl -I <URL>/data-deletion      # 200 text/html
 
 ### Al migrar a la cuenta de Kodffe
 
-1. Transferir el repositorio a la organización (S12-05) y cambiar en `railway.ts` la fuente a `kodffe/medcita` y la rama a `main`.
-2. Repetir los pasos 2 a 10 en la cuenta de Kodffe (proyecto nuevo, variables, seed o restauración de la base).
-3. Agregar el dominio propio `medcita.kodffe.com` en el panel (*Networking → Custom Domain*): Railway muestra el `CNAME` y el `TXT` que hay que crear en el DNS de `kodffe.com`. Los dominios propios no los maneja `railway.ts`.
+`medcita.kodffe.com` es la misma demo (ver «Nombre y dominios»): se repite lo del demo, en la cuenta de Kodffe.
+
+1. Transferir el repositorio a la organización (S12-05, siguiente sección) y cambiar en `railway.ts` la fuente a `kodffe/medcita`. La rama sigue siendo `develop` (el demo muestra lo último integrado), salvo que Kodffe pida `main`.
+2. Repetir los pasos 2 a 10 en la cuenta de Kodffe (proyecto nuevo, variables y `DEMO_SEED=true`: la base se siembra sola en el primer despliegue). El nombre del proyecto y del servicio lo elige Kodffe; en `railway.ts` tienen que coincidir con el panel.
+3. Agregar el dominio propio `medcita.kodffe.com`. El paquete `railway` acepta `domains: ['medcita.kodffe.com']` en el servicio (no está aplicado): se prueba con `railway config plan` y, si el plan no lo muestra, se agrega en el panel (*Networking → Custom Domain*). Railway da el `CNAME` y el `TXT` que hay que crear en el DNS de `kodffe.com`, y el DNS lo lleva quien lo administre en Kodffe.
 4. Cambiar `FRONTEND_URL` a `https://medcita.kodffe.com`, y en Meta la URL del webhook a `https://medcita.kodffe.com/api/webhooks/whatsapp`.
-5. Mover la base de datos de producción (hoy en Neon) o dejarla donde está y apuntar `DATABASE_URL` a ella; una migración nueva se prueba antes en un ambiente de pruebas (sección «Ambiente de pruebas»).
+5. Elegir la región (US East, Virginia, es la más cercana a Ecuador; `replicas: { 'us-east4-eqdc4a': 1 }` en `railway.ts`).
+6. La base de datos de producción de Render (hoy en Neon) **no se mueve ni se toca**: es otra cosa. Una migración nueva se prueba antes en un ambiente de pruebas (sección «Ambiente de pruebas»).
+
+### Si el repositorio cambia de dueño (S12-05)
+
+Transferir `eavasconez/medcita` a la organización `kodffe`. GitHub mantiene la URL vieja redirigiendo y se transfieren los issues, los PR, los webhooks y las estrellas. **Lo que no se muda son las aplicaciones de GitHub instaladas en la cuenta personal** (Render, Railway, CodeRabbit): hay que instalarlas en la organización, y para eso se necesita ser propietario.
+
+*Antes*
+- Quien transfiere necesita permiso para **crear repositorios en la organización** (en `github.com/new`, el desplegable *Owner* debe mostrar `kodffe`). Si no, un propietario lo activa en *Member privileges → Repository creation* o sube a esa persona a propietario.
+- Un respaldo espejo: `git clone --mirror git@github.com:<dueño>/medcita.git` y guardarlo fuera del repositorio (ramas, etiquetas y las referencias de los PR).
+- Un token de GitHub nuevo (con la organización como dueña, o clásico con permiso `repo`) para las herramientas que hablan con la API: el viejo, limitado al repositorio anterior, deja de servir. No se pega en un chat ni se guarda en el repositorio.
+- Sin PR abiertos ni despliegue en curso. Decidir si el repositorio queda público o privado (cambiarlo después no depende de la transferencia).
+
+*Transferir:* repositorio → *Settings → General → Danger Zone → Transfer ownership* → `kodffe` y el nombre `medcita`.
+
+*Después, en este orden*
+1. En cada máquina del equipo: `git remote set-url origin git@github.com:kodffe/medcita.git`.
+2. **Render (producción):** instalar la aplicación de GitHub de Render en la organización y, en cada servicio (el *Web Service* y el *Static Site*), apuntar el repositorio al nuevo (*Settings → Build & Deploy → Repository*; los botones pueden llamarse distinto). Es el riesgo principal: si no se reconecta, producción deja de desplegarse sin avisar. Se comprueba con *Manual Deploy → Deploy latest commit* y se confirma con el próximo merge a `main`.
+3. **Railway:** instalar su aplicación de GitHub en la organización y reconectar el repositorio en el servicio (*Settings → Source*). Cambiar `github('…')` en `railway.ts` por `kodffe/medcita` (único lugar del repositorio donde aparece el dueño).
+4. **CodeRabbit:** instalarlo y autorizarlo en la organización. Revisa los PR que van a la rama por defecto (`main`); para que también revise los de `develop` hace falta un `.coderabbit.yaml`.
+5. **GitHub Actions:** `ci.yml` no usa secretos. Se abre un PR de prueba y se comprueba que corren los tres trabajos (pruebas del backend, lint y compilación del sitio).
+6. Revisar las reglas de protección de `main` y `develop` (*Settings → Branches*): viajan con el repositorio.
+7. El token nuevo en la configuración del MCP de GitHub y rotar el anterior.
 
 ## Ramas: `main` es producción, `develop` es donde se integra
 
