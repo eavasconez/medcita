@@ -80,6 +80,7 @@ Debes tener dos terminales abiertas:
   - WhatsApp: Meta Cloud API (preferido si hay credenciales) → Twilio (fallback) → mock.
   - Email: Brevo (preferido) → SendGrid (fallback) → mock.
 - **Infraestructura de producción:** Render (Web Service + Static Site, free), Neon (Postgres, free), UptimeRobot (monitoreo, free) — sin tarjeta de crédito. Ver `docs/DEPLOY.md` para el runbook completo.
+- **Demo en Railway (S12-04):** un solo servicio sirve la API y el sitio, con su propio Postgres y los datos de demostración cargados solos en el primer despliegue (`DEMO_SEED=true`); se configura con `.railway/railway.ts`. Sección «Railway» de `docs/DEPLOY.md`.
 
 ## 📱 Notificaciones de WhatsApp
 
@@ -126,7 +127,7 @@ Debes tener dos terminales abiertas:
 ## 📚 Documentación adicional
 
 - **`docs/TECHNICAL.md`** — variables de entorno completas y endpoints de la API por módulo.
-- **`docs/DEPLOY.md`** — cómo se desplegó a producción (Render + Neon + UptimeRobot), paso a paso, para poder rehacerlo, y el contrato de despliegue que vale para cualquier servicio.
+- **`docs/DEPLOY.md`** — cómo se desplegó a producción (Render + Neon + UptimeRobot) y el demo en Railway, paso a paso, para poder rehacerlo, y el contrato de despliegue que vale para cualquier servicio.
 - **`docs/WHATSAPP_META_SETUP.md`** — guía completa para configurar WhatsApp con Meta con tus propias cuentas.
 - **`docs/qa/`** — reportes de testing, seguridad, performance y validación en producción de cada sprint, con capturas.
 - **`docs/qa/S6-01-demo-script.md`** + **`docs/qa/S6-03-demo-deck.html`** — guión y deck para demos con médicos candidatos.
