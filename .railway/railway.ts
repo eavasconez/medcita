@@ -39,7 +39,7 @@ export default defineRailway((ctx) => {
       // Not secrets, so they are written here and the first deploy already starts with them
       PORT: '8080',
       RAILPACK_NODE_VERSION: '22',
-      TRUST_PROXY: '1',
+      TRUST_PROXY: '2',
       // This is a demo: an empty database gets the demo accounts on the first deploy. Never set it on a real clinic's server
       DEMO_SEED: 'true',
     },

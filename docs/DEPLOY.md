@@ -723,7 +723,7 @@ MedCita también se despliega en **Railway**, con **un solo servicio** que corre
 | `.railway/railway.ts` | El servicio `medcita` (fuente `develop`, Railpack, healthcheck `/api/health`, `preDeploy` de las migraciones y del seed del demo, una réplica en US East) y su Postgres. Los secretos no están aquí (`preserve()`); `PORT`, `TRUST_PROXY`, `RAILPACK_NODE_VERSION` y `DEMO_SEED` sí, porque no son secretos. **No** maneja el dominio generado, el interruptor de despliegue automático ni el nombre del proyecto |
 | `package.json` (raíz) | Solo scripts: `build` (instala el backend y el frontend —este con `--include=dev`, porque necesita `vite` y `tailwind` aunque `NODE_ENV` sea `production`— y compila el sitio), `start` (arranca el backend con `NODE_ENV=production`) y `migrate` (aplica las migraciones y, solo con `DEMO_SEED=true` y la base vacía, carga los datos de demostración). MedCita no tenía uno y Railpack lo necesita para detectar el proyecto |
 | `backend/src/middleware/webApp.js` | El backend sirve `frontend/dist`: los archivos de `/assets` con caché de un año, lo demás sin caché, e `index.html` para cualquier dirección de página (`/privacy`, `/patients/42`…). La API y los archivos que no existen siguen dando 404. Si no hay `dist` (desarrollo local) no hace nada |
-| `backend/src/config/hosting.js` | Reconoce Render y Railway por sus variables: proxies de confianza (`TRUST_PROXY`, 1 en Railway y 3 en Render si no se define), nombre y versión del servicio en las alertas, y el freno de `EXPOSE_ACCOUNT_LINKS` |
+| `backend/src/config/hosting.js` | Reconoce Render y Railway por sus variables: proxies de confianza (`TRUST_PROXY`, 2 en Railway y 3 en Render si no se define), nombre y versión del servicio en las alertas, y el freno de `EXPOSE_ACCOUNT_LINKS` |
 
 El frontend, en una compilación de producción sin `VITE_API_URL`, llama a la dirección desde la que se cargó. En desarrollo sigue usando `http://localhost:5000`, y en Render (sitio estático aparte) `VITE_API_URL` sigue funcionando igual.
 
@@ -742,7 +742,7 @@ El frontend, en una compilación de producción sin `VITE_API_URL`, llama a la d
 | `JWT_SECRET` | Panel | Uno nuevo, distinto al de producción: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Sin él el servidor se niega a arrancar |
 | `FRONTEND_URL` | Panel | La dirección del sitio, cuando exista (`https://…up.railway.app`). Ya no hace falta para CORS (todo es la misma dirección), pero arma los enlaces de los correos |
 | `PORT` | `railway.ts` | `8080`. El servidor escucha en `PORT`, y el dominio generado tiene que apuntar a ese mismo puerto |
-| `TRUST_PROXY` | `railway.ts` | `1`: el único proxy de Railway, para que los límites por IP vean la dirección real de cada persona |
+| `TRUST_PROXY` | `railway.ts` | `2`: Railway pone **dos** proxies delante de la app (comprobado el 4-nov-2026: con `1` el servidor veía la dirección de un proxy que cambia en cada petición, y con `2` la IP real). Así los límites por IP cuentan a cada persona |
 | `RAILPACK_NODE_VERSION` | `railway.ts` | `22` (la misma que usa la integración continua) |
 | `DEMO_SEED` | `railway.ts` | `true` **solo en el demo**: en el *pre-deploy*, si la base no tiene ningún consultorio, médico ni paciente, carga los datos de demostración (`backend/scripts/seedDemoIfEmpty.js`). Con datos, o sin la variable, no hace nada. **Nunca en producción ni en el servidor de un consultorio real** |
 | `META_*`, `TWILIO_*`, `BREVO_*`, `ERROR_ALERT_EMAILS`, `S3_*` | — | **Vacías o sin definir** en el demo: WhatsApp y correo salen en modo simulado y no se le escribe a nadie |
@@ -768,7 +768,7 @@ Si agregas una variable nueva, créala en Railway **y** agrégala a `railway.ts`
    - *Scale*: región US East (Virginia) y una réplica; sin modo de reposo.
    - *Config-as-code*: dejar vacío (no hay `railway.json`).
 4. **Base de datos.** *+ New → Database → PostgreSQL*. Se ve en el primer despliegue: `railway.ts` pide la imagen de Postgres 18 y Prisma 5 se probó contra la 15; si `migrate` se queja de la versión, usa otra imagen.
-5. **Variables** del servicio (tabla de arriba): `DATABASE_URL` como referencia al Postgres, `JWT_SECRET`, `PORT=8080`, `TRUST_PROXY=1`, `RAILPACK_NODE_VERSION=22` y `DEMO_SEED=true`.
+5. **Variables** del servicio (tabla de arriba): `DATABASE_URL` como referencia al Postgres, `JWT_SECRET`, `PORT=8080`, `TRUST_PROXY=2`, `RAILPACK_NODE_VERSION=22` y `DEMO_SEED=true`.
 6. **Dominio.** *Settings → Networking → Generate Domain*, con el puerto **8080**. Anota la dirección que dé Railway (Railway elige el nombre: la del demo es `medcita-production.up.railway.app`) y ponla en `FRONTEND_URL`.
 7. **Deploy.** Pulsa *Deploy* y mira el log: compilación, *pre-deploy* (las migraciones), «Server running on http://localhost:8080» y «Database schema matches the code».
 8. **Datos de demostración.** Con `DEMO_SEED=true` no hay nada que hacer a mano: en el *pre-deploy*, justo después de las migraciones, el log dice «The database at … is empty and DEMO_SEED is "true": loading the demo data» y carga las cuentas. Solo lo hace si la base **no tiene ningún consultorio, médico ni paciente**; en los despliegues siguientes dice «already has data … not loaded again» y no la toca. (Si la variable se puso después del primer despliegue, basta con volver a desplegar.) Si la base ya tenía datos y quieres reiniciarla, o prefieres no usar la variable, se hace a mano. Desde tu máquina, con la dirección **pública** del Postgres (panel → Postgres → *Variables* → `DATABASE_PUBLIC_URL`), sin dejarla en el historial del shell:
@@ -796,7 +796,7 @@ curl -I <URL>/data-deletion      # 200 text/html
 
 - Iniciar sesión con `demo@medcita.ec` / `demo1234` en el sitio, **guardar un horario** y **agendar una cita con un paciente nuevo** (lo que falló en producción el 21-oct).
 - `/`, `/privacy`, `/terms`, `/data-deletion` y `/contact` abren sin sesión.
-- Con un administrador (`admin@medcita.ec`): `GET /api/admin/client-ip` devuelve **tu IP pública**, no la de Railway. Si devuelve otra, ajusta `TRUST_PROXY`.
+- Con un administrador (`admin@medcita.ec`): `GET /api/admin/client-ip` devuelve **tu IP pública**, no la de Railway (con `TRUST_PROXY=1` devolvía una `152.233.47.x` que cambia en cada petición). Si devuelve otra, ajusta `TRUST_PROXY`.
 - En los logs del servicio, «Database schema matches the code» al arrancar y, a la hora en punto, el cron de recordatorios.
 
 ### Si algo falla en el primer despliegue

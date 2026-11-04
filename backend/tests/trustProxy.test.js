@@ -18,13 +18,13 @@ describe('resolveTrustProxy', () => {
   it.each([
     ['RAILWAY_PROJECT_ID', { RAILWAY_PROJECT_ID: 'abc' }],
     ['RAILWAY_ENVIRONMENT_NAME', { RAILWAY_ENVIRONMENT_NAME: 'production' }]
-  ])('assumes the single Railway proxy on Railway (%s is set)', (_name, env) => {
-    expect(RAILWAY_PROXY_HOPS).toBe(1);
-    expect(resolveTrustProxy(env)).toBe(1);
+  ])('assumes the two Railway proxies on Railway (%s is set)', (_name, env) => {
+    expect(RAILWAY_PROXY_HOPS).toBe(2);
+    expect(resolveTrustProxy(env)).toBe(2);
   });
 
   it('lets TRUST_PROXY override the Railway default', () => {
-    expect(resolveTrustProxy({ RAILWAY_PROJECT_ID: 'abc', TRUST_PROXY: '2' })).toBe(2);
+    expect(resolveTrustProxy({ RAILWAY_PROJECT_ID: 'abc', TRUST_PROXY: '3' })).toBe(3);
     expect(resolveTrustProxy({ RAILWAY_PROJECT_ID: 'abc', TRUST_PROXY: 'false' })).toBe(false);
   });
 
@@ -111,5 +111,21 @@ describe('GET /api/admin/client-ip', () => {
     app.set('trust proxy', 2);
     const before = await request(app).get('/api/admin/client-ip').set(bearer(admin.token)).set('X-Forwarded-For', '157.100.137.15, 104.23.213.169, 10.26.16.133');
     expect(before.body.ip).toBe('104.23.213.169');
+  });
+
+  it('reads the real client through the chain Railway showed on 4 Nov 2026 (client, Railway proxy; the app sits behind a second one)', async () => {
+    app.set('trust proxy', RAILWAY_PROXY_HOPS);
+    const admin = await createUser({ role: 'admin' });
+    const chain = '203.0.113.7, 198.51.100.65';
+
+    const res = await request(app).get('/api/admin/client-ip').set(bearer(admin.token)).set('X-Forwarded-For', chain);
+
+    expect(res.body.trustProxy).toBe(2);
+    expect(res.body.ip).toBe('203.0.113.7');
+
+    // with the old value of 1 the app took Railway's own proxy for the client
+    app.set('trust proxy', 1);
+    const before = await request(app).get('/api/admin/client-ip').set(bearer(admin.token)).set('X-Forwarded-For', chain);
+    expect(before.body.ip).toBe('198.51.100.65');
   });
 });
