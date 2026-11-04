@@ -81,3 +81,27 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+
+  # The deploy (Railway) builds the repository root with `npm run build`: it installs the backend and the
+  # frontend and compiles the site. The first deploy failed on exactly that, with nothing in CI to warn.
+  build:
+    name: Site build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - run: npm run build
+
+      - name: The site was built
+        run: test -f frontend/dist/index.html
+
