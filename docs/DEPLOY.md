@@ -720,8 +720,8 @@ MedCita también se despliega en **Railway**, con **un solo servicio** que corre
 
 | Archivo | Para qué |
 |---|---|
-| `.railway/railway.ts` | El servicio `medcita-demo` (fuente `develop`, Railpack, healthcheck `/api/health`, `preDeploy` de las migraciones, una réplica en US East) y su Postgres. Los secretos no están aquí (`preserve()`); `PORT`, `TRUST_PROXY` y `RAILPACK_NODE_VERSION` sí, porque no son secretos. **No** maneja el dominio generado, el interruptor de despliegue automático ni el nombre del proyecto |
-| `package.json` (raíz) | Solo scripts: `build` (instala el backend y el frontend —este con `--include=dev`, porque necesita `vite` y `tailwind` aunque `NODE_ENV` sea `production`— y compila el sitio), `start` (arranca el backend con `NODE_ENV=production`) y `migrate`. MedCita no tenía uno y Railpack lo necesita para detectar el proyecto |
+| `.railway/railway.ts` | El servicio `medcita` (fuente `develop`, Railpack, healthcheck `/api/health`, `preDeploy` de las migraciones y del seed del demo, una réplica en US East) y su Postgres. Los secretos no están aquí (`preserve()`); `PORT`, `TRUST_PROXY`, `RAILPACK_NODE_VERSION` y `DEMO_SEED` sí, porque no son secretos. **No** maneja el dominio generado, el interruptor de despliegue automático ni el nombre del proyecto |
+| `package.json` (raíz) | Solo scripts: `build` (instala el backend y el frontend —este con `--include=dev`, porque necesita `vite` y `tailwind` aunque `NODE_ENV` sea `production`— y compila el sitio), `start` (arranca el backend con `NODE_ENV=production`) y `migrate` (aplica las migraciones y, solo con `DEMO_SEED=true` y la base vacía, carga los datos de demostración). MedCita no tenía uno y Railpack lo necesita para detectar el proyecto |
 | `backend/src/middleware/webApp.js` | El backend sirve `frontend/dist`: los archivos de `/assets` con caché de un año, lo demás sin caché, e `index.html` para cualquier dirección de página (`/privacy`, `/patients/42`…). La API y los archivos que no existen siguen dando 404. Si no hay `dist` (desarrollo local) no hace nada |
 | `backend/src/config/hosting.js` | Reconoce Render y Railway por sus variables: proxies de confianza (`TRUST_PROXY`, 1 en Railway y 3 en Render si no se define), nombre y versión del servicio en las alertas, y el freno de `EXPOSE_ACCOUNT_LINKS` |
 
@@ -744,6 +744,7 @@ El frontend, en una compilación de producción sin `VITE_API_URL`, llama a la d
 | `PORT` | `railway.ts` | `8080`. El servidor escucha en `PORT`, y el dominio generado tiene que apuntar a ese mismo puerto |
 | `TRUST_PROXY` | `railway.ts` | `1`: el único proxy de Railway, para que los límites por IP vean la dirección real de cada persona |
 | `RAILPACK_NODE_VERSION` | `railway.ts` | `22` (la misma que usa la integración continua) |
+| `DEMO_SEED` | `railway.ts` | `true` **solo en el demo**: en el *pre-deploy*, si la base no tiene ningún consultorio, médico ni paciente, carga los datos de demostración (`backend/scripts/seedDemoIfEmpty.js`). Con datos, o sin la variable, no hace nada. **Nunca en producción ni en el servidor de un consultorio real** |
 | `META_*`, `TWILIO_*`, `BREVO_*`, `ERROR_ALERT_EMAILS`, `S3_*` | — | **Vacías o sin definir** en el demo: WhatsApp y correo salen en modo simulado y no se le escribe a nadie |
 | `EXPOSE_ACCOUNT_LINKS` | — | **No definir**: el servidor se niega a arrancar con ella en Railway |
 | `NODE_ENV` | — | **No definir.** Railpack ya la pone en `production` y el script `start` también |
@@ -758,7 +759,7 @@ Si agregas una variable nueva, créala en Railway **y** agrégala a `railway.ts`
 1. **Cuenta.** railway.com → entrar con GitHub (ver los límites de arriba).
 2. **Proyecto.** Cuando se importa un repositorio con *New Project → GitHub repo → Deploy Now*, Railway crea **solo** un proyecto con nombre al azar (como `harmonious-miracle`), un servicio llamado como el repositorio y un primer despliegue de la rama por defecto (`main`). Ese proyecto se puede reutilizar:
    - *Project Settings → General*: renombrar el proyecto a `medcita-demo`.
-   - Renombrar el servicio a **`medcita-demo`** (clic derecho sobre el servicio, o *Settings*); tiene que llamarse igual que en `railway.ts`.
+   - El servicio se llama **`medcita`** (el nombre que Railway le da al importar el repositorio; en el panel no se puede renombrar desde el menú del servicio, y no hace falta: `railway.ts` usa ese mismo nombre).
    - Si no hay ninguno: *New → Empty Project*, o `railway init -n medcita-demo`.
 3. **Ajustes del servicio** (*Settings*). Los cambios del panel quedan **en espera** («Apply N changes») hasta pulsar **Deploy**:
    - *Source → Branch connected to production*: **`develop`**.
@@ -767,10 +768,10 @@ Si agregas una variable nueva, créala en Railway **y** agrégala a `railway.ts`
    - *Scale*: región US East (Virginia) y una réplica; sin modo de reposo.
    - *Config-as-code*: dejar vacío (no hay `railway.json`).
 4. **Base de datos.** *+ New → Database → PostgreSQL*. Se ve en el primer despliegue: `railway.ts` pide la imagen de Postgres 18 y Prisma 5 se probó contra la 15; si `migrate` se queja de la versión, usa otra imagen.
-5. **Variables** del servicio (tabla de arriba): `DATABASE_URL` como referencia al Postgres, `JWT_SECRET`, `PORT=8080`, `TRUST_PROXY=1`, `RAILPACK_NODE_VERSION=22`.
-6. **Dominio.** *Settings → Networking → Generate Domain*, con el puerto **8080**. Anota la dirección que dé Railway (puede intentarse el nombre `medcita-demo`, que solo funciona si nadie más lo tiene) y ponla en `FRONTEND_URL`.
+5. **Variables** del servicio (tabla de arriba): `DATABASE_URL` como referencia al Postgres, `JWT_SECRET`, `PORT=8080`, `TRUST_PROXY=1`, `RAILPACK_NODE_VERSION=22` y `DEMO_SEED=true`.
+6. **Dominio.** *Settings → Networking → Generate Domain*, con el puerto **8080**. Anota la dirección que dé Railway (Railway elige el nombre: la del demo es `medcita-production.up.railway.app`) y ponla en `FRONTEND_URL`.
 7. **Deploy.** Pulsa *Deploy* y mira el log: compilación, *pre-deploy* (las migraciones), «Server running on http://localhost:8080» y «Database schema matches the code».
-8. **Datos de demostración.** Desde tu máquina, con la dirección **pública** del Postgres (panel → Postgres → *Variables* → `DATABASE_PUBLIC_URL`), sin dejarla en el historial del shell:
+8. **Datos de demostración.** Con `DEMO_SEED=true` no hay nada que hacer a mano: en el *pre-deploy*, justo después de las migraciones, el log dice «The database at … is empty and DEMO_SEED is "true": loading the demo data» y carga las cuentas. Solo lo hace si la base **no tiene ningún consultorio, médico ni paciente**; en los despliegues siguientes dice «already has data … not loaded again» y no la toca. (Si la variable se puso después del primer despliegue, basta con volver a desplegar.) Si la base ya tenía datos y quieres reiniciarla, o prefieres no usar la variable, se hace a mano. Desde tu máquina, con la dirección **pública** del Postgres (panel → Postgres → *Variables* → `DATABASE_PUBLIC_URL`), sin dejarla en el historial del shell:
 
    ```bash
    cd backend
@@ -808,7 +809,7 @@ curl -I <URL>/data-deletion      # 200 text/html
 | «Application failed to respond» (502) | El puerto del dominio no es el puerto en el que escucha el servidor | `PORT=8080` y el dominio apuntando a 8080 (*Networking*) |
 | El servidor arranca y `/api/health` da 200 pero `/` da 404 | `frontend/dist` no llegó a la imagen final | Ver el log de compilación; es lo primero a revisar si pasa |
 | `/api/health` da 503 | `schema_outdated` o `database_unreachable`: las migraciones no corrieron o la base no responde | Ver el log del *pre-deploy* y la variable `DATABASE_URL` |
-| El plan de `railway config plan` propone «Delete service» | El servicio no se llama `medcita-demo` (o la base `postgres`) | **No aplicar.** Renombrar en el panel o cambiar el nombre en el archivo |
+| El plan de `railway config plan` propone «Delete service» | El servicio no se llama `medcita` (o la base `postgres`) | **No aplicar.** Renombrar en el panel o cambiar el nombre en el archivo |
 
 ### Cosas que hay que saber
 

@@ -9,7 +9,7 @@
   "scripts": {
     "build": "npm ci --prefix backend && npm ci --include=dev --prefix frontend && npm run build --prefix frontend",
     "start": "NODE_ENV=production npm start --prefix backend",
-    "migrate": "npm run migrate:deploy --prefix backend"
+    "migrate": "npm run migrate:deploy --prefix backend && npm run seed:demo --prefix backend"
   },
   "devDependencies": {
     "railway": "^3.16.0"
